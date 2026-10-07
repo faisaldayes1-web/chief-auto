@@ -3,9 +3,6 @@ extends Control
 ## Drawn backdrops built around the OC Chief Auto photos: the office desk, the showroom lobby and the service bay.
 ## Each one is a render of the same dealership (tools/dealership3d.py), tinted for the time of day.
 
-const SHOWROOM := preload("res://assets/world/bg_showroom.jpg")
-const GARAGE := preload("res://assets/world/bg_garage.jpg")
-const DESK := preload("res://assets/world/bg_desk.jpg")
 
 const SHOWROOM_EYE := 0.48     # camera eye level in the showroom render (tools/dealership3d.py "showroom" view)
 const SHOWROOM_FLOOR := 0.58   # where the showroom floor meets the back glass, as a fraction of the render height
@@ -54,6 +51,17 @@ func _draw() -> void:
 
 # ---------- shared pieces ----------
 
+var _texs := {}
+
+
+## This tier's render for a view, loaded once per stage.
+func _tex(view: String) -> Texture2D:
+	var key: String = view + Game.world_suffix()
+	if not _texs.has(key):
+		_texs[key] = load("res://assets/world/bg_%s.jpg" % key)
+	return _texs[key]
+
+
 func cover_rect(tex: Texture2D) -> Rect2:
 	var ts := tex.get_size()
 	var sc: float = max(size.x / ts.x, size.y / ts.y)
@@ -64,7 +72,7 @@ func cover_rect(tex: Texture2D) -> Rect2:
 ## Screen height of a person standing with their feet at feet_y in the showroom render
 ## (the camera is at eye level, so a 1.75 m person's head lands just above the horizon line).
 func person_height(feet_y: float) -> float:
-	var r := cover_rect(SHOWROOM)
+	var r := cover_rect(_tex("showroom"))
 	var eye := r.position.y + r.size.y * SHOWROOM_EYE
 	return max(40.0, (feet_y - eye) * 1.06)
 
@@ -111,7 +119,7 @@ func _draw_lobby() -> void:
 	var w := size.x
 	var h := size.y
 	# the showroom render, bottom-aligned so the marble floor is always in view
-	var dst := _cover(SHOWROOM)
+	var dst := _cover(_tex("showroom"))
 	var horizon := dst.position.y + dst.size.y * SHOWROOM_FLOOR
 	# upgrades
 	if Game.has_upgrade("coffee"):
@@ -128,7 +136,9 @@ func _draw_lobby() -> void:
 	if Game.has_upgrade("lights"):
 		for p in podiums:
 			draw_colored_polygon(PackedVector2Array([Vector2(p.x - 18, h * 0.06), Vector2(p.x + 18, h * 0.06), Vector2(p.x + 140, p.y + 10), Vector2(p.x - 140, p.y + 10)]), Color(1, 0.95, 0.75, 0.07))
-	# podiums for the display cars
+	# podiums for the display cars (the corner lot has none: its cars sit on the asphalt)
+	if Game.dealership <= 1:
+		return
 	for p in podiums:
 		var glow := Game.has_upgrade("turntable")
 		_ellipse(p + Vector2(0, 6), 150, 22, Color(0, 0, 0, 0.25))
@@ -142,7 +152,7 @@ func _draw_lobby() -> void:
 func _draw_desk() -> void:
 	var w := size.x
 	var h := size.y
-	_cover(DESK)
+	_cover(_tex("desk"))
 	var m := monitor_rect
 	if m.position.x > w * 0.1:
 		# right wall shelf
@@ -237,4 +247,4 @@ func _draw_desk() -> void:
 # ---------- service bay ----------
 
 func _draw_garage() -> void:
-	_cover(GARAGE, 0.25)
+	_cover(_tex("garage"), 0.25)

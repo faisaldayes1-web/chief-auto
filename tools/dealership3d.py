@@ -6,7 +6,8 @@ back west, and the owner's apartment sits on the roof. Apartment tiers (1-3) tog
 the same room can be upgraded visually in the game; the showroom tiers work the same way.
 
 Usage (bpy venv):  python tools/dealership3d.py <out_dir> [view ...]
-Views: lot, showroom, office, garage, desk, dealdesk, apartment1, apartment2, apartment3.  SAMPLES env sets quality.
+Views: lot, showroom, office, garage, desk, dealdesk (add _t1 / _t2 for the starting and mid-size
+dealerships), apartment1, apartment2, apartment3.  SAMPLES env sets quality.
 """
 import math
 import os
@@ -225,20 +226,20 @@ def build_world():
     nt = w.node_tree
     sky = nt.nodes.new("ShaderNodeTexSky")
     sky.sky_type = "MULTIPLE_SCATTERING"
-    sky.sun_elevation = math.radians(5)
-    sky.sun_rotation = math.radians(-60)   # sun over the harbour, low in the west-north-west
+    sky.sun_elevation = math.radians(34)
+    sky.sun_rotation = math.radians(-130)   # afternoon sun from the south-west, lighting the street side
     sky.altitude = 30
-    sky.air_density = 1.3
-    sky.aerosol_density = 2.2
+    sky.air_density = 1.0
+    sky.aerosol_density = 0.7
     nt.links.new(sky.outputs[0], nt.nodes["Background"].inputs[0])
-    nt.nodes["Background"].inputs["Strength"].default_value = 0.35
+    nt.nodes["Background"].inputs["Strength"].default_value = 0.2
     sun = bpy.data.lights.new("sun", "SUN")
-    sun.energy = 3.2
-    sun.color = (1.0, 0.78, 0.55)
+    sun.energy = 2.0
+    sun.color = (1.0, 0.92, 0.8)
     sun.angle = math.radians(1.2)
     so = bpy.data.objects.new("sun", sun)
     # direction matching the sky texture's sun
-    el, az = math.radians(5), math.radians(-60)
+    el, az = math.radians(34), math.radians(-130)
     d = Vector((math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el)))
     so.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
     sc.collection.objects.link(so)
@@ -252,6 +253,14 @@ def build_ground():
     box("street", (-200, -90, -0.12), (200, -60, -0.02), noise_mat("street", (0.04, 0.04, 0.045), (0.08, 0.08, 0.085), 40, 0.8))
     box("sidewalk", (-200, -60, -0.1), (200, -57, 0.08), concrete)
     box("pad", (-40, 0, -0.1), (40, 30, 0.02), concrete)
+    for i, x in enumerate(range(-150, 160, 22)):
+        palm((x, -58.5, 0), h=10 + (i % 4), seed=30 + i)
+
+
+def build_site3_front():
+    """The flagship's lot dressing: striped stalls, planters, palms, pylon sign and bunting."""
+    concrete = noise_mat("concrete3", (0.55, 0.53, 0.5), (0.68, 0.66, 0.62), 8, 0.7, bump=0.05)  # noqa: F841
+    paint = mat("stripe", (0.92, 0.92, 0.88), rough=0.6)
     # parking stalls on the lot
     for x in range(-24, 26, 3):
         box("stall", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.012), paint)
@@ -283,8 +292,6 @@ def build_ground():
         fl = bpy.context.object
         fl.data.materials.append(flag_cols[k % 4])
         _link(fl)
-    for i, x in enumerate(range(-150, 160, 22)):
-        palm((x, -58.5, 0), h=10 + (i % 4), seed=30 + i)
 
 
 def build_harbour():
@@ -489,8 +496,278 @@ def build_apartment_shell(white, dark, wood):
     box("balcony_rail", (AX0, AY1 + 3.38, AZ0 + 1.05), (AX1, AY1 + 3.48, AZ0 + 1.1), railm)
 
 
+def bunting(x0, x1, y, z, n_per_m=1.0):
+    cols = [mat("flag_r", (0.8, 0.1, 0.1)), mat("flag_w", (0.95, 0.95, 0.95)), mat("flag_b", (0.1, 0.25, 0.7)),
+            mat("flag_g", (0.9, 0.65, 0.15))]
+    n = int((x1 - x0) * n_per_m)
+    for k in range(n):
+        x = x0 + (k + 0.5) / n_per_m
+        sag = z - 0.4 * math.sin(k / max(1, n - 1) * math.pi)
+        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.26, depth=0.01, location=(x, y, sag - 0.25), rotation=(math.pi / 2, 0, 0))
+        fl = bpy.context.object
+        fl.data.materials.append(cols[k % 4])
+        _link(fl)
+
+
+def chain_fence(pts, h=1.8):
+    post = mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9)
+    wire = mat("chainlink", (0.55, 0.57, 0.58), rough=0.5, metal=0.6, alpha=0.28)
+    for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+        a, b = Vector((ax, ay, 0)), Vector((bx, by, 0))
+        d = b - a
+        n = max(1, int(d.length / 3))
+        for i in range(n + 1):
+            p = a + d * (i / n)
+            cyl("fence_post", (p.x, p.y, h / 2), 0.04, h, post, verts=8)
+        box("fence_rail", (min(ax, bx) - 0.03, min(ay, by) - 0.03, h - 0.04), (max(ax, bx) + 0.03, max(ay, by) + 0.03, h), post)
+        w = box("fence_wire", (min(ax, bx), min(ay, by) - 0.005, 0.05), (max(ax, bx), max(ay, by) + 0.005, h - 0.05), wire)
+        w.visible_shadow = False
+
+
+def power_line(x0, x1, y, every=32.0):
+    """Wooden utility poles with sagging wires along the street."""
+    wood = mat("pole_wood", (0.3, 0.22, 0.15), rough=0.9)
+    wire = mat("wire", (0.05, 0.05, 0.05), rough=0.6)
+    xs = [x0 + i * every for i in range(int((x1 - x0) / every) + 1)]
+    for x in xs:
+        cyl("pole", (x, y, 5.5), 0.14, 11.0, wood, verts=10)
+        box("crossarm", (x - 1.3, y - 0.07, 10.0), (x + 1.3, y + 0.07, 10.15), wood)
+    for a, b in zip(xs, xs[1:]):
+        for dx in (-1.1, 0.0, 1.1):
+            pts = 12
+            for k in range(pts):
+                t0, t1 = k / pts, (k + 1) / pts
+                z0 = 10.2 - 0.9 * math.sin(math.pi * t0)
+                z1 = 10.2 - 0.9 * math.sin(math.pi * t1)
+                p0 = Vector((a + (b - a) * t0 + dx, y, z0))
+                p1 = Vector((a + (b - a) * t1 + dx, y, z1))
+                mid = (p0 + p1) / 2
+                d = p1 - p0
+                bpy.ops.mesh.primitive_cylinder_add(radius=0.012, depth=d.length, location=mid, vertices=6)
+                w = bpy.context.object
+                w.rotation_euler = d.to_track_quat("Z", "Y").to_euler()
+                w.data.materials.append(wire)
+                _link(w)
+
+
+def bunting_line(a, b, n=None):
+    """A string of pennants between two points, sagging in the middle."""
+    cols = [mat("flag_r", (0.8, 0.1, 0.1)), mat("flag_w", (0.95, 0.95, 0.95)), mat("flag_b", (0.1, 0.25, 0.7)),
+            mat("flag_g", (0.9, 0.65, 0.15))]
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    n = n or max(4, int(d.length / 0.9))
+    yaw = math.atan2(d.y, d.x)
+    for k in range(n):
+        t = (k + 0.5) / n
+        p = a + d * t - Vector((0, 0, 0.8 * math.sin(math.pi * t)))
+        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.24, depth=0.01, location=p - Vector((0, 0, 0.22)),
+                                        rotation=(math.pi / 2, 0, yaw))
+        fl = bpy.context.object
+        fl.data.materials.append(cols[k % 4])
+        _link(fl)
+
+
+# Tier 1 sales office: a small stucco box at the back of the lot, front facing the street (-y)
+OX0, OX1, OY0, OY1, OH = -12.0, -2.0, -1.0, 7.0, 4.2
+TZ = 0.05   # floor height inside
+
+
+def build_site1():
+    """Starting dealership: a striped corner lot, a little sales office with a big sign, flags and a carport."""
+    global COL
+    COL = tier_collection("s1")
+    paint = mat("stripe_worn", (0.7, 0.7, 0.66), rough=0.7)
+    for x in range(-18, 20, 3):
+        box("stall1", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.01), paint)
+        box("stall1", (x - 0.06, -27, 0), (x + 0.06, -21.5, 0.01), paint)
+    chain_fence([(-22, -30), (-22, 6)])
+    chain_fence([(22, -30), (22, 6)])
+    chain_fence([(-22, 6), (22, 6)])
+    stucco = noise_mat("stucco1", (0.86, 0.82, 0.74), (0.92, 0.88, 0.8), 30, 0.85, bump=0.15)
+    trim = mat("trim1", (0.12, 0.13, 0.15), rough=0.5)
+    navy = mat("fascia1", (0.05, 0.08, 0.16), rough=0.45)
+    gold = mat("gold", (0.85, 0.62, 0.22), rough=0.25, metal=1.0, emit=0.6, ecol=(1.0, 0.7, 0.3))
+    # shell
+    box("o_slab", (OX0 - 0.6, OY0 - 1.2, 0), (OX1 + 0.6, OY1, TZ), noise_mat("walk1", (0.55, 0.53, 0.5), (0.65, 0.63, 0.6), 8, 0.8))
+    box("o_west", (OX0, OY0, 0), (OX0 + 0.2, OY1, OH), stucco)
+    box("o_east", (OX1 - 0.2, OY0, 0), (OX1, OY1, OH), stucco)
+    box("o_back", (OX0, OY1 - 0.2, 0), (OX1, OY1, OH), stucco)
+    box("o_roof", (OX0 - 0.3, OY0 - 0.3, OH), (OX1 + 0.3, OY1 + 0.3, OH + 0.3), stucco)
+    box("o_ceiling", (OX0, OY0, OH - 0.6), (OX1, OY1, OH - 0.55), mat("ceiling_tile", (0.85, 0.84, 0.8), rough=0.9))
+    # storefront: window, glass door, window
+    holes = [(-11.2, -7.6, 0.8, 2.6), (-6.4, -5.2, TZ, 2.4), (-4.4, -2.8, 0.8, 2.6)]
+    xs = [OX0] + [v for h in holes for v in h[:2]] + [OX1]
+    for i in range(0, len(xs), 2):
+        box("o_front", (xs[i], OY0, 0), (xs[i + 1], OY0 + 0.2, OH), stucco)
+    for hx0, hx1, z0, z1 in holes:
+        if z0 > TZ:
+            box("o_front_low", (hx0, OY0, 0), (hx1, OY0 + 0.2, z0), stucco)
+        box("o_front_high", (hx0, OY0, z1), (hx1, OY0 + 0.2, OH), stucco)
+        g = box("o_glass", (hx0, OY0 + 0.09, z0), (hx1, OY0 + 0.11, z1), glass())
+        g.visible_shadow = False
+        for z in (z0, z1):
+            box("o_frame", (hx0, OY0 - 0.02, z - 0.04), (hx1, OY0 + 0.22, z + 0.04), trim)
+        for x in (hx0, hx1):
+            box("o_frame", (x - 0.04, OY0 - 0.02, z0), (x + 0.04, OY0 + 0.22, z1), trim)
+    box("o_door_bar", (-6.3, OY0 - 0.06, 1.0), (-5.3, OY0 - 0.02, 1.05), mat("chrome", (0.8, 0.8, 0.82), rough=0.15, metal=1.0))
+    # the big sign on the fascia
+    box("o_fascia", (OX0 - 0.4, OY0 - 0.45, 2.85), (OX1 + 0.4, OY0 - 0.15, OH + 0.35), navy)
+    text("o_sign", "CHIEF AUTO", ((OX0 + OX1) / 2, OY0 - 0.5, 3.45), 0.78, gold)
+    text("o_sign_sub", "USED CARS", ((OX0 + OX1) / 2, OY0 - 0.5, 3.05), 0.3, mat("white_lit", (1, 1, 1), emit=2.0))
+    box("o_awning", (OX0 - 0.4, OY0 - 1.3, 2.7), (OX1 + 0.4, OY0 - 0.15, 2.85), navy)
+    # inside: carpet, a desk facing the windows, PC, filing cabinet, whiteboard with goals, poster, plant
+    carpet = noise_mat("carpet", (0.2, 0.22, 0.26), (0.27, 0.29, 0.33), 220, 0.95, bump=0.3)
+    box("o_carpet", (OX0 + 0.2, OY0 + 0.2, TZ), (OX1 - 0.2, OY1 - 0.2, TZ + 0.01), carpet)
+    wood = noise_mat("desk_wood1", (0.3, 0.18, 0.09), (0.4, 0.25, 0.13), 6, 0.4, stretch=(1, 14, 1))
+    box("o_desk", (-9.6, 3.6, TZ), (-6.4, 4.5, TZ + 0.76), wood)
+    box("o_desk_top", (-9.7, 3.5, TZ + 0.76), (-6.3, 4.6, TZ + 0.8), wood)
+    box("o_monitor", (-8.4, 4.1, TZ + 0.85), (-7.3, 4.14, TZ + 1.5), mat("screen", (0.02, 0.05, 0.1), rough=0.1, emit=0.6, ecol=(0.3, 0.55, 0.9)))
+    box("o_monitor_stand", (-7.92, 4.15, TZ + 0.8), (-7.78, 4.25, TZ + 0.9), trim)
+    box("o_keyboard", (-8.3, 3.7, TZ + 0.8), (-7.4, 3.9, TZ + 0.82), trim)
+    box("o_phone", (-9.4, 3.8, TZ + 0.8), (-9.0, 4.1, TZ + 0.88), trim)
+    box("o_mug", (-6.7, 3.8, TZ + 0.8), (-6.6, 3.9, TZ + 0.9), mat("mug", (0.08, 0.08, 0.1)))
+    chair(-7.9, 5.1, math.pi, mat("leather", (0.06, 0.05, 0.05), rough=0.35))
+    for x in (-9.0, -6.9):
+        chair(x, 2.7, 0.0, mat("guest_chair", (0.2, 0.2, 0.22), rough=0.7))
+    box("o_filing", (-11.75, 5.6, TZ), (-11.2, 6.7, TZ + 1.35), mat("filing", (0.4, 0.42, 0.45), metal=0.6, rough=0.4))
+    box("o_whiteboard", (OX0 + 0.2, 1.4, 1.2), (OX0 + 0.23, 4.4, 2.6), mat("whiteboard", (0.95, 0.95, 0.94), rough=0.25))
+    box("o_wb_frame", (OX0 + 0.19, 1.35, 1.15), (OX0 + 0.21, 4.45, 2.65), mat("galv", (0.6, 0.62, 0.63)))
+    ink = mat("marker", (0.1, 0.12, 0.2), rough=0.6)
+    text("o_goals", "GOALS", (OX0 + 0.24, 2.9, 2.3), 0.22, ink, rot=(math.pi / 2, 0, math.pi / 2), extrude=0.0)
+    for i, line in enumerate(("[ ] Sell 3 cars", "[ ] Make $10,000 profit", "[ ] Hire 1 salesperson", "[ ] Upgrade the lot")):
+        text("o_goal", line, (OX0 + 0.24, 1.6, 2.0 - i * 0.2), 0.12, ink, rot=(math.pi / 2, 0, math.pi / 2), extrude=0.0, align="LEFT")
+    box("o_poster", (OX1 - 0.23, 2.0, 1.4), (OX1 - 0.2, 4.0, 2.4), mat("poster", (0.1, 0.12, 0.18), emit=0.15, ecol=(0.6, 0.2, 0.15)))
+    planter(-2.8, 6.3)
+    tube = mat("tube_lit", (1, 1, 1), emit=8, ecol=(0.95, 0.97, 1.0))
+    for x in (-9.5, -4.5):
+        box("o_light", (x - 0.6, 2.8, OH - 0.62), (x + 0.6, 3.4, OH - 0.6), tube)
+    # flags strung from the roof to poles at the street, a few palms and the utility line
+    galv = mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9)
+    for x in (-18.0, -6.0, 6.0, 18.0):
+        cyl("flagpole1", (x, -28.0, 3.5), 0.06, 7.0, galv, verts=8)
+    for x0, x1 in ((-18.0, -6.0), (-6.0, 6.0), (6.0, 18.0)):
+        bunting_line((x0, -28.0, 6.9), (x1, -28.0, 6.9))
+    for x, roof_x in ((-18.0, OX0), (-6.0, OX0 + 4), (6.0, OX1), (18.0, OX1)):
+        bunting_line((x, -28.0, 6.9), (roof_x, OY0 - 0.3, OH + 0.3))
+    palm((-20.5, -1.0, 0), h=10.5, seed=91)
+    palm((-16.0, 3.0, 0), h=12.0, seed=93)
+    palm((19.5, -2.0, 0), h=11.0, seed=92)
+    power_line(-110, 110, -57.0)
+    # carport for repairs on the east side
+    concrete = noise_mat("oilpad", (0.38, 0.37, 0.35), (0.55, 0.53, 0.5), 9, 0.8, bump=0.1)
+    box("cp_pad", (6, -8, 0.0), (16, 0, 0.04), concrete)
+    for x in (6.2, 15.8):
+        for y in (-7.8, -0.2):
+            box("cp_post", (x - 0.06, y - 0.06, 0), (x + 0.06, y + 0.06, 3.3), galv)
+    box("cp_roof", (5.8, -8.4, 3.3), (16.2, 0.4, 3.36), mat("corrugated", (0.55, 0.57, 0.58), rough=0.45, metal=0.8))
+    box("oil_stain", (9.5, -5.5, 0.041), (12.5, -2.5, 0.042), mat("oil", (0.08, 0.08, 0.08), rough=0.3))
+    laminate = mat("laminate", (0.55, 0.42, 0.28), rough=0.5)
+    box("cp_bench", (14.4, -1.0, 0), (15.8, -0.2, 0.9), laminate)
+    box("cp_toolbox", (13.0, -0.9, 0), (14.2, -0.2, 0.8), mat("toolbox", (0.62, 0.05, 0.04), rough=0.3, metal=0.4))
+    for i in range(4):
+        cyl("tire", (7.2, -0.8, 0.12 + i * 0.22), 0.34, 0.2, mat("rubber", (0.03, 0.03, 0.03), rough=0.8), verts=20)
+    box("jack", (10.5, -6.5, 0.04), (11.3, -6.0, 0.23), mat("jack", (0.75, 0.1, 0.08), rough=0.4))
+    COL = None
+
+
+def build_site2():
+    """Second dealership: a small block showroom with one service bay and a striped lot."""
+    global COL
+    COL = tier_collection("s2")
+    white = mat("stucco", (0.86, 0.84, 0.8), rough=0.8)
+    dark = mat("alu", (0.08, 0.08, 0.09))
+    paint = mat("stripe", (0.92, 0.92, 0.88))
+    for x in range(-15, 17, 3):
+        box("stall2", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.012), paint)
+    for x in (-14, 12):
+        box("planter2", (x - 1.5, -4.5, 0), (x + 1.5, -3.2, 0.5), mat("planter_c", (0.6, 0.58, 0.55)))
+        box("hedge2", (x - 1.3, -4.3, 0.45), (x + 1.3, -3.4, 0.85), mat("shrub", (0.1, 0.25, 0.07), rough=0.8))
+    palm((-18, -3.5, 0), h=9.0, seed=71)
+    palm((15, -3.5, 0), h=10.0, seed=72)
+    # small pylon
+    box("pylon2", (-24, -28, 0), (-23.6, -27.6, 5.0), dark)
+    box("pylon2_face", (-25.4, -28.1, 3.4), (-22.2, -27.5, 5.0), mat("pylon2_face", (0.95, 0.95, 0.93), rough=0.4))
+    text("pylon2_txt", "CHIEF AUTO", (-23.8, -28.15, 4.05), 0.45, mat("sign_red", (0.75, 0.08, 0.06)), extrude=0.01)
+    bunting(-16, 16, -18.5, 4.2, 0.8)
+    power_line(-110, 110, -57.0)
+    for x in (-16, 16):
+        cyl("flagpole2", (x, -18.5, 2.2), 0.06, 4.4, mat("rail", (0.75, 0.75, 0.76)), verts=8)
+    # building shell x -10..6, y 0..12, 5 m tall, flat roof with a parapet
+    B0, B1, D0, D1, H = -10.0, 6.0, 0.0, 12.0, 5.0
+    floor = noise_mat("polished_concrete", (0.55, 0.55, 0.54), (0.66, 0.65, 0.63), 3, 0.25)
+    box("b2_floor", (B0, D0, 0), (B1, D1, 0.05), floor)
+    box("b2_roof", (B0 - 0.3, D0 - 0.3, H), (B1 + 0.3, D1 + 0.3, H + 0.5), white)
+    box("b2_ceil", (B0, D0, H - 0.08), (B1, D1, H), mat("ceiling_tile", (0.85, 0.84, 0.8)))
+    box("b2_west", (B0 - 0.25, D0, 0), (B0, D1, H), white)
+    # storefront: glass between block piers
+    for x0, x1 in ((B0, -8.6), (-1.6, 0.4), (4.6, B1)):
+        box("b2_pier", (x0, D0 - 0.25, 0), (x1, D0, H), white)
+    glass_wall("b2_front_a", (-8.6, D0 - 0.12), (-1.6, D0 - 0.12), 0, 3.4, every=2.4)
+    glass_wall("b2_front_b", (0.4, D0 - 0.12), (4.6, D0 - 0.12), 0, 3.4, every=2.1)
+    box("b2_band", (B0, D0 - 0.3, 3.4), (B1, D0, H), white)
+    box("b2_fascia", (-8.6, D0 - 0.45, 3.7), (4.6, D0 - 0.3, 4.6), mat("navy_panel", (0.06, 0.1, 0.22), rough=0.4))
+    text("b2_sign", "CHIEF AUTO", (-2.0, D0 - 0.48, 3.85), 0.6, mat("white_lit", (1, 1, 1), emit=2.0))
+    # rear wall with two window strips onto the harbour
+    for x0, x1 in ((B0, -7.0), (-3.0, -1.0), (3.0, B1)):
+        box("b2_rear", (x0, D1, 0), (x1, D1 + 0.25, H), white)
+    for x0, x1 in ((-7.0, -3.0), (-1.0, 3.0)):
+        box("b2_rear_low", (x0, D1, 0), (x1, D1 + 0.25, 0.9), white)
+        box("b2_rear_high", (x0, D1, 3.0), (x1, D1 + 0.25, H), white)
+        g = box("b2_rear_glass", (x0, D1 + 0.11, 0.9), (x1, D1 + 0.14, 3.0), glass())
+        g.visible_shadow = False
+    lamp = mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68))
+    for x in (-7, -3, 1, 4):
+        for y in (3, 7, 10):
+            box("b2_panel_light", (x - 0.5, y - 0.5, H - 0.1), (x + 0.5, y + 0.5, H - 0.08), lamp)
+    # office partition at the back west corner (x -10..-5.5, y 8..12)
+    box("b2_office_wall", (-5.6, 8.0, 0), (-5.5, 12.0, 3.0), white)
+    box("b2_office_front", (B0, 7.95, 0), (-8.6, 8.05, 3.0), white)
+    g = box("b2_office_glass", (-8.6, 7.98, 0.9), (-5.6, 8.02, 2.2), glass())
+    g.visible_shadow = False
+    box("b2_office_front_low", (-8.6, 7.95, 0), (-5.6, 8.05, 0.9), white)
+    box("b2_office_front_hi", (-8.6, 7.95, 2.2), (-5.6, 8.05, 3.0), white)
+    wood = noise_mat("oak2", (0.4, 0.27, 0.15), (0.5, 0.35, 0.2), 6, 0.45, stretch=(1, 14, 1))
+    box("b2_exec_desk", (-9.4, 10.2, 0), (-7.4, 11.0, 0.76), wood)
+    box("b2_exec_mon", (-8.8, 10.8, 0.8), (-8.0, 10.84, 1.3), mat("screen", (0.02, 0.05, 0.1), emit=0.6, ecol=(0.3, 0.55, 0.9)))
+    chair(-8.4, 11.5, math.pi, mat("leather", (0.06, 0.05, 0.05), rough=0.35))
+    box("b2_filing", (-6.2, 11.3, 0), (-5.7, 11.9, 1.3), mat("filing", (0.5, 0.52, 0.55), metal=0.6, rough=0.4))
+    # reception and the PC desk
+    box("b2_reception", (1.0, 8.5, 0), (4.0, 9.2, 1.05), white)
+    box("b2_reception_top", (0.9, 8.4, 1.05), (4.1, 9.3, 1.1), wood)
+    box("b2_pc_desk", (3.6, 10.8, 0), (5.8, 11.8, 0.76), wood)
+    box("b2_pc_mon", (4.3, 11.5, 0.8), (5.1, 11.54, 1.3), mat("screen", (0.02, 0.05, 0.1)))
+    box("b2_sales_desk", (-9.4, 2.8, 0.72), (-7.4, 3.7, 0.76), wood)
+    for x in (-9.3, -7.5):
+        box("b2_sd_leg", (x - 0.03, 2.85, 0), (x + 0.03, 3.65, 0.72), dark)
+    planter(5.4, 1.0)
+    planter(-9.4, 7.2)
+    # one service bay on the east (x 6..13)
+    block = mat("block", (0.62, 0.62, 0.6), rough=0.8)
+    epoxy = noise_mat("epoxy2", (0.33, 0.35, 0.37), (0.4, 0.42, 0.44), 12, 0.3)
+    box("bay2_floor", (6.0, 0, 0), (13.0, 12.0, 0.04), epoxy)
+    box("bay2_roof", (6.0, -0.3, 4.6), (13.3, 12.3, 5.0), white)
+    box("bay2_ceil", (6.0, 0, 4.5), (13.0, 12.0, 4.6), mat("ceiling_tile", (0.85, 0.84, 0.8)))
+    box("bay2_east", (13.0, 0, 0), (13.3, 12.0, 4.6), block)
+    box("bay2_back", (6.0, 11.8, 0), (13.0, 12.0, 4.6), block)
+    box("bay2_divider", (6.0, 0.3, 0), (6.25, 12.0, 4.6), block)
+    box("bay2_head", (6.25, -0.15, 3.9), (13.0, 0.15, 4.6), white)
+    box("bay2_roll", (6.6, -0.3, 3.7), (12.6, 0.0, 3.9), mat("rollup", (0.7, 0.72, 0.75), metal=0.6, rough=0.4))
+    text("bay2_txt", "SERVICE", (9.6, -0.2, 4.05), 0.4, mat("bay_txt", (0.95, 0.75, 0.2), emit=1.0))
+    yellow = mat("lift", (0.95, 0.72, 0.05), rough=0.4)
+    for side in (-1.5, 1.5):
+        box("lift2_post", (9.6 + side - 0.14, 8.0, 0), (9.6 + side + 0.14, 8.3, 3.4), yellow)
+    for x in range(7, 12):
+        box("tube2", (x - 0.4, 6.0, 4.4), (x + 0.4, 6.2, 4.45), lamp)
+    tool_red = mat("toolbox", (0.62, 0.05, 0.04), rough=0.3, metal=0.4)
+    box("toolbox2", (11.0, 11.0, 0), (12.8, 11.7, 1.0), tool_red, bevel=0.02)
+    box("peg2", (7.0, 11.75, 1.2), (10.5, 11.8, 2.9), mat("peg", (0.65, 0.5, 0.33), rough=0.8))
+    cyl("tires2", (7.4, 10.8, 0.6), 0.36, 1.2, mat("rubber", (0.03, 0.03, 0.03)), verts=20)
+    COL = None
+
+
 def tier_collection(t):
-    c = bpy.data.collections.new("apt_tier%d" % t)
+    c = bpy.data.collections.new("set_%s" % t)
     bpy.context.scene.collection.children.link(c)
     TIER_COLLECTIONS[t] = c
     return c
@@ -500,15 +777,34 @@ def build_apartment_tiers():
     """Tier 1: a mattress in a bare room. Tier 2: a proper condo. Tier 3: the Tewport penthouse."""
     global COL
     lamp = mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68))
-    # tier 1
+    # tier 1: a small starter apartment (bed, a two-seat sofa, a kitchenette, warm lamps)
     COL = tier_collection(1)
-    box("t1_floor", (AX0, AY0, AZ0 + 0.06), (AX1, AY1, AZ0 + 0.07), noise_mat("t1_concrete", (0.45, 0.44, 0.42), (0.55, 0.54, 0.5), 5, 0.8))
-    box("t1_mattress", (-11.5, 6.0, AZ0 + 0.07), (-9.5, 8.2, AZ0 + 0.32), mat("t1_sheet", (0.75, 0.76, 0.8), rough=0.9), bevel=0.08)
-    box("t1_pillow", (-11.3, 6.1, AZ0 + 0.32), (-9.7, 6.6, AZ0 + 0.45), mat("t1_pillow", (0.9, 0.9, 0.9), rough=0.9), bevel=0.06)
-    for i in range(4):
-        box("t1_box", (-4 + i * 0.7, 4.0, AZ0 + 0.07), (-3.4 + i * 0.7, 4.6, AZ0 + 0.07 + 0.4 + (i % 2) * 0.35), mat("cardboard", (0.55, 0.4, 0.24), rough=0.9))
-    box("t1_table", (-6.2, 9.8, AZ0 + 0.07), (-5.0, 10.6, AZ0 + 0.75), mat("t1_plastic", (0.9, 0.9, 0.88), rough=0.5))
-    cyl("t1_bulb", (-7, 9, AZ1 - 0.4), 0.08, 0.15, lamp)
+    floor1 = noise_mat("t1_laminate", (0.3, 0.2, 0.13), (0.38, 0.26, 0.17), 6, 0.45, stretch=(1, 14, 1))
+    box("t1_floor", (AX0, AY0, AZ0 + 0.06), (AX1, AY1, AZ0 + 0.075), floor1)
+    box("t1_wall_tint", (AX0 + 0.01, AY0, AZ0), (AX0 + 0.02, AY1, AZ1), mat("t1_wall", (0.62, 0.55, 0.47), rough=0.85))
+    grey = mat("t1_fabric", (0.22, 0.22, 0.24), rough=0.9)
+    box("t1_bed", (-14.0, 9.0, AZ0 + 0.07), (-11.8, 11.2, AZ0 + 0.55), mat("t1_sheet", (0.82, 0.8, 0.76), rough=0.9), bevel=0.08)
+    box("t1_blanket", (-14.0, 9.9, AZ0 + 0.5), (-11.8, 11.25, AZ0 + 0.6), mat("t1_blanket", (0.45, 0.4, 0.33), rough=0.95), bevel=0.05)
+    box("t1_pillow", (-13.9, 9.05, AZ0 + 0.55), (-11.9, 9.5, AZ0 + 0.7), mat("t1_pillow", (0.9, 0.9, 0.9), rough=0.9), bevel=0.06)
+    box("t1_sofa", (-9.0, 11.3, AZ0 + 0.07), (-6.8, 12.1, AZ0 + 0.48), grey, bevel=0.08)
+    box("t1_sofa_back", (-9.0, 11.1, AZ0 + 0.07), (-6.8, 11.35, AZ0 + 0.9), grey, bevel=0.08)
+    box("t1_coffee", (-8.6, 12.5, AZ0 + 0.07), (-7.2, 13.2, AZ0 + 0.42), mat("t1_walnut", (0.2, 0.12, 0.07), rough=0.4))
+    box("t1_rug", (-9.4, 11.0, AZ0 + 0.075), (-6.4, 13.8, AZ0 + 0.085), mat("t1_rug", (0.6, 0.55, 0.48), rough=0.95))
+    white = mat("t1_cabinet", (0.9, 0.9, 0.88), rough=0.4)
+    box("t1_counter", (-4.0, 4.0, AZ0 + 0.07), (1.5, 4.7, AZ0 + 0.92), white)
+    box("t1_counter_top", (-4.05, 3.95, AZ0 + 0.92), (1.55, 4.75, AZ0 + 0.96), mat("t1_stone", (0.25, 0.25, 0.26), rough=0.3))
+    box("t1_island", (-3.0, 6.2, AZ0 + 0.07), (0.5, 6.9, AZ0 + 0.95), white)
+    for x in (-2.4, -1.3, -0.2):
+        cyl("t1_stool", (x, 7.3, AZ0 + 0.38), 0.18, 0.7, mat("t1_stool", (0.15, 0.12, 0.1)), verts=12)
+    box("t1_fridge", (1.6, 3.9, AZ0 + 0.07), (2.4, 4.7, AZ0 + 1.9), mat("t1_steel", (0.6, 0.6, 0.62), metal=0.8, rough=0.3))
+    box("t1_upper", (-4.0, 3.75, AZ0 + 1.6), (1.5, 4.1, AZ0 + 2.3), white)
+    lampm = mat("t1_lamp", (1, 0.85, 0.65), emit=6, ecol=(1, 0.8, 0.55))
+    cyl("t1_floorlamp", (-10.2, 11.9, AZ0 + 0.8), 0.03, 1.5, mat("t1_stool", (0.15, 0.12, 0.1)), verts=8)
+    cyl("t1_shade", (-10.2, 11.9, AZ0 + 1.6), 0.22, 0.3, lampm, r2=0.15)
+    for x in (-3.0, -1.0):
+        cyl("t1_pendant", (x, 6.5, AZ1 - 0.5), 0.12, 0.2, lampm, r2=0.04)
+    box("t1_tv", (-5.2, 12.0, AZ0 + 0.6), (-5.15, 13.4, AZ0 + 1.4), mat("t2_screen", (0.01, 0.01, 0.01), rough=0.05))
+    planter_at(-5.6, 15.2)
     # tier 2
     COL = tier_collection(2)
     oak = noise_mat("t2_oak", (0.5, 0.36, 0.22), (0.62, 0.46, 0.3), 6, 0.4, stretch=(1, 14, 1))
@@ -609,9 +905,9 @@ def build_deal_props():
     COL = None
 
 
-def show_tier(t):
+def show_sets(keys):
     for k, c in TIER_COLLECTIONS.items():
-        c.hide_render = k != t
+        c.hide_render = k not in keys
 
 
 # ---------------------------------------------------------------- render
@@ -630,7 +926,7 @@ def setup_render():
     sc.render.image_settings.file_format = "JPEG"
     sc.render.image_settings.quality = 88
     sc.view_settings.view_transform = "AgX"
-    sc.view_settings.look = "AgX - Medium High Contrast"
+    sc.view_settings.look = "AgX - Punchy"
     sc.view_settings.exposure = 0.0
     cam = bpy.data.cameras.new("cam")
     co = bpy.data.objects.new("cam", cam)
@@ -640,31 +936,45 @@ def setup_render():
 
 
 VIEWS = {
-    # name: (camera position, look-at target, lens mm, exposure)
+    # name: (camera position, look-at target, lens mm, exposure). Names ending in _t1/_t2 are the smaller dealerships.
     "lot": ((-3.0, -34.0, 1.7), (2.0, 6.0, 4.6), 24, 0.0),
     "showroom": ((0.0, 0.8, 1.65), (0.0, 16.0, 1.45), 18, -0.3),
     "office": ((-8.6, 9.6, 1.55), (-13.0, 15.5, 1.3), 18, -0.3),
     "garage": ((24.5, 0.9, 1.7), (24.5, 16.0, 1.6), 17, -0.2),
     "desk": ((11.5, 12.6, 1.25), (11.5, 16.0, 1.05), 24, -0.3),
-    "apartment": ((-12.5, 4.6, AZ0 + 1.6), (-3.0, 16.0, AZ0 + 1.2), 17, -0.2),
     "dealdesk": ((-3.4, 4.3, 1.3), (1.5, 16.0, 0.9), 20, -0.3),
+    "apartment": ((-12.5, 4.6, AZ0 + 1.6), (-3.0, 16.0, AZ0 + 1.2), 17, -0.2),
+    "lot_t1": ((-2.0, -24.0, 1.7), (-6.0, 0.0, 3.0), 22, 0.0),
+    "showroom_t1": ((-1.0, -26.0, 1.65), (-1.0, -10.0, 1.45), 18, 0.0),   # customers browse outside on the lot
+    "office_t1": ((-3.5, 5.4, 1.6), (-9.0, -1.0, 1.3), 18, 0.0),
+    "garage_t1": ((11.0, -12.0, 1.7), (11.0, 2.0, 1.6), 18, -0.5),
+    "desk_t1": ((-7.9, 5.9, 1.35), (-7.9, -1.0, 1.2), 24, 0.0),
+    "dealdesk_t1": ((-4.3, 5.6, 1.35), (-9.5, -1.0, 0.9), 20, 0.0),
+    "lot_t2": ((-3.0, -34.0, 1.7), (0.0, 4.0, 3.2), 24, 0.0),
+    "showroom_t2": ((-2.0, 0.6, 1.65), (-2.0, 12.0, 1.45), 18, -0.2),
+    "office_t2": ((-6.0, 8.6, 1.55), (-9.8, 12.0, 1.3), 18, -0.2),
+    "garage_t2": ((9.6, 0.9, 1.7), (9.6, 12.0, 1.6), 17, -0.2),
+    "desk_t2": ((4.7, 9.6, 1.25), (4.7, 12.0, 1.05), 24, -0.2),
+    "dealdesk_t2": ((-8.6, 1.6, 1.3), (-4.0, 12.0, 0.9), 20, -0.2),
 }
 
 
 def render_view(cam, name, out):
-    key = "apartment" if name.startswith("apartment") else name
-    pos, tgt, lens, exp = VIEWS[key]
-    if key == "apartment":
-        show_tier(int(name[-1]))
-    elif key == "dealdesk":
-        show_tier(9)
+    if name.startswith("apartment"):
+        key, sets = "apartment", {"s3", int(name[-1])}
     else:
-        show_tier(0)
+        key = name
+        tier = name[-1] if name[-3:-1] == "_t" else "3"
+        sets = {"s" + tier}
+        if name == "dealdesk":
+            sets.add(9)
+    pos, tgt, lens, exp = VIEWS[key]
+    show_sets(sets)
     cam.location = pos
     cam.data.lens = lens
     cam.data.clip_end = 5000
     cam.rotation_euler = (Vector(tgt) - Vector(pos)).to_track_quat("-Z", "Y").to_euler()
-    bpy.context.scene.view_settings.exposure = exp
+    bpy.context.scene.view_settings.exposure = exp - 0.6   # daylight is bright; keep whites from blowing out
     bpy.context.scene.render.filepath = os.path.join(out, "bg_%s.jpg" % name)
     bpy.ops.render.render(write_still=True)
 
@@ -674,26 +984,37 @@ def build():
     build_world()
     build_ground()
     build_harbour()
+    global COL
+    COL = tier_collection("s3")
+    build_site3_front()
     build_dealership()
+    COL = None
+    build_site1()
+    build_site2()
     build_apartment_tiers()
     build_deal_props()
-    # interior fill so rooms are not black against the bright sky
-    for loc, size, e in (((0, 8, 5.5), (28, 14), 2400), ((-11.5, 12.5, 5.5), (6, 6), 500),
-                         ((24, 8, 5.8), (16, 14), 2600), ((-6, 9.5, AZ1 - 0.3), (16, 11), 1300)):
-        ld = bpy.data.lights.new("fill", "AREA")
-        ld.shape = "RECTANGLE"
-        ld.size, ld.size_y = size
-        ld.energy = e
-        ld.color = (1.0, 0.9, 0.78)
-        lo = bpy.data.objects.new("fill", ld)
-        lo.location = loc
-        bpy.context.scene.collection.objects.link(lo)
+    # interior fill so rooms are not black against the bright sky, per dealership
+    fills = {"s3": (((0, 8, 5.5), (28, 14), 2400), ((-11.5, 12.5, 5.5), (6, 6), 500),
+                    ((24, 8, 5.8), (16, 14), 2600), ((-6, 9.5, AZ1 - 0.3), (16, 11), 1300)),
+             "s1": (((-7.0, 3.0, OH - 0.7), (9, 7), 700),),
+             "s2": (((-2, 6, 4.8), (15, 11), 1500), ((-7.8, 10, 2.9), (4, 3.5), 250), ((9.6, 6, 4.4), (6, 11), 1200))}
+    for key, rows in fills.items():
+        for loc, size, e in rows:
+            ld = bpy.data.lights.new("fill", "AREA")
+            ld.shape = "RECTANGLE"
+            ld.size, ld.size_y = size
+            ld.energy = e
+            ld.color = (1.0, 0.9, 0.78)
+            lo = bpy.data.objects.new("fill", ld)
+            lo.location = loc
+            TIER_COLLECTIONS[key].objects.link(lo)
 
 
 def main():
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
-    views = sys.argv[2:] or ["lot", "showroom", "office", "garage", "desk", "apartment1", "apartment2", "apartment3", "dealdesk"]
+    views = sys.argv[2:] or [v + t for t in ("", "_t1", "_t2") for v in ("lot", "showroom", "office", "garage", "desk", "dealdesk")] + \
+        ["apartment1", "apartment2", "apartment3"]
     build()
     cam = setup_render()
     for v in views:

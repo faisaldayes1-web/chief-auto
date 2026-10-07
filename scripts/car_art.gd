@@ -38,6 +38,10 @@ const PAINTS := ["c0392b", "1f4e9c", "f2f2f2", "1b1b1f", "8e9aa6", "d4a017", "2e
 
 var car: Dictionary = {}
 var shine := true
+## Three-quarter front view from the 3D models (tools/car_sprites3d.py) instead of the side view.
+var quarter := false
+var _q_paint: Texture2D
+var _q_detail: Texture2D
 var _tex: Texture2D
 var _paint: Texture2D
 var _detail: Texture2D
@@ -63,6 +67,10 @@ func set_car(c: Dictionary) -> void:
 	_paint = load(pp) if ResourceLoader.exists(pp) else null
 	var dp := "res://assets/cars/%s_detail.png" % sl
 	_detail = load(dp) if ResourceLoader.exists(dp) else null
+	var qp := "res://assets/cars/%s_q_paint.png" % sl
+	var qd := "res://assets/cars/%s_q_detail.png" % sl
+	_q_paint = load(qp) if ResourceLoader.exists(qp) else null
+	_q_detail = load(qd) if ResourceLoader.exists(qd) else null
 	queue_redraw()
 
 
@@ -73,6 +81,15 @@ func _ready() -> void:
 
 func _draw() -> void:
 	if car.is_empty():
+		return
+	if quarter and _q_paint and _q_detail:
+		var ts := _q_paint.get_size()
+		var sc: float = min(size.x / ts.x, size.y / ts.y)
+		var sz := ts * sc
+		var rect := Rect2(Vector2((size.x - sz.x) / 2.0, size.y - sz.y), sz)
+		var col := paint_for(car)
+		draw_texture_rect(_q_paint, rect, false, Color(min(col.r * 1.25, 1.0), min(col.g * 1.25, 1.0), min(col.b * 1.25, 1.0)))
+		draw_texture_rect(_q_detail, rect, false)
 		return
 	if _tex:
 		var ts := _tex.get_size()

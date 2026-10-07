@@ -132,9 +132,9 @@ const DESK_ITEMS := [
 
 const SHOWROOM_UPGRADES := [
 	{"id": "coffee", "name": "Espresso bar", "price": 3000, "desc": "Customers start a little happier."},
-	{"id": "lights", "name": "Showroom spotlights", "price": 5000, "desc": "Cars look better: +5 customer interest."},
-	{"id": "lounge", "name": "Leather lounge", "price": 8000, "desc": "Customers wait twice as long and tolerate more haggling."},
-	{"id": "turntable", "name": "Display turntables", "price": 15000, "desc": "Gold podiums: +10 customer interest."},
+	{"id": "lights", "name": "Showroom spotlights", "price": 5000, "desc": "Cars look better: +5 customer interest.", "tier": 2},
+	{"id": "lounge", "name": "Leather lounge", "price": 8000, "desc": "Customers wait twice as long and tolerate more haggling.", "tier": 2},
+	{"id": "turntable", "name": "Display turntables", "price": 15000, "desc": "Gold podiums: +10 customer interest.", "tier": 3},
 	{"id": "expand1", "name": "Expand the lot", "price": 20000, "desc": "+2 car slots (6 total)."},
 	{"id": "expand2", "name": "Expand the lot again", "price": 45000, "desc": "+2 more car slots (8 total).", "needs": "expand1"},
 ]
@@ -146,7 +146,16 @@ const ADS := [
 	{"id": "billboard", "name": "Coast Highway billboard", "monthly": 9000, "walkins": 5, "desc": "+5 walk-ins a day, luxury buyers."},
 ]
 
-const MONTHLY_RENT := 6000
+## The dealership itself grows in three steps. Each one is a different building on the same Tewport corner
+## (tools/dealership3d.py renders every screen for every tier; files end in _t1 / _t2, tier 3 has no suffix).
+const DEALERSHIPS := [
+	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.85,
+		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains."},
+	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 1, "budget": 1.0,
+		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, normal budgets, showroom upgrades unlocked."},
+	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 8000, "cars": 6, "walkins": 3, "budget": 1.2,
+		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
+]
 
 ## First-day coach steps: [title, hint, nav screen to point at]. Each finishes when its check below passes.
 const TUTORIAL := [
@@ -177,10 +186,24 @@ func check_tutorial() -> bool:
 	return done
 
 
+## Marco's whiteboard: goals for the dealership you have now. [text, done?]
+func goals() -> Array:
+	var hired := staff.size() > 1
+	match dealership:
+		1:
+			return [["Sell 3 cars", stats.sold >= 3], ["Make %s profit" % money_str(10000), stats.profit >= 10000],
+				["Hire 1 salesperson", hired], ["Upgrade to the Street Showroom", dealership >= 2]]
+		2:
+			return [["Sell 15 cars", stats.sold >= 15], ["Make %s profit" % money_str(75000), stats.profit >= 75000],
+				["Reach a 4.0★ Yolp rating", reputation >= 4.0], ["Move to the Harbour Flagship", dealership >= 3]]
+	return [["Sell 50 cars", stats.sold >= 50], ["Make %s profit" % money_str(500000), stats.profit >= 500000],
+		["Reach a 4.5★ Yolp rating", reputation >= 4.5], ["Move into the penthouse", apartment >= 3]]
+
+
 ## Where you sleep: the apartment on the showroom roof. Each tier is a visual upgrade of the same room.
 const APARTMENTS := [
-	{"tier": 1, "name": "Storage-room studio", "price": 0, "monthly": 0, "fresh": 0.0,
-		"desc": "A mattress, some boxes and a light bulb. Free, and you're never late for work."},
+	{"tier": 1, "name": "Starter apartment", "price": 0, "monthly": 0, "fresh": 0.0,
+		"desc": "A one-bedroom with a kitchenette and a glimpse of the harbour. Rent is covered for now."},
 	{"tier": 2, "name": "Harbour condo", "price": 35000, "monthly": 1500, "fresh": 0.05,
 		"desc": "Oak floors, a real bed and a TV. You sleep well: customers find you a little more likeable (+5% mood)."},
 	{"tier": 3, "name": "Tewport penthouse", "price": 180000, "monthly": 5000, "fresh": 0.1,
@@ -225,6 +248,7 @@ var reviews: Array = []          # Yolp reviews, newest last
 var referrals := 0                # happy customers send friends tomorrow
 var pending_referrals := 0        # today's walk-ins who were referred
 var memberships: Array = ["autobidz"]
+var dealership := 1               # tier of the dealership building (see DEALERSHIPS)
 var apartment := 1                # tier of the rooftop apartment (see APARTMENTS)
 var debug_day := 0
 var debug_level := 0
@@ -279,13 +303,11 @@ func new_game() -> void:
 	decor_on = []
 	upgrades = []
 	ads_active = []
+	dealership = 1
 	apartment = 1
-	staff = [
-		make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"),
-		make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations"),
-		make_staff("Jeff", "jeff", {"closing": 22, "rapport": 46, "finance": 8, "upsell": 38}, "Stretches the truth"),
-	]
-	staff[2].fixed = true
+	# a starter dealership: just you and Jeff. Amna and Maruchan are on StaffHire the first week.
+	staff = [make_staff("Jeff", "jeff", {"closing": 22, "rapport": 46, "finance": 8, "upsell": 38}, "Stretches the truth")]
+	staff[0].fixed = true
 	memberships = ["autobidz"]
 	referrals = 0
 	reviews = []
@@ -297,6 +319,8 @@ func new_game() -> void:
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
 	generate_candidates()
+	candidates = [make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"),
+		make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations")] + candidates.slice(0, 2)
 	schedule_walkins()
 	emit_signal("changed")
 
@@ -464,7 +488,7 @@ func has_decor(id: String) -> bool:
 
 
 func lot_capacity() -> int:
-	return 4 + (2 if has_upgrade("expand1") else 0) + (2 if has_upgrade("expand2") else 0)
+	return dealership_info().cars + (2 if has_upgrade("expand1") else 0) + (2 if has_upgrade("expand2") else 0)
 
 
 func item(id: String) -> Dictionary:
@@ -531,8 +555,43 @@ func monthly_bills() -> Dictionary:
 	for a in ADS:
 		if a.id in ads_active:
 			ads += a.monthly
-	var home: int = apartment_info().monthly
-	return {"rent": MONTHLY_RENT + home, "salaries": salaries, "ads": ads, "total": MONTHLY_RENT + home + salaries + ads}
+	var rent: int = dealership_info().rent + apartment_info().monthly
+	return {"rent": rent, "salaries": salaries, "ads": ads, "total": rent + salaries + ads}
+
+
+func dealership_info(tier := -1) -> Dictionary:
+	var t: int = dealership if tier < 0 else tier
+	return DEALERSHIPS[clamp(t, 1, DEALERSHIPS.size()) - 1]
+
+
+## File suffix for this tier's renders: "_t1", "_t2", or "" for the flagship.
+func world_suffix() -> String:
+	return "" if dealership >= DEALERSHIPS.size() else "_t%d" % dealership
+
+
+## Why the next dealership can't be bought yet, or "" when it can.
+func dealership_blocker() -> String:
+	if dealership >= DEALERSHIPS.size():
+		return "You already own the flagship."
+	var nxt := dealership_info(dealership + 1)
+	if level < nxt.level:
+		return "Reach level %d first." % nxt.level
+	if money < nxt.price:
+		return "You need %s." % money_str(nxt.price)
+	return ""
+
+
+func upgrade_dealership() -> bool:
+	if dealership_blocker() != "":
+		return false
+	var nxt := dealership_info(dealership + 1)
+	money -= nxt.price
+	log_money("shop", -nxt.price)
+	dealership += 1
+	add_xp(100)
+	save_game()
+	emit_signal("changed")
+	return true
 
 
 func apartment_info(tier := -1) -> Dictionary:
@@ -574,6 +633,7 @@ func walkins_today() -> int:
 		n -= 1
 	if apartment >= 3:
 		n += 1
+	n += dealership_info().walkins
 	return max(1, n)
 
 
@@ -588,7 +648,7 @@ func schedule_walkins() -> void:
 
 func make_customer() -> Dictionary:
 	var types := ["bargain", "local", "first", "nerd", "parent", "bargain", "local", "first", "nerd", "parent", "influencer", "lowballer", "lowballer"]
-	if reputation >= 3.5 or "billboard" in ads_active or apartment >= 3:
+	if reputation >= 3.5 or "billboard" in ads_active or apartment >= 3 or dealership >= 3:
 		types += ["whale", "whale"]
 	var type_key: String = types.pick_random()
 	var rich := 0.0
@@ -602,7 +662,7 @@ func make_customer() -> Dictionary:
 	var c := {
 		"id": next_id, "name": BUYER_NAMES.pick_random(), "type": type_key,
 		"look_seed": randi(), "credit": tier,
-		"budget": BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich),
+		"budget": BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich) * dealership_info().budget,
 		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1) + apartment_info().fresh, "patience": 1.0,
 		"arrived": clock, "wants_cls": ["economy", "suv", "truck", "sport", "exotic"].pick_random(),
 	}
@@ -896,7 +956,7 @@ func legal_exposure() -> int:
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
-	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial"]
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership"]
 
 
 func save_game() -> void:
@@ -919,6 +979,7 @@ func load_game() -> bool:
 		return false
 	new_game()
 	tutorial = TUTORIAL.size()   # saves from before the tutorial existed skip it
+	dealership = DEALERSHIPS.size()   # and keep the flagship they already had
 	for k in SAVE_KEYS:
 		if data.has(k):
 			set(k, _fix_ints(data[k]))

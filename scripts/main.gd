@@ -2,16 +2,8 @@ extends Control
 ## Chief Auto prototype: one script drives every screen of the dealership.
 ## Office PC (auctions + shops) -> Garage -> Showroom walk-ins -> negotiation -> paperwork -> grow.
 
-const BG := {
-	"lot": preload("res://assets/world/bg_lot.jpg"),
-	"office": preload("res://assets/world/bg_office.jpg"),
-	"apartment1": preload("res://assets/world/bg_apartment1.jpg"),
-	"apartment2": preload("res://assets/world/bg_apartment2.jpg"),
-	"apartment3": preload("res://assets/world/bg_apartment3.jpg"),
-}
 const LOGO := preload("res://assets/logo.png")
 const CASH_ICON := preload("res://assets/icons/cash.png")
-const DEAL_DESK := preload("res://assets/world/bg_dealdesk.jpg")
 const PORTRAITS := {"Marco": preload("res://assets/portrait_marco.jpg"), "Maruchan": preload("res://assets/portrait_maruchan.jpg")}
 const MINUTES_PER_SECOND := 3.5   # game clock speed: a 13-hour day takes about 4 minutes
 const MAX_IN_LOBBY := 4
@@ -129,8 +121,13 @@ func _build_hud() -> Control:
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	logo.custom_minimum_size = Vector2(44, 44)
 	hud.add_child(logo)
+	var nv := UI.vbox(-4)
+	nv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hud_name = UI.label(Game.dealer_name.to_upper(), 20, UI.GOLD, true)
-	hud.add_child(hud_name)
+	nv.add_child(hud_name)
+	var sub := UI.label("TEWPORT BEACH", 11, UI.MUTED, true)
+	nv.add_child(sub)
+	hud.add_child(nv)
 	hud.add_child(UI.spacer())
 	hud_lobby = UI.label("", 16, UI.BLUE)
 	hud.add_child(hud_lobby)
@@ -216,10 +213,16 @@ func _build_nav() -> Control:
 	return p
 
 
+## A background render of the dealership the player owns right now (apartments are the same at every tier).
+static func world_tex(key: String) -> Texture2D:
+	var suffix := "" if key.begins_with("apartment") else Game.world_suffix()
+	return load("res://assets/world/bg_%s%s.jpg" % [key, suffix])
+
+
 func set_bg(key: String, darkness: float) -> void:
 	bg.visible = key != ""
 	if key != "":
-		bg.texture = BG[key]
+		bg.texture = world_tex(key)
 		bg.modulate = Game.sky_tint()
 	dim.color = Color(0, 0, 0, darkness)
 
@@ -357,10 +360,10 @@ func _intro() -> void:
 	play_dialogue([
 		m + ["Welcome to %s. I'm Marco. I run the money here, and I watch every dollar." % Game.dealer_name],
 		m + ["Win cars at auction on your office PC, fix them in the garage, and sell them to the walk-ins in the showroom."],
-		m + ["Rent is $6,000 a month, plus staff salaries and any advertising you buy. Bills hit on the 1st, so watch the countdown up top. October is paid."],
-		["Amna", "Senior Sales Consultant", "Hi, I'm Amna. If customers are waiting and you're busy, I'll take care of them. Four stars, ask anyone."],
-		["Jeff", "Sales Associate", "And I'm Jeff! One star, but it's a really shiny star."],
-		["Maruchan", "Leasing & VIP Relations", "Maruchan. I handle the VIPs. Let me say hi to a customer and they're 15% happier. Guaranteed."],
+		m + ["We're starting small: a gravel lot and a trailer. Rent is %s a month, plus staff and advertising. Bills hit on the 1st, so watch the countdown up top. October is paid." % Game.money_str(Game.dealership_info().rent)],
+		m + ["Make money and we move up: a real showroom on the street, then the glass flagship on the harbour. Upgrades are on the PC under ShowroomPro."],
+		["Jeff", "Sales Associate", "And I'm Jeff! Your entire sales team. One star, but it's a really shiny star."],
+		m + ["We need real salespeople. Amna is a closer and Maruchan works the VIPs. Both are on StaffHire this week, if you can afford them."],
 		m + ["We open at 8 and close at 9. Push a customer past their bad-deal line and they storm out. Cut corners on paperwork and we get sued."],
 		m + ["First day, so I'll walk you through it. Follow the card in the corner. Skip it if you already know the business."],
 	], _update_coach)
@@ -439,7 +442,58 @@ func _screen_lot() -> void:
 		list.add_child(UI.gold_button("Open Office PC", show_screen.bind("pc")))
 	for car in Game.cars:
 		list.add_child(_car_card(car))
-	h.add_child(UI.spacer())
+	v.add_child(_dealership_card(false))
+	var yard := Control.new()
+	yard.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	yard.mouse_filter = Control.MOUSE_FILTER_PASS
+	h.add_child(yard)
+	_park_cars(yard)
+
+
+## The cars you own, parked on the lot render with yellow windshield price stickers (click one to price it).
+func _park_cars(yard: Control) -> void:
+	var shown: Array = Game.cars.slice(0, 8)
+	var items := []
+	for car in shown:
+		var b := Button.new()
+		b.flat = true
+		b.focus_mode = Control.FOCUS_NONE
+		b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
+		b.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
+		b.pressed.connect(_price_popup.bind(car))
+		b.tooltip_text = "%d %s · click to set the price" % [car.year, car.model]
+		var art := CarArt.new()
+		art.quarter = true
+		art.set_car(car)
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		b.add_child(art)
+		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color(0.08, 0.08, 0.08), true)
+		tag.add_theme_stylebox_override("normal", UI.box(Color("f5d90a"), Color(0.2, 0.2, 0.1), 3, 1, 6))
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		b.add_child(tag)
+		items.append([b, tag])
+	# back row first so the front row draws over it
+	var order := []
+	for i in items.size():
+		order.append(i)
+	order.sort_custom(func(a, b): return (a >= 4) and not (b >= 4))
+	for i in order:
+		yard.add_child(items[i][0])
+	var place := func():
+		var w := yard.size.x
+		var hgt := yard.size.y
+		for i in items.size():
+			var back := i >= 4
+			var k: int = i % 4
+			var cw: float = w * (0.27 if back else 0.36)
+			var x: float = w * (0.06 + k * (0.21 if back else 0.25)) - (0.0 if back else w * 0.04)
+			var y: float = hgt * (0.58 if back else 0.98) - cw * 0.5625
+			items[i][0].position = Vector2(x, y)
+			items[i][0].size = Vector2(cw, cw * 0.5625)
+			items[i][1].position = Vector2(cw * 0.36, cw * 0.14)
+	yard.resized.connect(place)
+	place.call_deferred()
 
 
 func _car_art(car: Dictionary, sz: Vector2) -> CarArt:
@@ -948,13 +1002,19 @@ func _buy_desk_item(it: Dictionary) -> void:
 
 
 func _tab_showroom_shop(inner: Control) -> void:
-	_site_head(inner, "ShowroomPro", Color("8e44ad"), "Upgrades for your showroom and lot.")
+	_site_head(inner, "ShowroomPro", Color("8e44ad"), "Grow your dealership, then fit it out.")
 	var list := UI.vbox(6)
 	inner.add_child(UI.scroll(list))
+	list.add_child(UI.label("YOUR DEALERSHIP", 14, Color("8e44ad"), true))
+	list.add_child(_dealership_card(true))
+	list.add_child(UI.label("UPGRADES", 14, Color("8e44ad"), true))
 	for it in Game.SHOWROOM_UPGRADES:
 		var btn: Button
 		if Game.has_upgrade(it.id):
 			btn = _small_btn("Installed", func(): pass)
+			btn.disabled = true
+		elif Game.dealership < it.get("tier", 1):
+			btn = _small_btn("Needs %s" % Game.dealership_info(it.tier).name, func(): pass)
 			btn.disabled = true
 		elif it.has("needs") and not Game.has_upgrade(it.needs):
 			btn = _small_btn("Needs first", func(): pass)
@@ -969,6 +1029,47 @@ func _tab_showroom_shop(inner: Control) -> void:
 				else:
 					toast("Not enough money."), true)
 		_shop_row(list, it.name, it.desc, btn)
+
+
+## Current dealership and the next one to buy. web = styled for the PC's light web pages.
+func _dealership_card(web: bool) -> Control:
+	var ink: Color = INK if web else UI.TEXT
+	var sub: Color = GREY if web else UI.MUTED
+	var box := _web_box() if web else UI.panel(Color(0.03, 0.05, 0.1, 0.85), UI.GOLD_DIM, 12)
+	var v := UI.vbox(4)
+	box.add_child(v)
+	var cur := Game.dealership_info()
+	var steps := ""
+	for i in Game.DEALERSHIPS.size():
+		steps += ("■ " if i < Game.dealership else "□ ")
+	var top := UI.hbox(8)
+	top.add_child(UI.label(cur.name, 19, ink, true))
+	top.add_child(UI.label(steps.strip_edges(), 15, Color("d4a017")))
+	v.add_child(top)
+	v.add_child(UI.label("%d car spots · rent %s a month" % [cur.cars, Game.money_str(cur.rent)], 13, sub))
+	if Game.dealership >= Game.DEALERSHIPS.size():
+		v.add_child(UI.label("You own the flagship on the harbour.", 14, Color("1e7e34") if web else UI.GOOD, true))
+		return box
+	var nxt := Game.dealership_info(Game.dealership + 1)
+	v.add_child(UI.rule(Color(0, 0, 0, 0.12) if web else UI.GOLD_DIM))
+	v.add_child(UI.label("NEXT: " + nxt.name.to_upper(), 14, Color("8e44ad") if web else UI.GOLD, true))
+	var d := UI.para(nxt.desc, 13, sub)
+	v.add_child(d)
+	v.add_child(UI.label("%d car spots · rent %s a month · needs level %d" % [nxt.cars, Game.money_str(nxt.rent), nxt.level], 13, sub))
+	var why := Game.dealership_blocker()
+	var b := _small_btn("Move up · %s" % Game.money_str(nxt.price), func():
+		if Game.upgrade_dealership():
+			toast("Welcome to the %s!" % nxt.name)
+			show_screen(current)
+		else:
+			toast(Game.dealership_blocker()), true)
+	b.disabled = why != ""
+	var row := UI.hbox(8)
+	row.add_child(b)
+	if why != "":
+		row.add_child(UI.label(why, 13, Color("c0392b") if web else UI.BAD))
+	v.add_child(row)
+	return box
 
 
 func _tab_ads(inner: Control) -> void:
@@ -1603,6 +1704,8 @@ func _build_lobby(stage: SceneArt) -> void:
 		var box := Control.new()
 		stage.add_child(box)
 		var art := _car_art(car, Vector2.ZERO)
+		art.quarter = true
+		art.set_car(car)
 		box.add_child(art)
 		var tag := UI.button("%s\n%s" % [car.model, Game.money_str(car.get("sticker", 0))], _price_popup.bind(car), 0, 46)
 		tag.add_theme_font_size_override("font_size", 14)
@@ -1695,11 +1798,12 @@ func _build_lobby(stage: SceneArt) -> void:
 			var d: Array = displays[i]
 			var c: Vector2 = pods[i] if i < pods.size() else Vector2(w * 0.5, h * 0.62)
 			var cw: float = min(340.0, w / max(1, pods.size()) - 16)
-			d[0].position = Vector2(c.x - cw / 2, c.y - cw * 0.42)
-			d[0].size = Vector2(cw, cw * 0.42 + 56)
-			d[1].position = Vector2.ZERO
-			d[1].size = Vector2(cw, cw * 0.4)
-			d[2].position = Vector2(cw * 0.2, cw * 0.42 + 6)
+			# the 3/4 render is 16:9 with the tyres near its bottom edge
+			d[0].position = Vector2(c.x - cw / 2, c.y - cw * 0.5)
+			d[0].size = Vector2(cw, cw * 0.58 + 50)
+			d[1].position = Vector2(0, cw * 0.06)
+			d[1].size = Vector2(cw, cw * 0.5625)
+			d[2].position = Vector2(cw * 0.2, cw * 0.58)
 			d[2].size = Vector2(cw * 0.6, 46)
 		for i in people.size():
 			var pr: Array = people[i]
@@ -1977,7 +2081,7 @@ func _render_customer() -> void:
 	var W := size.x
 	var H := size.y
 	var back := TextureRect.new()
-	back.texture = DEAL_DESK
+	back.texture = world_tex("dealdesk")
 	back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -2891,6 +2995,24 @@ func _screen_marco() -> void:
 		v.add_child(UI.label(("✓ " if on else "Lvl %d · " % perk.level) + perk.name, 16, UI.TEXT if on else UI.MUTED, true))
 		v.add_child(UI.para(perk.desc, 13, UI.MUTED))
 	v.add_child(UI.gold_button("Ask Marco for advice", func(): play_dialogue(_marco_tips(), func(): pass)))
+	var board := _goals_board()
+	h.add_child(board)
+	h.move_child(board, 0)
+
+
+## The whiteboard on the office wall: goals for the current dealership.
+func _goals_board() -> Control:
+	var wb := UI.panel(Color(0.95, 0.95, 0.93, 0.95), Color(0.55, 0.57, 0.6), 16)
+	wb.custom_minimum_size = Vector2(300, 0)
+	wb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var v := UI.vbox(6)
+	wb.add_child(v)
+	v.add_child(UI.label("GOALS", 24, Color(0.12, 0.15, 0.3), true))
+	v.add_child(UI.label(Game.dealership_info().name, 13, Color(0.35, 0.37, 0.45)))
+	for g in Game.goals():
+		var done: bool = g[1]
+		v.add_child(UI.label(("☑ " if done else "☐ ") + g[0], 17, Color(0.12, 0.45, 0.2) if done else Color(0.12, 0.15, 0.3)))
+	return wb
 
 
 # =====================================================================
@@ -2911,7 +3033,7 @@ func _screen_home() -> void:
 	var v := UI.vbox(8)
 	p.add_child(v)
 	var cur := Game.apartment_info()
-	v.add_child(UI.label("HOME · ABOVE THE SHOWROOM", 13, UI.GOLD, true))
+	v.add_child(UI.label("HOME · TEWPORT BEACH", 13, UI.GOLD, true))
 	v.add_child(UI.label(cur.name, 26, UI.TEXT, true))
 	var stars := ""
 	for i in Game.APARTMENTS.size():
