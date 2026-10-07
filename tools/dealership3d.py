@@ -49,7 +49,7 @@ def mat(name, color=(0.8, 0.8, 0.8), rough=0.5, metal=0.0, trans=0.0, emit=0.0, 
     return m
 
 
-def noise_mat(name, c1, c2, scale, rough, detail=6, bump=0.0, metal=0.0, veins=False, stretch=(1, 1, 1)):
+def noise_mat(name, c1, c2, scale, rough, detail=6, bump=0.0, metal=0.0, veins=False, stretch=(1, 1, 1), macro=0.0):
     """Two-colour material driven by noise (asphalt, marble, concrete, water)."""
     m = bpy.data.materials.new(name)
     m.use_nodes = True
@@ -78,8 +78,32 @@ def noise_mat(name, c1, c2, scale, rough, detail=6, bump=0.0, metal=0.0, veins=F
         nt.links.new(nz.outputs["Fac"], ramp.inputs["Fac"])
     else:
         nt.links.new(nz.outputs["Fac"], ramp.inputs["Fac"])
-    nt.links.new(ramp.outputs["Color"], b.inputs["Base Color"])
-    b.inputs["Roughness"].default_value = rough
+    col = ramp.outputs["Color"]
+    if macro > 0:
+        # large blotches (wear, stains, patching) so big surfaces don't read as one flat colour
+        mz = nt.nodes.new("ShaderNodeTexNoise")
+        mz.inputs["Scale"].default_value = scale / 40.0
+        mz.inputs["Detail"].default_value = 3
+        nt.links.new(mp.outputs["Vector"], mz.inputs["Vector"])
+        mr = nt.nodes.new("ShaderNodeMapRange")
+        mr.inputs["To Min"].default_value = 1.0 - macro
+        mr.inputs["To Max"].default_value = 1.0 + macro * 0.4
+        nt.links.new(mz.outputs["Fac"], mr.inputs["Value"])
+        mul = nt.nodes.new("ShaderNodeMix")
+        mul.data_type = "RGBA"
+        mul.blend_type = "MULTIPLY"
+        mul.inputs["Factor"].default_value = 1.0
+        nt.links.new(col, mul.inputs["A"])
+        nt.links.new(mr.outputs["Result"], mul.inputs["B"])
+        col = mul.outputs["Result"]
+        rr = nt.nodes.new("ShaderNodeMapRange")
+        rr.inputs["To Min"].default_value = rough + 0.08
+        rr.inputs["To Max"].default_value = rough - 0.15
+        nt.links.new(mz.outputs["Fac"], rr.inputs["Value"])
+        nt.links.new(rr.outputs["Result"], b.inputs["Roughness"])
+    nt.links.new(col, b.inputs["Base Color"])
+    if macro <= 0:
+        b.inputs["Roughness"].default_value = rough
     b.inputs["Metallic"].default_value = metal
     if bump > 0:
         bp = nt.nodes.new("ShaderNodeBump")
@@ -235,7 +259,7 @@ def build_world():
     nt.nodes["Background"].inputs["Strength"].default_value = 0.2
     sun = bpy.data.lights.new("sun", "SUN")
     sun.energy = 2.0
-    sun.color = (1.0, 0.92, 0.8)
+    sun.color = (1.0, 0.9, 0.76)
     sun.angle = math.radians(1.2)
     so = bpy.data.objects.new("sun", sun)
     # direction matching the sky texture's sun
@@ -246,8 +270,8 @@ def build_world():
 
 
 def build_ground():
-    asphalt = noise_mat("asphalt", (0.05, 0.05, 0.055), (0.11, 0.11, 0.115), 60, 0.85, bump=0.15)
-    concrete = noise_mat("concrete", (0.55, 0.53, 0.5), (0.68, 0.66, 0.62), 8, 0.7, bump=0.05)
+    asphalt = noise_mat("asphalt", (0.045, 0.045, 0.05), (0.1, 0.1, 0.105), 60, 0.85, bump=0.15, macro=0.45)
+    concrete = noise_mat("concrete", (0.5, 0.48, 0.45), (0.64, 0.62, 0.58), 8, 0.7, bump=0.05, macro=0.25)
     paint = mat("stripe", (0.92, 0.92, 0.88), rough=0.6)
     box("lot", (-60, -60, -0.1), (60, 0, 0), asphalt)
     box("street", (-200, -90, -0.12), (200, -60, -0.02), noise_mat("street", (0.04, 0.04, 0.045), (0.08, 0.08, 0.085), 40, 0.8))
@@ -323,7 +347,7 @@ def build_harbour():
                     cyl("mast", (x, y, 6), 0.06, 12 + rnd.uniform(-2, 4), railm, verts=8)
                 hb.visible_shadow = True
     # Tewport's far shore: a long ridge of hills across the harbour
-    hill = noise_mat("hills", (0.25, 0.27, 0.2), (0.42, 0.38, 0.28), 0.02, 0.9)
+    hill = noise_mat("hills", (0.09, 0.11, 0.05), (0.36, 0.31, 0.2), 0.12, 0.9, detail=10, macro=0.35)   # sage scrub and dry grass
     me = bpy.data.meshes.new("ridge")
     verts, faces = [], []
     nx, ny = 160, 8

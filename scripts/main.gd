@@ -325,7 +325,7 @@ func _name_dealership() -> void:
 	var v := UI.vbox(12)
 	p.add_child(v)
 	v.add_child(UI.header("Name your dealership"))
-	v.add_child(UI.para("This goes on the sign, the contracts and your Yolp page. You can't change it later, so make it count.", 15, UI.MUTED))
+	v.add_child(UI.para("This goes on your contracts, your Yolp page and the top of every screen. You can't change it later, so make it count.", 15, UI.MUTED))
 	var edit := LineEdit.new()
 	edit.text = "Chief Auto"
 	edit.max_length = 28
@@ -452,7 +452,8 @@ func _screen_lot() -> void:
 
 ## The cars you own, parked on the lot render with yellow windshield price stickers (click one to price it).
 func _park_cars(yard: Control) -> void:
-	var shown: Array = Game.cars.slice(0, 8)
+	var shown: Array = Game.cars.slice(0, 10)
+	var per_row: int = max(4, ceili(shown.size() / 2.0))
 	var items := []
 	for car in shown:
 		var b := Button.new()
@@ -477,17 +478,18 @@ func _park_cars(yard: Control) -> void:
 	var order := []
 	for i in items.size():
 		order.append(i)
-	order.sort_custom(func(a, b): return (a >= 4) and not (b >= 4))
+	order.sort_custom(func(a, b): return (a >= per_row) and not (b >= per_row))
 	for i in order:
 		yard.add_child(items[i][0])
 	var place := func():
 		var w := yard.size.x
 		var hgt := yard.size.y
 		for i in items.size():
-			var back := i >= 4
-			var k: int = i % 4
-			var cw: float = w * (0.27 if back else 0.36)
-			var x: float = w * (0.06 + k * (0.21 if back else 0.25)) - (0.0 if back else w * 0.04)
+			var back := i >= per_row
+			var k: int = i % per_row
+			var sc: float = 4.0 / per_row
+			var cw: float = w * (0.27 if back else 0.36) * sc
+			var x: float = w * (0.06 + k * (0.21 if back else 0.25) * sc) - (0.0 if back else w * 0.04)
 			var y: float = hgt * (0.58 if back else 0.98) - cw * 0.5625
 			items[i][0].position = Vector2(x, y)
 			items[i][0].size = Vector2(cw, cw * 0.5625)
@@ -578,6 +580,8 @@ func _screen_pc() -> void:
 	addr.text = PC_URLS[pc_tab]
 	if pc_tab == "auction":
 		addr.text = "https://www." + Game.auction(auction_house).url
+	elif pc_tab == "reviews":
+		addr.text = "https://www.yolp.ca/biz/%s-tewport-beach" % Game.dealer_name.to_lower().validate_filename().replace(" ", "-")
 	addr.editable = false
 	addr.add_theme_font_size_override("font_size", 14)
 	addr_wrap.add_child(addr)
@@ -657,7 +661,7 @@ func _auction_join_card(a: Dictionary) -> Control:
 	var perks := {
 		"salvage": "Wrecks and floods from 10 to 20 cents on the dollar. Expect extra faults, so a strong mechanic pays for himself.",
 		"dealer": "Dealer-only lanes with clean history reports, fewer faults and fewer rival bidders. Buy-now prices around 75% of value.",
-		"exotic": "Porsches, Ferraris and McLarens from Coast Highway collectors. Big money in, bigger money out.",
+		"exotic": "Porshas, Ferranos and Lamborgos from Coast Highway collectors. Big money in, bigger money out.",
 	}
 	v.add_child(UI.label(perks.get(a.id, a.desc), 15, INK))
 	var ok_lvl: bool = Game.level >= a.level
@@ -829,6 +833,9 @@ func _place_bid(l: Dictionary) -> void:
 	if Game.cars.size() >= Game.lot_capacity():
 		toast("Your lot is full. Sell a car first, or expand the lot at ShowroomPro.")
 		return
+	if not auction.is_empty() and auction != l:
+		toast("You're already bidding on the %s. One lane at a time." % auction.car.model)
+		return
 	var next: int = l.current + (bid_increment(l) if l.leader != "" else 0)
 	if next > Game.money:
 		toast("You can't cover that bid.")
@@ -889,11 +896,12 @@ func _finish_auction() -> void:
 	l.sold = true
 	l.winner = l.leader
 	if l.winner == "you":
-		if Game.spend(l.current, "cars"):
+		if Game.cars.size() < Game.lot_capacity() and Game.spend(l.current, "cars"):
 			Game.add_car(l.car, l.current)
 			toast("You won the %s for %s! It's on your lot." % [l.car.model, Game.money_str(l.current)])
 		else:
 			l.winner = l.rival
+			toast("You couldn't take the %s (no money or no room), so it went to %s." % [l.car.model, l.rival])
 	else:
 		toast("%s won the %s." % [l.rival, l.car.model])
 	Game.save_game()
@@ -1046,7 +1054,8 @@ func _dealership_card(web: bool) -> Control:
 	top.add_child(UI.label(cur.name, 19, ink, true))
 	top.add_child(UI.label(steps.strip_edges(), 15, Color("d4a017")))
 	v.add_child(top)
-	v.add_child(UI.label("%d car spots · rent %s a month" % [cur.cars, Game.money_str(cur.rent)], 13, sub))
+	var extra: int = Game.lot_capacity() - cur.cars
+	v.add_child(UI.label("%d car spots%s · rent %s a month" % [Game.lot_capacity(), " (%d + %d expansion)" % [cur.cars, extra] if extra > 0 else "", Game.money_str(cur.rent)], 13, sub))
 	if Game.dealership >= Game.DEALERSHIPS.size():
 		v.add_child(UI.label("You own the flagship on the harbour.", 14, Color("1e7e34") if web else UI.GOOD, true))
 		return box
@@ -1055,7 +1064,7 @@ func _dealership_card(web: bool) -> Control:
 	v.add_child(UI.label("NEXT: " + nxt.name.to_upper(), 14, Color("8e44ad") if web else UI.GOLD, true))
 	var d := UI.para(nxt.desc, 13, sub)
 	v.add_child(d)
-	v.add_child(UI.label("%d car spots · rent %s a month · needs level %d" % [nxt.cars, Game.money_str(nxt.rent), nxt.level], 13, sub))
+	v.add_child(UI.label("%d car spots · rent %s a month · needs level %d" % [nxt.cars + extra, Game.money_str(nxt.rent), nxt.level], 13, sub))
 	var why := Game.dealership_blocker()
 	var b := _small_btn("Move up · %s" % Game.money_str(nxt.price), func():
 		if Game.upgrade_dealership():
@@ -1223,6 +1232,7 @@ func _staff_card(s: Dictionary, applicant: bool) -> Control:
 	nm.add_child(UI.label(_stars(s.stars), 14, UI.GOLD))
 	v.add_child(nm)
 	v.add_child(UI.label(s.trait.to_upper(), 11, accent, true))
+	v.add_child(UI.label(Game.TRAIT_DESC.get(s.trait, ""), 11, CARD_MUTED))
 	for k in Game.SKILLS:
 		_skill_bar(v, Game.SKILL_NAMES[k], Game.skill(s, k), CARD_CYAN.lerp(Color("e04fa0"), Game.SKILLS.find(k) / 3.0))
 	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, CARD_TEXT))
@@ -1293,7 +1303,7 @@ func _tab_reviews(inner: Control) -> void:
 		row.add_child(UI.label(str(counts[st - 1]), 12, GREY))
 		sv.add_child(row)
 	sv.add_child(UI.rule(Color(0.85, 0.85, 0.88)))
-	var help := UI.label("Your rating sets how many people walk in, how patient they are, and which auctions will have you. 5★ customers send friends the next day.", 12, GREY)
+	var help := UI.label("Your rating sets how many people walk in (4★ and up brings one more), whether Cash Whales show up (3.5★), and which auctions will have you. 5★ customers send friends the next day.", 12, GREY)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	help.custom_minimum_size.x = 220
 	sv.add_child(help)
@@ -1356,7 +1366,7 @@ func _tab_bank(inner: Control) -> void:
 	box.add_child(v)
 	v.add_child(UI.label("Available balance: %s" % Game.money_str(Game.money), 22, INK, true))
 	v.add_child(UI.label("Next bills due %s" % Game.next_bill_date(), 16, Color("c0392b")))
-	for row in [["Rent (%s lot)" % Game.dealer_name, b.rent], ["Staff salaries (%d people)" % Game.staff.size(), b.salaries], ["Advertising", b.ads]]:
+	for row in [["Rent (%s lot)" % Game.dealer_name, b.rent], ["Staff salaries (%d people)" % Game.staff.size(), b.salaries], ["Advertising", b.ads], ["Loan interest", b.interest]]:
 		var h := UI.hbox()
 		h.add_child(UI.label(row[0], 16, INK))
 		h.add_child(UI.spacer())
@@ -1368,6 +1378,35 @@ func _tab_bank(inner: Control) -> void:
 	tot.add_child(UI.label(Game.money_str(b.total), 17, INK, true))
 	v.add_child(tot)
 	v.add_child(UI.label("Cars sold: %d · Total profit: %s · Customers who walked out: %d" % [Game.stats.sold, Game.money_str(Game.stats.profit), Game.stats.get("walked", 0)], 15, GREY))
+	var lb := _web_box()
+	inner.add_child(lb)
+	var lv := UI.vbox(6)
+	lb.add_child(lv)
+	lv.add_child(UI.label("Business line of credit", 20, INK, true))
+	lv.add_child(UI.label("Owed %s of %s · %d%% interest a month, billed on the 1st" % [Game.money_str(Game.loan), Game.money_str(Game.loan_limit()), int(Game.LOAN_RATE * 100)], 15, Color("c0392b") if Game.loan > 0 else GREY))
+	var lr := UI.hbox(8)
+	var room := Game.loan_limit() - Game.loan
+	var borrow := func(amt: int):
+		if Game.borrow(amt):
+			toast("%s deposited. Spend it on cars that sell." % Game.money_str(amt))
+		show_screen("pc")
+	var repay := func(amt: int):
+		if Game.repay(amt):
+			toast("Payment sent.")
+		show_screen("pc")
+	var b1 := _small_btn("Borrow $5,000", borrow.bind(5000), true)
+	b1.disabled = room < 5000
+	lr.add_child(b1)
+	var b2 := _small_btn("Borrow %s" % Game.money_str(room), borrow.bind(room), true)
+	b2.disabled = room <= 0
+	lr.add_child(b2)
+	var r1 := _small_btn("Repay $5,000", repay.bind(5000))
+	r1.disabled = Game.loan <= 0 or Game.money < min(5000, Game.loan)
+	lr.add_child(r1)
+	var r2 := _small_btn("Repay all", repay.bind(Game.loan))
+	r2.disabled = Game.loan <= 0 or Game.money < Game.loan
+	lr.add_child(r2)
+	lv.add_child(lr)
 
 
 # =====================================================================
@@ -1476,6 +1515,18 @@ func _fill_garage_panel() -> void:
 	v.add_child(ps)
 	v.add_child(UI.label("%d %s" % [car.year, car.model], 22, UI.GOLD, true))
 	v.add_child(UI.para("Condition %d · Value %s · Repairs so far %s · %d damage spots" % [Game.condition(car), Game.money_str(Game.value(car)), Game.money_str(car.spent), Game.damage_count(car)], 14, UI.MUTED))
+	if not car.history_known:
+		v.add_child(UI.button("Run history + inspection report ($150)", func():
+			if Game.spend(150, "repairs"):
+				car.history_known = true
+				car.faults_found = Game.reveal_faults(car)
+				var f: Array = car.faults_found
+				garage_log = "History: %s. " % car.history + ("No hidden problems." if f.is_empty() else "Hidden problems in " + ", ".join(f).to_lower() + ".")
+				_garage_refresh()
+			else:
+				toast("Not enough money."), 0, 34))
+	else:
+		v.add_child(UI.label("History: %s" % car.history, 14, UI.GOOD if car.history == "Clean" else UI.BAD))
 	var opt := OptionButton.new()
 	opt.custom_minimum_size = Vector2(0, 38)
 	for i in Game.MECHANICS.size():
@@ -1571,6 +1622,7 @@ func _fill_garage_panel() -> void:
 	_choice_row(v, "Trim", Game.TRIMS, car.get("trim", "chrome"), 350, func(k):
 		car.trim = k
 		garage_log = "Trim swapped to %s." % Game.TRIMS[k].to_lower())
+	v.add_child(UI.label("Refinished wheels catch the eye: +4 customer interest.", 12, UI.MUTED))
 	_choice_row(v, "Wheels", Game.RIMS, car.get("rims", "silver"), 600, func(k):
 		car.rims = k
 		garage_log = "Wheels refinished in %s." % Game.RIMS[k].to_lower())
@@ -1949,10 +2001,10 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 		price = int(round(price / 100.0)) * 100
 		var income := {"sales": price}
 		if c.finance:
-			income.finance = int(price * 0.004 * (Game.skill(s, "finance") / 20.0))
-		if randf() < Game.skill(s, "upsell") / 180.0:
+			income.finance = int(price * 0.004 * (Game.skill(s, "finance") / 20.0) * (1.5 if s.trait == "Finance whiz" else 1.0))
+		if randf() < Game.skill(s, "upsell") / 180.0 + (0.25 if s.trait == "Upsells warranties" else 0.0):
 			income.addons = 1200
-		var happy: float = clamp(0.3 + Game.skill(s, "rapport") / 180.0 + randf_range(-0.1, 0.1), 0.0, 1.0)
+		var happy: float = clamp(0.3 + Game.skill(s, "rapport") / 180.0 + randf_range(-0.1, 0.1) + (0.12 if s.trait == "Smooth talker" else 0.0), 0.0, 1.0)
 		if s.trait == "Stretches the truth" and randf() < 0.4:
 			happy = 0.2
 			Game.add_liability(c.name, "promises %s made about the %s" % [s.name, car.model], 0.35, 4000)
@@ -1981,6 +2033,13 @@ func _handoff_chance(c: Dictionary, s: Dictionary) -> float:
 		p -= 0.1
 	if c.type == "whale" or c.get("referral", false):
 		p += 0.08
+	match s.trait:
+		"Great with families":
+			if c.type in ["parent", "first"]: p += 0.12
+		"Car nerd":
+			if c.type == "nerd": p += 0.15
+		"VIP Relations":
+			if c.type in ["whale", "influencer", "local"]: p += 0.1
 	return clamp(p, 0.03, 0.95)
 
 
@@ -1999,6 +2058,7 @@ func _open_customer(c: Dictionary) -> void:
 			c.car_id = car.id
 			var fair := float(Game.sale_value(car))
 			var interest := 0.5 * Game.condition(car) + (10 if car.detailed else 0) + (5 if Game.has_upgrade("lights") else 0) + (10 if Game.has_upgrade("turntable") else 0)
+			interest += 4 if car.get("rims", "silver") != "silver" else 0
 			interest -= 40.0 * (car.get("sticker", fair) - fair) / fair
 			c.interest = clamp(interest, 5.0, 90.0)
 			c.log = ["%s: \"%s\"" % [c.name, Game.BUYER_TYPES[c.type].intro], "%s: \"I'm looking at the %s.\"" % [c.name, car.model]]
@@ -2773,7 +2833,7 @@ func _render_paperwork() -> void:
 	var protect := 400 if sale.addons.protect else 0
 	var tax := int(c.price * 0.0775)
 	for row in [["1. Cash price of vehicle", price], ["   A. Document processing charge (not a gov't fee)", "$85"],
-			["   B. Emissions testing charge", "$50"], ["   C. Service contract, paid to Chief Warranty Co.", Game.money_str(warranty) if warranty > 0 else "$ ______"],
+			["   B. Emissions testing charge", "$50"], ["   C. Service contract, paid to %s Warranty Co." % Game.dealer_name, Game.money_str(warranty) if warranty > 0 else "$ ______"],
 			["   D. Surface protection product", Game.money_str(protect) if protect > 0 else "$ ______"],
 			["   E. Sales tax (7.75%)", Game.money_str(tax)], ["2. Amounts paid to public officials (license, registration)", "$412"],
 			["3. Total down payment (trade-in, cash, rebate)", "$0"]]:
@@ -2913,7 +2973,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
 	info.review = stars
 	Game.remove_car(car)
-	var leveled := Game.add_xp(max(10, int(profit / 50)) + 10)
+	var leveled := Game.add_xp(Game.sale_xp(profit))
 	Game.save_game()
 	if seller != "you":
 		toast("%s sold the %s to %s for %s. Profit %s. %d★ review." % [seller, car.model, info.get("customer", "a customer"), Game.money_str(price), Game.money_str(profit), info.review])
@@ -2936,6 +2996,8 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 		reaction = "Big margin, but that customer won't send their friends."
 	elif profit < 0:
 		reaction = "We lost money on that one. Buy smarter or fix smarter."
+	if current == "showroom" and lobby_stage:
+		_build_lobby(lobby_stage)
 	var m := ["Marco", "CEO & Financial Advisor"]
 	var lines := [m + [summary + " " + reaction]]
 	for n in info.get("notes", []):
@@ -2959,6 +3021,9 @@ func _unlock_text() -> String:
 		if p.level == Game.level:
 			bits.append("you unlocked my %s perk" % p.name)
 	if bits.is_empty():
+		var cap: int = Game.dealership_info().max_car
+		if cap > 0 and Game.max_auction_base() >= cap:
+			return "Auctions won't send anything pricier to a %s. Move up to see the good stuff." % Game.dealership_info().name
 		return "Pricier cars will start showing up at auction."
 	var text: String = ", and ".join(bits)
 	return text.substr(0, 1).to_upper() + text.substr(1) + "."
@@ -3012,6 +3077,9 @@ func _goals_board() -> Control:
 	for g in Game.goals():
 		var done: bool = g[1]
 		v.add_child(UI.label(("☑ " if done else "☐ ") + g[0], 17, Color(0.12, 0.45, 0.2) if done else Color(0.12, 0.15, 0.3)))
+	v.add_child(UI.rule(Color(0.55, 0.57, 0.6)))
+	var today: bool = Game.stats.goal_sold_today >= 1
+	v.add_child(UI.label(("☑ " if today else "☐ ") + "Today: sell a car (+$500, +25 XP)", 15, Color(0.12, 0.45, 0.2) if today else Color(0.35, 0.37, 0.45)))
 	return wb
 
 
@@ -3085,7 +3153,9 @@ func _marco_tips() -> Array:
 	var who := "CEO & Financial Advisor"
 	t.append(["Marco", who, "Market's telling me %s are moving today. Price them about 10%% higher and they'll still sell." % _class_name(Game.hot_class).to_lower()])
 	var b := Game.monthly_bills()
-	if Game.money < b.total:
+	if Game.cars.is_empty() and Game.money < 5000 and Game.loan < Game.loan_limit():
+		t.append(["Marco", who, "No cars and no cash. TewportBank on the PC will lend us up to %s. Borrow, buy something cheap at AutoBidz, sell it, pay them back." % Game.money_str(Game.loan_limit() - Game.loan)])
+	elif Game.money < b.total:
 		t.append(["Marco", who, "Bills on %s come to %s and we don't have it yet. Sell something." % [Game.next_bill_date(), Game.money_str(b.total)]])
 	if Game.cars.size() >= Game.lot_capacity():
 		t.append(["Marco", who, "Lot's full. A car sitting here is money sitting still. Sell something, even at a thinner margin."])
@@ -3183,6 +3253,7 @@ func _close_for_night() -> void:
 			if randf() < 0.5:
 				Game.add_review(c, 2, "", "", "Showed up before closing and they just locked the doors on me.")
 		Game.month_walked += lobby.size()
+		Game.stats.walked += lobby.size()
 		lobby.clear()
 	_close_overlay()
 	customer = {}
@@ -3198,7 +3269,7 @@ func _close_for_night() -> void:
 
 const LEDGER_NAMES := {"sales": "Car sales", "finance": "Finance profit", "addons": "Add-ons", "cars": "Auto acquisitions",
 	"repairs": "Repairs & detailing", "shop": "Shop purchases", "ads": "Advertising", "rent": "Rent (lot & showroom)",
-	"payroll": "Staff payroll", "legal": "Lawsuits & legal", "other": "Other"}
+	"payroll": "Staff payroll", "legal": "Lawsuits & legal", "interest": "Loan interest", "other": "Other"}
 
 
 func _money_row(parent: Control, name: String, amount: int, size := 16, bold := false) -> void:
@@ -3244,7 +3315,7 @@ func _month_report(r: Dictionary) -> void:
 	var l: Dictionary = r.ledger
 	var rev := Game.ledger_total(l, 1)
 	_money_row(v, "Monthly revenue", rev, 17, true)
-	for k in ["rent", "payroll", "ads", "cars", "repairs", "shop", "legal", "other"]:
+	for k in ["rent", "payroll", "ads", "interest", "cars", "repairs", "shop", "legal", "other"]:
 		if l.get(k, 0) != 0:
 			_money_row(v, LEDGER_NAMES[k], l[k])
 	var alert := UI.panel(Color(0.35, 0.06, 0.06, 0.9), UI.BAD, 10)
@@ -3285,8 +3356,11 @@ func _wake_up() -> void:
 	var m := ["Marco", "CEO & Financial Advisor"]
 	var lines := []
 	if Game.money < 0:
-		lines.append(m + ["We're in the red. Sell something tomorrow or I'm calling the bank. And my mother."])
-	lines.append(_marco_tips()[0])
+		lines.append(m + ["We're in the red. Sell something tomorrow, or take the TewportBank line of credit on the PC. And don't tell my mother."])
+	var tips := _marco_tips()
+	lines.append(tips[0])
+	if tips.size() > 2:
+		lines.append(tips[1])
 	play_dialogue(lines, func():
 		closing = false
 		show_screen("lot"))

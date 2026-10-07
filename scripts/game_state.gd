@@ -36,10 +36,10 @@ const MODELS := [
 ]
 
 const MECHANICS := [
-	{"name": "Cousin Ray", "where": "backyard garage", "level": 1, "cost": 0.006, "min": 10, "max": 20, "botch": 0.25, "find": 0.2},
-	{"name": "Strip-Mall Auto", "where": "strip-mall shop", "level": 3, "cost": 0.012, "min": 20, "max": 30, "botch": 0.10, "find": 0.5},
-	{"name": "Harbor Certified", "where": "certified shop", "level": 6, "cost": 0.02, "min": 30, "max": 40, "botch": 0.04, "find": 0.8},
-	{"name": "Euro Specialist", "where": "luxury specialist", "level": 10, "cost": 0.03, "min": 40, "max": 50, "botch": 0.01, "find": 1.0},
+	{"name": "Cousin Ray", "where": "backyard garage", "level": 1, "cost": 0.008, "min": 10, "max": 20, "botch": 0.25, "find": 0.2},
+	{"name": "Strip-Mall Auto", "where": "strip-mall shop", "level": 3, "cost": 0.015, "min": 20, "max": 30, "botch": 0.10, "find": 0.5},
+	{"name": "Harbor Certified", "where": "certified shop", "level": 6, "cost": 0.024, "min": 30, "max": 40, "botch": 0.04, "find": 0.8},
+	{"name": "Euro Specialist", "where": "luxury specialist", "level": 10, "cost": 0.034, "min": 40, "max": 50, "botch": 0.01, "find": 1.0},
 ]
 
 const BUYER_TYPES := {
@@ -57,7 +57,7 @@ const BUYER_TYPES := {
 		"intro": "Is it cool if I film this? I have 80k followers. My review goes out to all of them."},
 	"lowballer": {"title": "Lowballer", "budget": 0.85, "likes": ["discount"], "tolerance": 0.55,
 		"intro": "I'll give you half. Cash. Today. Final offer. Probably."},
-	"whale": {"title": "Cash Whale", "budget": 1.5, "likes": ["features", "test_drive"], "tolerance": 1.5,
+	"whale": {"title": "Cash Whale", "budget": 1.35, "likes": ["features", "test_drive"], "tolerance": 1.5,
 		"intro": "I sold my startup last week. Show me something fast."},
 }
 const REVIEW_NAMES := ["Brad K.", "Kayla M.", "Devon R.", "Priya S.", "Chad W.", "Monica L.", "Luis G.", "Tiffany B.",
@@ -120,8 +120,8 @@ const DESK_ITEMS := [
 	{"id": "racing", "slot": "chair", "name": "Racing bucket seat", "price": 5000, "desc": "Five-point harness optional."},
 	{"id": "crt", "slot": "monitor", "name": "Tewtron CRT", "price": 0, "desc": "Heavy. Warm. Beige."},
 	{"id": "lcd", "slot": "monitor", "name": "24-inch LCD", "price": 600, "desc": "+1 auction listing every day."},
-	{"id": "dual", "slot": "monitor", "name": "Dual monitors", "price": 1800, "desc": "+2 listings and a watchlist screen."},
-	{"id": "ultra", "slot": "monitor", "name": "Curved ultrawide", "price": 4000, "desc": "+3 listings. Very wide. Very cool."},
+	{"id": "dual", "slot": "monitor", "name": "Dual monitors", "price": 1800, "desc": "+2 auction listings every day."},
+	{"id": "ultra", "slot": "monitor", "name": "Curved ultrawide", "price": 4000, "desc": "+3 auction listings every day. Very wide. Very cool."},
 	{"id": "plant", "slot": "decor", "name": "Potted palm", "price": 150, "desc": "A little Tewport on your desk."},
 	{"id": "mug", "slot": "decor", "name": "\"#1 Closer\" mug", "price": 40, "desc": "Gift from yourself."},
 	{"id": "modelcar", "slot": "decor", "name": "Model Ferrano", "price": 900, "desc": "1:18 scale. Shelf display."},
@@ -131,12 +131,12 @@ const DESK_ITEMS := [
 ]
 
 const SHOWROOM_UPGRADES := [
-	{"id": "coffee", "name": "Espresso bar", "price": 3000, "desc": "Customers start a little happier."},
+	{"id": "coffee", "name": "Espresso bar", "price": 3000, "desc": "Offer every walk-in an espresso: +15% happiness and a little more patience."},
 	{"id": "lights", "name": "Showroom spotlights", "price": 5000, "desc": "Cars look better: +5 customer interest.", "tier": 2},
 	{"id": "lounge", "name": "Leather lounge", "price": 8000, "desc": "Customers wait twice as long and tolerate more haggling.", "tier": 2},
 	{"id": "turntable", "name": "Display turntables", "price": 15000, "desc": "Gold podiums: +10 customer interest.", "tier": 3},
-	{"id": "expand1", "name": "Expand the lot", "price": 20000, "desc": "+2 car slots (6 total)."},
-	{"id": "expand2", "name": "Expand the lot again", "price": 45000, "desc": "+2 more car slots (8 total).", "needs": "expand1"},
+	{"id": "expand1", "name": "Expand the lot", "price": 20000, "desc": "+2 car spots on top of what your building holds. Moves with you when you upgrade."},
+	{"id": "expand2", "name": "Expand the lot again", "price": 45000, "desc": "+2 more car spots, on top of the first expansion.", "needs": "expand1"},
 ]
 
 const ADS := [
@@ -149,11 +149,11 @@ const ADS := [
 ## The dealership itself grows in three steps. Each one is a different building on the same Tewport corner
 ## (tools/dealership3d.py renders every screen for every tier; files end in _t1 / _t2, tier 3 has no suffix).
 const DEALERSHIPS := [
-	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.85,
-		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains."},
-	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 1, "budget": 1.0,
-		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, normal budgets, showroom upgrades unlocked."},
-	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 8000, "cars": 6, "walkins": 3, "budget": 1.2,
+	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.9, "max_car": 50000,
+		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains, and auctions won't send you anything too fancy."},
+	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 1, "budget": 0.96, "max_car": 110000,
+		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, better budgets, pricier cars at auction, more showroom upgrades."},
+	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 8000, "cars": 6, "walkins": 3, "budget": 1.04, "max_car": 0,
 		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
 ]
 
@@ -213,6 +213,9 @@ const APARTMENTS := [
 const STAFF_NAMES := ["Marisol", "Derek", "Yusuf", "Brianna", "Kenji", "Tasha", "Rafael", "Caitlin", "Malik", "Hana"]
 const STAFF_NAMES2 := ["Sofia", "Andre", "Leila", "Cody", "Nadia", "Victor", "Imani", "Trevor", "Rosa", "Dmitri", "Kiara", "Hector", "Ava", "Jamal"]
 const STAFF_TRAITS := ["Closer", "Smooth talker", "Upsells warranties", "Nervous", "Stretches the truth", "Great with families", "Car nerd", "VIP Relations", "Finance whiz"]
+const TRAIT_DESC := {"Closer": "+6% close rate", "Smooth talker": "Buyers leave happier", "Upsells warranties": "Sells more warranties",
+	"Nervous": "-10% close rate", "Stretches the truth": "Sells, but promises get us sued", "Great with families": "Closes parents and first-timers",
+	"Car nerd": "Closes car nerds", "VIP Relations": "Closes whales, locals and influencers", "Finance whiz": "+50% finance profit"}
 
 # ---------- state ----------
 
@@ -250,6 +253,7 @@ var pending_referrals := 0        # today's walk-ins who were referred
 var memberships: Array = ["autobidz"]
 var dealership := 1               # tier of the dealership building (see DEALERSHIPS)
 var apartment := 1                # tier of the rooftop apartment (see APARTMENTS)
+var loan := 0                     # TewportBank line of credit you owe; interest is billed on the 1st
 var debug_day := 0
 var debug_level := 0
 var debug_screen := ""
@@ -305,7 +309,9 @@ func new_game() -> void:
 	ads_active = []
 	dealership = 1
 	apartment = 1
-	# a starter dealership: just you and Jeff. Amna and Maruchan are on StaffHire the first week.
+	loan = 0
+	pending_referrals = 0
+	# a starter dealership: just you and Jeff. Amna and Maruchan are on StaffHire until you hire them.
 	staff = [make_staff("Jeff", "jeff", {"closing": 22, "rapport": 46, "finance": 8, "upsell": 38}, "Stretches the truth")]
 	staff[0].fixed = true
 	memberships = ["autobidz"]
@@ -319,8 +325,6 @@ func new_game() -> void:
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
 	generate_candidates()
-	candidates = [make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"),
-		make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations")] + candidates.slice(0, 2)
 	schedule_walkins()
 	emit_signal("changed")
 
@@ -345,7 +349,7 @@ func has_perk(id: String) -> bool:
 
 
 func xp_to_next() -> int:
-	return 150 * level
+	return 200 * level
 
 
 func add_xp(amount: int) -> bool:
@@ -357,6 +361,11 @@ func add_xp(amount: int) -> bool:
 		leveled = true
 	emit_signal("changed")
 	return leveled
+
+
+## XP for a sale grows with the profit, but slower than the money does, so big exotics don't skip whole tiers.
+func sale_xp(profit: int) -> int:
+	return 20 + int(sqrt(max(0, profit)) * 0.6)
 
 
 func spend(amount: int, cat := "other") -> bool:
@@ -556,7 +565,44 @@ func monthly_bills() -> Dictionary:
 		if a.id in ads_active:
 			ads += a.monthly
 	var rent: int = dealership_info().rent + apartment_info().monthly
-	return {"rent": rent, "salaries": salaries, "ads": ads, "total": rent + salaries + ads}
+	var interest := loan_interest()
+	return {"rent": rent, "salaries": salaries, "ads": ads, "interest": interest, "total": rent + salaries + ads + interest}
+
+
+# ---------- TewportBank line of credit: the way back when you're broke with nothing to sell ----------
+
+const LOAN_RATE := 0.02   # per month
+
+
+func loan_limit() -> int:
+	return 25000 * dealership
+
+
+func loan_interest() -> int:
+	return int(ceil(loan * LOAN_RATE / 10.0)) * 10
+
+
+## Borrowing isn't income, so it stays out of the daily ledger.
+func borrow(amount: int) -> bool:
+	amount = min(amount, loan_limit() - loan)
+	if amount <= 0:
+		return false
+	loan += amount
+	money += amount
+	save_game()
+	emit_signal("changed")
+	return true
+
+
+func repay(amount: int) -> bool:
+	amount = min(amount, loan, money)
+	if amount <= 0:
+		return false
+	loan -= amount
+	money -= amount
+	save_game()
+	emit_signal("changed")
+	return true
 
 
 func dealership_info(tier := -1) -> Dictionary:
@@ -725,6 +771,18 @@ func generate_candidates() -> void:
 		if spec == "finance" and randf() < 0.5:
 			tr_name = "Finance whiz"
 		candidates.append(make_staff(nm, "random", skills, tr_name))
+	# Amna and Maruchan keep applying until you hire them
+	candidates = (named_applicants() + candidates).slice(0, 4)
+
+
+func named_applicants() -> Array:
+	var out := []
+	var hired := staff.map(func(s): return s.name)
+	if not "Amna" in hired:
+		out.append(make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"))
+	if not "Maruchan" in hired:
+		out.append(make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations"))
+	return out
 
 
 func skill(s: Dictionary, k: String) -> int:
@@ -836,8 +894,10 @@ func reveal_faults(car: Dictionary) -> Array:
 	return found
 
 
+## Priciest new-car price that shows up at auction: grows with your level, capped by what your building can sell.
 func max_auction_base() -> int:
-	return 60000 + level * 20000
+	var cap: int = dealership_info().max_car
+	return 60000 + level * 20000 if cap == 0 else min(cap, 60000 + level * 20000)
 
 
 func listing_count() -> int:
@@ -848,10 +908,10 @@ func generate_listings() -> void:
 	listings = []
 	# price ranges per house: [start lo, start hi, rival max lo, rival max hi, buy-now chance, buy-now lo, buy-now hi]
 	var deal := {
-		"autobidz": [0.25, 0.4, 0.55, 0.85, 0.35, 0.85, 0.95],
-		"salvage": [0.1, 0.2, 0.3, 0.5, 0.5, 0.5, 0.62],
-		"dealer": [0.28, 0.4, 0.5, 0.7, 0.45, 0.72, 0.82],
-		"exotic": [0.3, 0.45, 0.55, 0.75, 0.3, 0.78, 0.88],
+		"autobidz": [0.25, 0.4, 0.7, 1.0, 0.35, 0.85, 0.95],
+		"salvage": [0.1, 0.2, 0.38, 0.6, 0.5, 0.55, 0.7],
+		"dealer": [0.28, 0.4, 0.65, 0.88, 0.45, 0.78, 0.88],
+		"exotic": [0.3, 0.45, 0.68, 0.92, 0.3, 0.82, 0.92],
 	}
 	for house in memberships:
 		var used := []
@@ -895,6 +955,7 @@ func end_day() -> Array:
 	var notes := []
 	if stats.goal_sold_today >= 1:
 		money += 500
+		log_money("other", 500)
 		notes.append("Daily goal met: %s bonus." % money_str(500))
 		add_xp(25)
 	last_month_report = {}
@@ -920,6 +981,7 @@ func end_day() -> Array:
 		log_money("rent", -b.rent)
 		log_money("payroll", -b.salaries)
 		log_money("ads", -b.ads)
+		log_money("interest", -b.interest)
 		var months := ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 		var prev := date_dict(day - 1)
 		last_month_report = {"title": "%s %d" % [months[prev.month - 1], prev.year], "ledger": ledger_month.duplicate(),
@@ -927,7 +989,10 @@ func end_day() -> Array:
 		ledger_month = {}
 		month_sold = 0
 		month_walked = 0
-		notes.append("New month. Paid %s in bills: rent %s, staff %s, advertising %s." % [money_str(b.total), money_str(b.rent), money_str(b.salaries), money_str(b.ads)])
+		notes.append("New month. Paid %s in bills: rent %s, staff %s, advertising %s%s." % [money_str(b.total), money_str(b.rent), money_str(b.salaries), money_str(b.ads),
+			", loan interest %s" % money_str(b.interest) if b.interest > 0 else ""])
+		if money < 0:
+			notes.append("We're overdrawn. TewportBank on the Office PC will lend us up to %s." % money_str(loan_limit() - loan))
 		generate_candidates()
 	if date_dict().weekday == 1:
 		generate_candidates()
@@ -956,7 +1021,8 @@ func legal_exposure() -> int:
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
-	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership"]
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
+	"loan", "pending_referrals"]
 
 
 func save_game() -> void:

@@ -318,7 +318,10 @@ func _place_camera() -> void:
 	var tgt := Vector3(0, 0.65, 0)
 	var off := Vector3(cos(pitch) * sin(yaw), sin(pitch), cos(pitch) * cos(yaw)) * dist
 	_cam.position = tgt + off
-	_cam.look_at(tgt, Vector3.UP)
+	if _cam.is_inside_tree():
+		_cam.look_at(tgt, Vector3.UP)
+	else:
+		_cam.basis = Basis.looking_at(-off, Vector3.UP)
 
 
 func _gui_input(ev: InputEvent) -> void:
