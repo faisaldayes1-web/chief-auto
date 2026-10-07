@@ -3,9 +3,22 @@ class_name UI
 
 const GOLD := Color("e8b64c")
 const GOLD_DIM := Color("8a6a2a")
-const NAVY := Color(0.05, 0.08, 0.14, 0.88)
-const NAVY_SOLID := Color("0d1524")
-const PANEL_LIGHT := Color(0.12, 0.17, 0.27, 0.92)
+const NAVY := Color(0.035, 0.045, 0.06, 0.88)
+const NAVY_SOLID := Color("0b0e13")
+const PANEL_LIGHT := Color(0.09, 0.11, 0.14, 0.92)
+const GLASS_EDGE := Color(0.9, 0.74, 0.42, 0.55)
+const CYAN := Color("5ad1ff")
+
+static var _body_font: Font
+static var _head_font: Font
+
+
+static func head_font() -> Font:
+	if _head_font == null:
+		var f: FontFile = load("res://assets/fonts/BarlowCondensed-SemiBold.woff2")
+		f.fallbacks = [load("res://assets/fonts/DejaVuSans.ttf")]
+		_head_font = f
+	return _head_font
 const TEXT := Color("f2f2f2")
 const MUTED := Color("aab3c2")
 const GOOD := Color("5fd17a")
@@ -30,31 +43,39 @@ static func make_theme() -> Theme:
 	var t := Theme.new()
 	t.default_font_size = 18
 	# Default font plus a fallback that has stars, arrows and check marks.
-	var f: Font = ThemeDB.fallback_font.duplicate()
+	var f: FontFile = load("res://assets/fonts/Barlow-Medium.woff2")
 	f.fallbacks = [load("res://assets/fonts/DejaVuSans.ttf")]
+	_body_font = f
 	t.default_font = f
 	t.set_color("font_color", "Label", TEXT)
-	t.set_stylebox("normal", "Button", box(Color(0.1, 0.15, 0.25, 0.95), GOLD_DIM, 8, 1, 14))
-	t.set_stylebox("hover", "Button", box(Color(0.16, 0.22, 0.35, 0.98), GOLD, 8, 2, 14))
-	t.set_stylebox("pressed", "Button", box(Color(0.3, 0.24, 0.1, 0.98), GOLD, 8, 2, 14))
-	t.set_stylebox("disabled", "Button", box(Color(0.1, 0.1, 0.12, 0.7), Color(0.3, 0.3, 0.3), 8, 1, 14))
+	t.set_stylebox("normal", "Button", box(Color(0.07, 0.085, 0.11, 0.92), Color(1, 1, 1, 0.16), 4, 1, 14))
+	t.set_stylebox("hover", "Button", box(Color(0.11, 0.14, 0.18, 0.96), GOLD, 4, 1, 14))
+	t.set_stylebox("pressed", "Button", box(Color(0.25, 0.19, 0.08, 0.98), GOLD, 4, 1, 14))
+	t.set_stylebox("disabled", "Button", box(Color(0.06, 0.06, 0.07, 0.6), Color(1, 1, 1, 0.06), 4, 1, 14))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_color("font_color", "Button", TEXT)
 	t.set_color("font_hover_color", "Button", GOLD)
 	t.set_color("font_pressed_color", "Button", Color.WHITE)
 	t.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.5))
-	t.set_stylebox("panel", "PanelContainer", box(NAVY, GOLD_DIM, 12, 1, 16))
-	t.set_stylebox("panel", "Panel", box(NAVY, GOLD_DIM, 12, 1, 16))
-	t.set_stylebox("background", "ProgressBar", box(Color(0.15, 0.15, 0.2), Color.TRANSPARENT, 5, 0, 0))
-	t.set_stylebox("fill", "ProgressBar", box(GOLD, Color.TRANSPARENT, 5, 0, 0))
+	t.set_stylebox("panel", "PanelContainer", box(NAVY, GLASS_EDGE, 6, 1, 16))
+	t.set_stylebox("panel", "Panel", box(NAVY, GLASS_EDGE, 6, 1, 16))
+	t.set_stylebox("background", "ProgressBar", box(Color(1, 1, 1, 0.08), Color.TRANSPARENT, 2, 0, 0))
+	t.set_stylebox("fill", "ProgressBar", box(GOLD, Color.TRANSPARENT, 2, 0, 0))
+	var grab := box(GOLD, Color.TRANSPARENT, 2, 0, 0)
+	var track := box(Color(1, 1, 1, 0.18), Color.TRANSPARENT, 2, 0, 0)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	t.set_stylebox("slider", "HSlider", track)
+	t.set_stylebox("grabber_area", "HSlider", grab)
+	t.set_stylebox("grabber_area_highlight", "HSlider", grab)
 	t.set_stylebox("normal", "OptionButton", box(Color(0.1, 0.15, 0.25, 0.95), GOLD_DIM, 8, 1, 12))
 	t.set_stylebox("hover", "OptionButton", box(Color(0.16, 0.22, 0.35, 0.98), GOLD, 8, 1, 12))
 	t.set_stylebox("pressed", "OptionButton", box(Color(0.16, 0.22, 0.35, 0.98), GOLD, 8, 1, 12))
 	t.set_stylebox("focus", "OptionButton", StyleBoxEmpty.new())
 	for st in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
-		t.set_stylebox(st, "CheckBox", box(Color(1, 1, 1, 0.6), Color(0.6, 0.6, 0.65), 6, 1, 10))
+		t.set_stylebox(st, "CheckBox", box(Color(1, 1, 1, 0.06) if st != "hover" else Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.15), 4, 1, 10))
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
-		t.set_color(c, "CheckBox", Color(0.12, 0.12, 0.16))
+		t.set_color(c, "CheckBox", TEXT)
 	t.set_stylebox("panel", "PopupMenu", box(NAVY_SOLID, GOLD_DIM, 8, 1, 8))
 	t.set_font_size("font_size", "PopupMenu", 18)
 	t.set_stylebox("normal", "LineEdit", box(Color(0.9, 0.92, 0.95), Color.TRANSPARENT, 14, 0, 12))
@@ -72,8 +93,8 @@ static func label(text: String, size := 18, color := TEXT, bold := false, wrap :
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	if bold:
-		l.add_theme_constant_override("outline_size", 1)
-		l.add_theme_color_override("font_outline_color", color)
+		l.add_theme_font_override("font", head_font())
+		l.add_theme_font_size_override("font_size", size + 2)
 	if wrap:
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -95,16 +116,44 @@ static func button(text: String, cb: Callable, min_w := 0, min_h := 48) -> Butto
 
 static func gold_button(text: String, cb: Callable, min_w := 0, min_h := 52) -> Button:
 	var b := button(text, cb, min_w, min_h)
-	b.add_theme_stylebox_override("normal", box(Color(0.55, 0.4, 0.1, 0.95), GOLD, 8, 2, 16))
-	b.add_theme_stylebox_override("hover", box(Color(0.7, 0.52, 0.15, 0.98), Color.WHITE, 8, 2, 16))
-	b.add_theme_font_size_override("font_size", 20)
+	var n := box(Color(0.78, 0.6, 0.26, 0.97), Color(1, 0.88, 0.6), 4, 1, 16)
+	n.shadow_color = Color(0.9, 0.7, 0.3, 0.25)
+	n.shadow_size = 6
+	b.add_theme_stylebox_override("normal", n)
+	b.add_theme_stylebox_override("hover", box(Color(0.9, 0.72, 0.35, 1.0), Color.WHITE, 4, 1, 16))
+	b.add_theme_stylebox_override("pressed", box(Color(0.6, 0.45, 0.18, 1.0), Color.WHITE, 4, 1, 16))
+	b.add_theme_color_override("font_color", Color("15110a"))
+	b.add_theme_color_override("font_hover_color", Color("15110a"))
+	b.add_theme_font_override("font", head_font())
+	b.add_theme_font_size_override("font_size", 21)
+	b.text = text.to_upper()
 	return b
 
 
 static func panel(bg := NAVY, border := GOLD_DIM, pad := 16) -> PanelContainer:
 	var p := PanelContainer.new()
-	p.add_theme_stylebox_override("panel", box(bg, border, 12, 1, pad))
+	var sb := box(bg, border, 6, 1, pad)
+	if bg.a < 0.99 and bg.v < 0.3:
+		sb.shadow_color = Color(0, 0, 0, 0.45)
+		sb.shadow_size = 10
+	p.add_theme_stylebox_override("panel", sb)
 	return p
+
+
+## Uppercase condensed panel title with a gold underline, like the mockup headers.
+static func header(text: String, size := 22) -> Control:
+	var v := vbox(4)
+	v.add_child(label(text.to_upper(), size, TEXT, true))
+	v.add_child(rule(GOLD))
+	return v
+
+
+static func rule(c := Color(1, 1, 1, 0.15)) -> ColorRect:
+	var r := ColorRect.new()
+	r.color = c
+	r.custom_minimum_size = Vector2(0, 1)
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return r
 
 
 static func vbox(sep := 8) -> VBoxContainer:

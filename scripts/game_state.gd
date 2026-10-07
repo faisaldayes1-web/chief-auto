@@ -1,10 +1,13 @@
 extends Node
-## Global game state for Chief Auto: money, progression, cars, data tables, save/load.
+## Global game state for Chief Auto: money, calendar and clock, progression, cars, staff, shops, save/load.
 
 signal changed
 
 const SAVE_PATH := "user://chief_auto_save.json"
 const CURRENT_YEAR := 2026
+const START_UNIX := 1790812800  # Oct 1, 2026 (UTC)
+const OPEN_MIN := 8 * 60        # dealership opens 8:00
+const CLOSE_MIN := 21 * 60      # closes 21:00
 const PARTS := ["engine", "transmission", "body", "interior", "tires"]
 const PART_NAMES := {
 	"engine": "Engine", "transmission": "Transmission", "body": "Body & Paint",
@@ -40,43 +43,110 @@ const MECHANICS := [
 ]
 
 const BUYER_TYPES := {
-	"bargain": {"title": "Bargain Hunter", "patience": 5, "budget": 0.97, "likes": ["discount"],
+	"bargain": {"title": "Bargain Hunter", "budget": 0.95, "likes": ["discount"], "tolerance": 0.7,
 		"intro": "I saw a cheaper one in Costa Mesa. Convince me."},
-	"local": {"title": "Tewport Local", "patience": 4, "budget": 1.2, "likes": ["features"],
+	"local": {"title": "Tewport Local", "budget": 1.2, "likes": ["features"], "tolerance": 1.3,
 		"intro": "Does it look good at the yacht club? That's all I need to know."},
-	"first": {"title": "First-Time Buyer", "patience": 6, "budget": 1.0, "likes": ["history", "extras"],
+	"first": {"title": "First-Time Buyer", "budget": 1.0, "likes": ["history", "extras"], "tolerance": 1.0,
 		"intro": "Um, hi. My dad said not to get ripped off."},
-	"nerd": {"title": "Car Nerd", "patience": 5, "budget": 1.05, "likes": ["test_drive"],
+	"nerd": {"title": "Car Nerd", "budget": 1.05, "likes": ["test_drive"], "tolerance": 0.9,
 		"intro": "I'll need to hear the cold start. And I brought a code reader."},
-	"parent": {"title": "Safety Parent", "patience": 5, "budget": 1.0, "likes": ["history", "test_drive"],
+	"parent": {"title": "Safety Parent", "budget": 1.0, "likes": ["history", "test_drive"], "tolerance": 1.0,
 		"intro": "Three kids, one dog. Is it safe?"},
 }
-const BUYER_NAMES := ["Brad", "Kayla", "Devon", "Priya", "Chad", "Monica", "Luis", "Tiffany", "Grant", "Mei"]
+const BUYER_NAMES := ["Brad", "Kayla", "Devon", "Priya", "Chad", "Monica", "Luis", "Tiffany", "Grant", "Mei",
+	"Omar", "Jasmine", "Tyler", "Sofia", "Hassan", "Brooke", "Andre", "Leila", "Cody", "Nadia"]
+
+# Credit tiers: [name, bank buy rate %, highest APR they will accept %]
+const CREDIT := [
+	["Excellent", 4.9, 7.9],
+	["Good", 6.9, 10.9],
+	["Fair", 9.9, 14.9],
+	["Rough", 13.9, 19.9],
+]
 
 const RIVALS := ["Tustin Tony", "Irvine Imports", "Costa Mesa Motors", "Huntington Hank"]
 
 const PERKS := [
 	{"id": "sourcing", "name": "Global Sourcing Boost", "level": 3, "desc": "More sport and exotic cars show up at auction."},
 	{"id": "vip", "name": "VIP Negotiator", "level": 5, "desc": "+10% sale price on sport and exotic cars."},
-	{"id": "insights", "name": "Market Insights", "level": 8, "desc": "See the price range buyers will accept."},
+	{"id": "insights", "name": "Market Insights", "level": 8, "desc": "See the most each customer will pay."},
 ]
 
-const DAILY_RENT := 400
-const LOT_CAPACITY := 4
-const HISTORY_REPORT_COST := 150
+# ---------- shops ----------
+
+const DESK_ITEMS := [
+	{"id": "folding", "slot": "desk", "name": "Folding table", "price": 0, "desc": "It came with the lot."},
+	{"id": "oak", "slot": "desk", "name": "Oak desk", "price": 1200, "desc": "Solid wood. Smells like money."},
+	{"id": "glass", "slot": "desk", "name": "Glass executive desk", "price": 4500, "desc": "Marco has one just like it."},
+	{"id": "carbon", "slot": "desk", "name": "Carbon-fiber racing desk", "price": 12000, "desc": "Red racing stripe included."},
+	{"id": "plastic", "slot": "chair", "name": "Patio chair", "price": 0, "desc": "Borrowed from the break room."},
+	{"id": "office", "slot": "chair", "name": "Mesh office chair", "price": 400, "desc": "Lumbar support. Finally."},
+	{"id": "leather", "slot": "chair", "name": "Leather executive chair", "price": 2200, "desc": "Tufted, tall and serious."},
+	{"id": "racing", "slot": "chair", "name": "Racing bucket seat", "price": 5000, "desc": "Five-point harness optional."},
+	{"id": "crt", "slot": "monitor", "name": "Tewtron CRT", "price": 0, "desc": "Heavy. Warm. Beige."},
+	{"id": "lcd", "slot": "monitor", "name": "24-inch LCD", "price": 600, "desc": "+1 auction listing every day."},
+	{"id": "dual", "slot": "monitor", "name": "Dual monitors", "price": 1800, "desc": "+2 listings and a watchlist screen."},
+	{"id": "ultra", "slot": "monitor", "name": "Curved ultrawide", "price": 4000, "desc": "+3 listings. Very wide. Very cool."},
+	{"id": "plant", "slot": "decor", "name": "Potted palm", "price": 150, "desc": "A little Tewport on your desk."},
+	{"id": "mug", "slot": "decor", "name": "\"#1 Closer\" mug", "price": 40, "desc": "Gift from yourself."},
+	{"id": "modelcar", "slot": "decor", "name": "Model Ferrano", "price": 900, "desc": "1:18 scale. Shelf display."},
+	{"id": "trophy", "slot": "decor", "name": "Salesperson of the Year", "price": 2500, "desc": "You bought it. Still counts."},
+	{"id": "neon", "slot": "decor", "name": "Neon CHIEF sign", "price": 3500, "desc": "Pink neon on the wall."},
+	{"id": "aquarium", "slot": "decor", "name": "Saltwater aquarium", "price": 6000, "desc": "Three fish. All named Marco."},
+]
+
+const SHOWROOM_UPGRADES := [
+	{"id": "coffee", "name": "Espresso bar", "price": 3000, "desc": "Customers start a little happier."},
+	{"id": "lights", "name": "Showroom spotlights", "price": 5000, "desc": "Cars look better: +5 customer interest."},
+	{"id": "lounge", "name": "Leather lounge", "price": 8000, "desc": "Customers wait twice as long and tolerate more haggling."},
+	{"id": "turntable", "name": "Display turntables", "price": 15000, "desc": "Gold podiums: +10 customer interest."},
+	{"id": "expand1", "name": "Expand the lot", "price": 20000, "desc": "+2 car slots (6 total)."},
+	{"id": "expand2", "name": "Expand the lot again", "price": 45000, "desc": "+2 more car slots (8 total).", "needs": "expand1"},
+]
+
+const ADS := [
+	{"id": "flyers", "name": "Flyers on windshields", "monthly": 400, "walkins": 1, "desc": "+1 walk-in a day."},
+	{"id": "insta", "name": "Instagram ads", "monthly": 1500, "walkins": 2, "desc": "+2 walk-ins a day."},
+	{"id": "radio", "name": "KTEW radio spots", "monthly": 4000, "walkins": 3, "desc": "+3 walk-ins a day, bigger budgets."},
+	{"id": "billboard", "name": "Coast Highway billboard", "monthly": 9000, "walkins": 5, "desc": "+5 walk-ins a day, luxury buyers."},
+]
+
+const MONTHLY_RENT := 6000
+
+const STAFF_NAMES := ["Marisol", "Derek", "Yusuf", "Brianna", "Kenji", "Tasha", "Rafael", "Caitlin", "Malik", "Hana"]
+const STAFF_TRAITS := ["Closer", "Smooth talker", "Upsells warranties", "Nervous", "Stretches the truth", "Great with families", "Car nerd"]
+
+# ---------- state ----------
 
 var money: int = 40000
 var xp: int = 0
 var level: int = 1
 var reputation: float = 3.0
 var day: int = 1
-var cars: Array = []          # owned cars
-var listings: Array = []      # today's auction listings
+var clock: float = OPEN_MIN
+var cars: Array = []
+var listings: Array = []
 var hot_class: String = "suv"
 var next_id: int = 1
-var stats := {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0}
+var stats := {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0, "walked": 0, "lawsuits": 0}
 var seen_intro := false
-var log_lines: Array = []
+var owned: Array = ["folding", "plastic", "crt"]
+var equipped := {"desk": "folding", "chair": "plastic", "monitor": "crt"}
+var decor_on: Array = []
+var upgrades: Array = []
+var ads_active: Array = []
+var staff: Array = []
+var candidates: Array = []
+var walkin_schedule: Array = []   # game minutes when today's walk-ins arrive
+var ledger_day := {}              # money in and out today, by category
+var ledger_month := {}            # same for this month (shown in the month-end summary)
+var month_walked := 0
+var month_sold := 0
+var liabilities: Array = []       # shady deals that can still turn into lawsuits
+var last_month_report := {}       # filled on the 1st, shown by the night report
+var debug_day := 0
+var debug := false                # ?debug in the web build: start with cars and a customer (testing)
 
 
 func _ready() -> void:
@@ -88,6 +158,10 @@ func _ready() -> void:
 		var at := query.find("seed=")
 		if at >= 0:
 			seed(int(query.substr(at + 5)))
+		debug = query.find("debug") >= 0
+		var dd := query.find("day=")
+		if dd >= 0:
+			debug_day = int(query.substr(dd + 4))
 	if not load_game():
 		new_game()
 
@@ -98,12 +172,31 @@ func new_game() -> void:
 	level = 1
 	reputation = 3.0
 	day = 1
+	clock = OPEN_MIN
 	cars = []
 	next_id = 1
-	stats = {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0}
+	stats = {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0, "walked": 0, "lawsuits": 0}
 	seen_intro = false
+	ledger_day = {}
+	ledger_month = {}
+	month_walked = 0
+	month_sold = 0
+	liabilities = []
+	last_month_report = {}
+	owned = ["folding", "plastic", "crt"]
+	equipped = {"desk": "folding", "chair": "plastic", "monitor": "crt"}
+	decor_on = []
+	upgrades = []
+	ads_active = []
+	staff = [
+		{"name": "Amna", "stars": 4, "salary": 5000, "trait": "Closer", "look": "amna", "fixed": false},
+		{"name": "Maruchan", "stars": 3, "salary": 3800, "trait": "VIP Relations", "look": "maruchan", "fixed": false},
+		{"name": "Jeff", "stars": 1, "salary": 2200, "trait": "Stretches the truth", "look": "jeff", "fixed": true},
+	]
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
+	generate_candidates()
+	schedule_walkins()
 	emit_signal("changed")
 
 
@@ -126,10 +219,6 @@ func has_perk(id: String) -> bool:
 	return false
 
 
-func unlocked_mechanics() -> Array:
-	return MECHANICS.filter(func(m): return level >= m.level)
-
-
 func xp_to_next() -> int:
 	return 150 * level
 
@@ -145,22 +234,208 @@ func add_xp(amount: int) -> bool:
 	return leveled
 
 
-func spend(amount: int) -> bool:
+func spend(amount: int, cat := "other") -> bool:
 	if amount > money:
 		return false
 	money -= amount
+	log_money(cat, -amount)
 	emit_signal("changed")
 	return true
 
 
-func earn(amount: int) -> void:
+func earn(amount: int, cat := "sales") -> void:
 	money += amount
+	log_money(cat, amount)
 	emit_signal("changed")
+
+
+## Categories: sales, finance, addons, cars, repairs, shop, ads, rent, payroll, legal, other
+func log_money(cat: String, amount: int) -> void:
+	ledger_day[cat] = ledger_day.get(cat, 0) + amount
+	ledger_month[cat] = ledger_month.get(cat, 0) + amount
+
+
+func ledger_total(l: Dictionary, sign: int) -> int:
+	var t := 0
+	for k in l:
+		if sign > 0 and l[k] > 0 or sign < 0 and l[k] < 0:
+			t += l[k]
+	return t
+
+
+func has_staff(name: String) -> bool:
+	for s in staff:
+		if s.name == name:
+			return true
+	return false
+
+
+func days_until_bills() -> int:
+	return days_in_month() - date_dict().day + 1
+
+
+func day_phase() -> String:
+	if clock < 11 * 60: return "Morning"
+	if clock < 16.5 * 60: return "Afternoon"
+	if clock < 18.5 * 60: return "Golden hour"
+	if clock < 20 * 60: return "Dusk"
+	return "Night"
 
 
 func change_rep(delta: float) -> void:
 	reputation = clamp(reputation + delta, 0.0, 5.0)
 	emit_signal("changed")
+
+
+func has_upgrade(id: String) -> bool:
+	return id in upgrades
+
+
+func has_decor(id: String) -> bool:
+	return id in decor_on
+
+
+func lot_capacity() -> int:
+	return 4 + (2 if has_upgrade("expand1") else 0) + (2 if has_upgrade("expand2") else 0)
+
+
+func item(id: String) -> Dictionary:
+	for list in [DESK_ITEMS, SHOWROOM_UPGRADES, ADS]:
+		for it in list:
+			if it.id == id:
+				return it
+	return {}
+
+
+# ---------- calendar and clock ----------
+
+func date_dict(d := day) -> Dictionary:
+	return Time.get_datetime_dict_from_unix_time(START_UNIX + (d - 1) * 86400)
+
+
+func date_str(d := day) -> String:
+	var dd := date_dict(d)
+	var months := ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+	var wk := ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+	return "%s %s %d" % [wk[dd.weekday], months[dd.month - 1], dd.day]
+
+
+func clock_str() -> String:
+	var m := int(clock)
+	var hh := m / 60
+	var ampm := "AM" if hh < 12 else "PM"
+	var h12 := hh % 12
+	if h12 == 0:
+		h12 = 12
+	return "%d:%02d %s" % [h12, m % 60, ampm]
+
+
+func night_amount() -> float:
+	# 0 in daylight, rising after 18:30 to full night at 20:15
+	return clamp((clock - 18.5 * 60) / 105.0, 0.0, 1.0)
+
+
+func sunset_amount() -> float:
+	return clamp((clock - 16.5 * 60) / 120.0, 0.0, 1.0) * (1.0 - night_amount())
+
+
+func sky_tint() -> Color:
+	var day_c := Color(1, 1, 1)
+	var sunset_c := Color(1.0, 0.82, 0.7)
+	var night_c := Color(0.32, 0.38, 0.6)
+	var c := day_c.lerp(sunset_c, sunset_amount())
+	return c.lerp(night_c, night_amount())
+
+
+func days_in_month(d := day) -> int:
+	var dd := date_dict(d)
+	var n := 28
+	while date_dict(d - dd.day + 1 + n).month == dd.month:
+		n += 1
+	return n
+
+
+func monthly_bills() -> Dictionary:
+	var salaries := 0
+	for s in staff:
+		salaries += s.salary
+	var ads := 0
+	for a in ADS:
+		if a.id in ads_active:
+			ads += a.monthly
+	return {"rent": MONTHLY_RENT, "salaries": salaries, "ads": ads, "total": MONTHLY_RENT + salaries + ads}
+
+
+func next_bill_date() -> String:
+	var dd := date_dict()
+	var left: int = days_in_month() - dd.day + 1
+	return date_str(day + left)
+
+
+# ---------- walk-ins ----------
+
+func walkins_today() -> int:
+	var n := 2
+	for a in ADS:
+		if a.id in ads_active:
+			n += a.walkins
+	if reputation >= 4.0:
+		n += 1
+	if reputation < 2.0:
+		n -= 1
+	return max(1, n)
+
+
+func schedule_walkins() -> void:
+	walkin_schedule = []
+	for i in walkins_today():
+		walkin_schedule.append(randi_range(9 * 60, 18 * 60))
+	walkin_schedule.sort()
+
+
+func make_customer() -> Dictionary:
+	var type_key: String = BUYER_TYPES.keys().pick_random()
+	var rich := 0.0
+	if "radio" in ads_active:
+		rich += 0.1
+	if "billboard" in ads_active:
+		rich += 0.25
+	var tier := randi_range(0, 3)
+	if randf() < rich:
+		tier = 0
+	var c := {
+		"id": next_id, "name": BUYER_NAMES.pick_random(), "type": type_key,
+		"look_seed": randi(), "credit": tier,
+		"budget": BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich),
+		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1), "patience": 1.0,
+		"arrived": clock, "wants_cls": ["economy", "suv", "truck", "sport", "exotic"].pick_random(),
+	}
+	next_id += 1
+	return c
+
+
+# ---------- staff ----------
+
+func generate_candidates() -> void:
+	candidates = []
+	for i in 3:
+		var stars := randi_range(1, 5)
+		candidates.append({
+			"name": STAFF_NAMES.pick_random(), "stars": stars,
+			"salary": 1800 + stars * 900 + randi_range(0, 4) * 100,
+			"trait": STAFF_TRAITS.pick_random(), "look": "random", "seed": randi(), "fixed": false,
+		})
+
+
+func staff_close_chance(s: Dictionary) -> float:
+	var c: float = 0.15 + s.stars * 0.14
+	if s.trait == "VIP Relations":
+		c -= 0.05
+	if s.trait == "Closer":
+		c += 0.08
+	if s.trait == "Nervous":
+		c -= 0.1
+	return clamp(c, 0.05, 0.95)
 
 
 # ---------- cars ----------
@@ -176,13 +451,13 @@ func make_car(max_base: int) -> Dictionary:
 		"year": CURRENT_YEAR - age,
 		"miles": int(age * randi_range(7000, 15000) / 100) * 100,
 		"parts": {}, "hidden": {}, "detailed": false,
+		"color": CarArt.PAINTS.pick_random(),
 		"history": ["Clean", "Clean", "Clean", "Minor accident", "Major accident", "Flood"].pick_random(),
 		"history_known": false, "paid": 0, "spent": 0, "day_bought": 0,
 	}
 	next_id += 1
 	for p in PARTS:
 		car.parts[p] = randi_range(25, 90)
-	# hidden faults the seller didn't mention
 	var faults := randi_range(0, 2)
 	if car.history == "Flood":
 		faults += 1
@@ -213,6 +488,15 @@ func value(car: Dictionary, true_value := false) -> int:
 	return int(round(v / 50.0) * 50)
 
 
+func sale_value(car: Dictionary) -> int:
+	var v := float(value(car))
+	if car.cls == hot_class:
+		v *= 1.1
+	if has_perk("vip") and car.cls in ["sport", "exotic"]:
+		v *= 1.1
+	return int(round(v / 50.0) * 50)
+
+
 func hidden_total(car: Dictionary) -> int:
 	var t := 0
 	for p in car.hidden:
@@ -233,10 +517,14 @@ func max_auction_base() -> int:
 	return 60000 + level * 20000
 
 
+func listing_count() -> int:
+	return 6 + {"crt": 0, "lcd": 1, "dual": 2, "ultra": 3}[equipped.monitor]
+
+
 func generate_listings() -> void:
 	listings = []
 	var used := []
-	for i in 6:
+	for i in listing_count():
 		var car := make_car(max_auction_base())
 		for attempt in 4:
 			if not used.has(car.model):
@@ -245,19 +533,19 @@ func generate_listings() -> void:
 		used.append(car.model)
 		var v := value(car)
 		var start: int = int(round(v * randf_range(0.25, 0.4) / 100.0) * 100)
-		var listing := {
+		listings.append({
 			"car": car, "current": start, "start": start,
 			"leader": "", "rival": RIVALS.pick_random(),
 			"rival_max": int(v * randf_range(0.55, 0.85)),
 			"buy_now": int(round(v * randf_range(0.85, 0.95) / 100.0) * 100) if randf() < 0.35 else 0,
 			"haggled": false, "sold": false, "winner": "",
-		}
-		listings.append(listing)
+		})
 
 
 func add_car(car: Dictionary, price: int) -> void:
 	car.paid = price
 	car.day_bought = day
+	car.sticker = int(round(sale_value(car) * 1.1 / 100.0)) * 100
 	cars.append(car)
 	emit_signal("changed")
 
@@ -269,32 +557,79 @@ func remove_car(car: Dictionary) -> void:
 
 # ---------- day cycle ----------
 
+## Closes the day and opens the next one. Returns notes for Marco's end-of-day report.
 func end_day() -> Array:
 	var notes := []
-	money -= DAILY_RENT
-	notes.append("Paid %s rent for the lot." % money_str(DAILY_RENT))
 	if stats.goal_sold_today >= 1:
-		var bonus := 500
-		money += bonus
-		notes.append("Marco's daily goal met: %s bonus." % money_str(bonus))
+		money += 500
+		notes.append("Daily goal met: %s bonus." % money_str(500))
 		add_xp(25)
+	last_month_report = {}
+	# shady deals catch up with you
+	for l in liabilities.duplicate():
+		if day < l.due:
+			continue
+		liabilities.erase(l)
+		if randf() < l.risk:
+			var cost: int = l.damages
+			money -= cost
+			log_money("legal", -cost)
+			stats.lawsuits = stats.get("lawsuits", 0) + 1
+			reputation = clamp(reputation - 0.35, 0.0, 5.0)
+			notes.append("LAWSUIT: %s sued us over %s. Settled for %s." % [l.customer, l.reason, money_str(cost)])
 	day += 1
+	clock = OPEN_MIN
 	stats.goal_sold_today = 0
 	hot_class = ["economy", "truck", "suv", "sport", "exotic"].pick_random()
+	if date_dict().day == 1:
+		var b := monthly_bills()
+		money -= b.total
+		log_money("rent", -b.rent)
+		log_money("payroll", -b.salaries)
+		log_money("ads", -b.ads)
+		var months := ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+		var prev := date_dict(day - 1)
+		last_month_report = {"title": "%s %d" % [months[prev.month - 1], prev.year], "ledger": ledger_month.duplicate(),
+			"sold": month_sold, "walked": month_walked, "reputation": reputation, "money": money, "staff": staff.duplicate(true)}
+		ledger_month = {}
+		month_sold = 0
+		month_walked = 0
+		notes.append("New month. Paid %s in bills: rent %s, staff %s, advertising %s." % [money_str(b.total), money_str(b.rent), money_str(b.salaries), money_str(b.ads)])
+		generate_candidates()
+	if date_dict().weekday == 1:
+		generate_candidates()
+	ledger_day = {}
 	generate_listings()
+	schedule_walkins()
 	save_game()
 	emit_signal("changed")
 	return notes
 
 
+## Record a shady deal. risk = chance it becomes a lawsuit; it is decided days later.
+func add_liability(customer: String, reason: String, risk: float, damages: int) -> void:
+	liabilities.append({"customer": customer, "reason": reason, "risk": clamp(risk, 0.0, 0.95),
+		"damages": damages, "due": day + randi_range(2, 6)})
+
+
+func legal_exposure() -> int:
+	var t := 0
+	for l in liabilities:
+		t += int(l.damages * l.risk)
+	return t
+
+
 # ---------- save / load ----------
 
+const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
+	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities"]
+
+
 func save_game() -> void:
-	var data := {
-		"money": money, "xp": xp, "level": level, "reputation": reputation, "day": day,
-		"cars": cars, "listings": listings, "hot_class": hot_class, "next_id": next_id,
-		"stats": stats, "seen_intro": seen_intro,
-	}
+	var data := {"version": 3}
+	for k in SAVE_KEYS:
+		data[k] = get(k)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(data))
@@ -307,19 +642,14 @@ func load_game() -> bool:
 	if f == null:
 		return false
 	var data = JSON.parse_string(f.get_as_text())
-	if typeof(data) != TYPE_DICTIONARY:
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 3:
 		return false
-	money = int(data.money)
-	xp = int(data.xp)
-	level = int(data.level)
-	reputation = float(data.reputation)
-	day = int(data.day)
-	cars = _fix_ints(data.cars)
-	listings = _fix_ints(data.listings)
-	hot_class = data.hot_class
-	next_id = int(data.next_id)
-	stats = _fix_ints(data.stats)
-	seen_intro = data.seen_intro
+	new_game()
+	for k in SAVE_KEYS:
+		if data.has(k):
+			set(k, _fix_ints(data[k]))
+	reputation = float(reputation)
+	clock = float(clock)
 	return true
 
 
