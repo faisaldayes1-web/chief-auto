@@ -266,6 +266,9 @@ func _start_game() -> void:
 		Game.seen_intro = true
 		if Game.debug_day > 0:
 			Game.day = Game.debug_day
+		if Game.debug_level > 0:
+			Game.level = Game.debug_level
+			Game.money += 50000
 		for l in Game.listings.slice(0, 3):
 			Game.add_car(l.car, int(Game.value(l.car) * 0.6))
 		lobby.append(Game.make_customer())
@@ -349,7 +352,7 @@ func _class_name(c: String) -> String:
 # Office PC: a desk with a computer. Browser tabs: auctions and shops.
 # =====================================================================
 
-const PC_TABS := [["auction", "AutoBidz"], ["desk", "DeskDepot"], ["showroom", "ShowroomPro"], ["ads", "AdSpace"], ["staff", "StaffHire"], ["bank", "TewportBank"]]
+const PC_TABS := [["auction", "AutoBidz"], ["desk", "DeskDepot"], ["showroom", "ShowroomPro"], ["ads", "AdSpace"], ["staff", "StaffHire"], ["reviews", "Yolp"], ["bank", "TewportBank"]]
 const PC_URLS := {
 	"auction": "https://www.autobidz.ca/live?region=orange-county",
 	"desk": "https://www.deskdepot.ca/office",
@@ -357,7 +360,9 @@ const PC_URLS := {
 	"ads": "https://www.adspace.ca/campaigns",
 	"staff": "https://www.staffhire.ca/sales",
 	"bank": "https://online.tewportbank.ca/business",
+	"reviews": "https://www.yolp.ca/biz/oc-chief-auto-tewport-beach",
 }
+var auction_house := "autobidz"
 
 
 func _screen_pc() -> void:
@@ -390,6 +395,8 @@ func _screen_pc() -> void:
 	var addr_wrap := UI.panel(Color(0.93, 0.94, 0.96), Color.TRANSPARENT, 6)
 	var addr := LineEdit.new()
 	addr.text = PC_URLS[pc_tab]
+	if pc_tab == "auction":
+		addr.text = "https://www." + Game.auction(auction_house).url
 	addr.editable = false
 	addr.add_theme_font_size_override("font_size", 14)
 	addr_wrap.add_child(addr)
@@ -408,6 +415,7 @@ func _screen_pc() -> void:
 		"ads": _tab_ads(inner)
 		"staff": _tab_staff(inner)
 		"bank": _tab_bank(inner)
+		"reviews": _tab_reviews(inner)
 
 
 const INK := Color(0.12, 0.12, 0.16)
@@ -428,14 +436,77 @@ func _site_head(inner: Control, name: String, col: Color, sub: String) -> void:
 
 
 func _tab_auction(inner: Control) -> void:
-	_site_head(inner, "AutoBidz", Color("c0392b"), "Orange County Dealer Auction · %s · Lot space %d/%d" % [Game.date_str(), Game.cars.size(), Game.lot_capacity()])
+	var house := Game.auction(auction_house)
+	# auction-house switcher
+	var bar := UI.hbox(6)
+	for a in Game.AUCTIONS:
+		var on: bool = a.id == auction_house
+		var member: bool = a.id in Game.memberships
+		var b := UI.button(a.name + ("" if member else "  (locked)"), func():
+			auction_house = a.id
+			show_screen("pc"), 0, 30)
+		b.add_theme_font_size_override("font_size", 13)
+		var c := Color(a.color)
+		b.add_theme_stylebox_override("normal", UI.box(c if on else Color(0.85, 0.86, 0.9), Color.TRANSPARENT, 4, 0, 10))
+		b.add_theme_stylebox_override("hover", UI.box(c.lightened(0.15), Color.TRANSPARENT, 4, 0, 10))
+		b.add_theme_color_override("font_color", Color.WHITE if on else INK)
+		bar.add_child(b)
+	inner.add_child(bar)
+	_site_head(inner, house.name, Color(house.color), "%s · %s · Lot space %d/%d" % [house.desc, Game.date_str(), Game.cars.size(), Game.lot_capacity()])
+	if not auction_house in Game.memberships:
+		inner.add_child(_auction_join_card(house))
+		return
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	inner.add_child(UI.scroll(grid))
 	for l in Game.listings:
-		grid.add_child(_listing_card(l))
+		if l.get("house", "autobidz") == auction_house:
+			grid.add_child(_listing_card(l))
+	if grid.get_child_count() == 0:
+		inner.add_child(UI.label("New lanes open tomorrow morning.", 15, GREY))
+
+
+func _auction_join_card(a: Dictionary) -> Control:
+	var box := _web_box()
+	var v := UI.vbox(8)
+	box.add_child(v)
+	v.add_child(UI.label("Members only", 22, Color(a.color), true))
+	var perks := {
+		"salvage": "Wrecks and floods from 10 to 20 cents on the dollar. Expect extra faults, so a strong mechanic pays for himself.",
+		"dealer": "Dealer-only lanes with clean history reports, fewer faults and fewer rival bidders. Buy-now prices around 75% of value.",
+		"exotic": "Porsches, Ferraris and McLarens from Coast Highway collectors. Big money in, bigger money out.",
+	}
+	v.add_child(UI.label(perks.get(a.id, a.desc), 15, INK))
+	var ok_lvl: bool = Game.level >= a.level
+	var ok_rep: bool = Game.reputation >= a.rep
+	v.add_child(UI.label("%s  Dealer level %d (you are %d)" % ["✓" if ok_lvl else "✗", a.level, Game.level], 15, Color("1e7e34") if ok_lvl else Color("c0392b")))
+	if a.rep > 0:
+		v.add_child(UI.label("%s  Yolp rating %.1f★ (you have %.1f★)" % ["✓" if ok_rep else "✗", a.rep, Game.reputation], 15, Color("1e7e34") if ok_rep else Color("c0392b")))
+	v.add_child(UI.label("Membership fee: %s, one time" % Game.money_str(a.fee), 15, INK, true))
+	var join := UI.gold_button("Join " + a.name, func():
+		if not Game.auction_unlocked(a):
+			toast("They won't take you yet.")
+			return
+		if Game.money < a.fee:
+			toast("Not enough money.")
+			return
+		Game.spend(a.fee, "other")
+		Game.memberships.append(a.id)
+		var used := []
+		for l in Game.listings:
+			used.append(l)
+		Game.generate_listings()
+		# keep the lanes you already had today; add only the new house
+		var fresh := Game.listings.filter(func(l): return l.get("house", "autobidz") == a.id)
+		Game.listings = used + fresh
+		Game.save_game()
+		toast("Welcome to %s." % a.name)
+		show_screen("pc"))
+	join.disabled = not Game.auction_unlocked(a)
+	v.add_child(join)
+	return box
 
 
 func _listing_card(l: Dictionary) -> Control:
@@ -799,11 +870,7 @@ func _tab_ads(inner: Control) -> void:
 func _staff_art(s: Dictionary, sz := Vector2(56, 64)) -> PersonArt:
 	var p := PersonArt.new()
 	p.custom_minimum_size = sz
-	match s.get("look", "random"):
-		"amna": p.look = PersonArt.AMNA
-		"maruchan": p.look = PersonArt.MARUCHAN
-		"jeff": p.look = PersonArt.JEFF
-		_: p.look = PersonArt.random_look(int(s.get("seed", 1)))
+	p.pid = Game.staff_pid(s)
 	p.mood = 0.6
 	return p
 
@@ -813,34 +880,193 @@ func _stars(n: int) -> String:
 
 
 func _tab_staff(inner: Control) -> void:
-	_site_head(inner, "StaffHire", Color("16a085"), "Salespeople take care of walk-ins when you're busy. Salaries are monthly.")
-	var list := UI.vbox(6)
-	inner.add_child(UI.scroll(list))
-	list.add_child(UI.label("Your team", 17, Color("16a085"), true))
-	for s in Game.staff:
-		var btn: Button
-		if s.fixed:
-			btn = _small_btn("Marco says no", func(): pass)
-			btn.disabled = true
-		else:
-			btn = _small_btn("Let go", func():
-				Game.staff.erase(s)
-				Game.save_game()
-				toast("%s has left the dealership." % s.name)
-				show_screen("pc"))
-		_shop_row(list, "%s  %s" % [s.name, _stars(s.stars)], "%s · %s/month · closes about %d%% of customers" % [s.trait, Game.money_str(s.salary), int(Game.staff_close_chance(s) * 100)], btn, _staff_art(s))
-	list.add_child(UI.label("Applicants this week", 17, Color("16a085"), true))
+	_site_head(inner, "StaffHire", Color("16a085"), "Salespeople take walk-ins when you're busy. Better people cost more. Salaries are monthly.")
+	var col := UI.vbox(8)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inner.add_child(UI.scroll(col))
+	col.add_child(UI.label("Applicants this week", 17, Color("16a085"), true))
+	var g2 := _card_grid()
+	col.add_child(g2)
 	for c in Game.candidates:
-		var btn := _small_btn("Hire", func():
+		g2.add_child(_staff_card(c, true))
+	if Game.candidates.is_empty():
+		col.add_child(UI.label("No new applicants until Monday.", 14, GREY))
+	col.add_child(UI.label("Your team  (%d/5)" % Game.staff.size(), 17, Color("16a085"), true))
+	var g1 := _card_grid()
+	col.add_child(g1)
+	for s in Game.staff:
+		g1.add_child(_staff_card(s, false))
+	if Game.level < 3 and Game.reputation < 3.8:
+		col.add_child(UI.label("Top-tier closers only apply to dealerships at level 3 or with a 3.8★ Yolp rating.", 13, GREY))
+
+
+func _card_grid() -> GridContainer:
+	var g := GridContainer.new()
+	g.columns = 4
+	g.add_theme_constant_override("h_separation", 8)
+	g.add_theme_constant_override("v_separation", 8)
+	g.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return g
+
+
+const SKILL_COLORS := {"closing": Color("c0392b"), "rapport": Color("e67e22"), "finance": Color("1f6fb2"), "upsell": Color("8e44ad")}
+
+
+func _staff_card(s: Dictionary, applicant: bool) -> Control:
+	var box := _web_box()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := UI.vbox(3)
+	box.add_child(v)
+	var top := UI.hbox(6)
+	var art := PersonArt.new()
+	art.custom_minimum_size = Vector2(64, 76)
+	art.pid = Game.staff_pid(s)
+	art.mood = 0.6
+	top.add_child(art)
+	var tv := UI.vbox(0)
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tv.add_child(UI.label(s.name, 17, INK, true))
+	tv.add_child(UI.label(_stars(s.stars), 15, Color("d4a017")))
+	tv.add_child(UI.label(s.trait, 12, GREY))
+	top.add_child(tv)
+	v.add_child(top)
+	for k in Game.SKILLS:
+		var row := UI.hbox(4)
+		var nm := UI.label(Game.SKILL_NAMES[k], 11, GREY)
+		nm.custom_minimum_size.x = 74
+		row.add_child(nm)
+		var bar := ProgressBar.new()
+		bar.max_value = 100
+		bar.value = Game.skill(s, k)
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(0, 8)
+		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.add_theme_stylebox_override("background", UI.box(Color(0.88, 0.89, 0.92), Color.TRANSPARENT, 3, 0, 0))
+		bar.add_theme_stylebox_override("fill", UI.box(SKILL_COLORS[k], Color.TRANSPARENT, 3, 0, 0))
+		row.add_child(bar)
+		row.add_child(UI.label(str(Game.skill(s, k)), 11, INK))
+		v.add_child(row)
+	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, INK))
+	v.add_child(UI.label("%s / month" % Game.money_str(s.salary), 15, Color("1e7e34"), true))
+	if applicant:
+		v.add_child(UI.label("Signing fee %s" % Game.money_str(s.get("hire_fee", 0)), 12, GREY))
+		v.add_child(_small_btn("Hire", func():
 			if Game.staff.size() >= 5:
 				toast("Your sales floor is full (5 people).")
 				return
-			Game.staff.append(c)
-			Game.candidates.erase(c)
+			var fee: int = s.get("hire_fee", 0)
+			if Game.money < fee:
+				toast("You can't cover the signing fee.")
+				return
+			Game.spend(fee, "payroll")
+			Game.staff.append(s)
+			Game.candidates.erase(s)
 			Game.save_game()
-			toast("%s joins the team. First salary on the 1st." % c.name)
-			show_screen("pc"), true)
-		_shop_row(list, "%s  %s" % [c.name, _stars(c.stars)], "%s · asks %s/month · closes about %d%% of customers" % [c.trait, Game.money_str(c.salary), int(Game.staff_close_chance(c) * 100)], btn, _staff_art(c))
+			toast("%s joins the team. First salary on the 1st." % s.name)
+			show_screen("pc"), true))
+	elif s.fixed:
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		var b := _small_btn("Marco says no", func(): pass)
+		b.disabled = true
+		v.add_child(b)
+	else:
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		v.add_child(_small_btn("Let go", func():
+			Game.staff.erase(s)
+			Game.save_game()
+			toast("%s has left the dealership." % s.name)
+			show_screen("pc")))
+	return box
+
+
+# ---------- Yolp ----------
+
+func _tab_reviews(inner: Control) -> void:
+	var red := Color("d32323")
+	_site_head(inner, "Yolp", red, "OC Chief Auto · Used Car Dealer · Tewport Beach")
+	var cols := UI.hbox(12)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inner.add_child(cols)
+	var side := _web_box()
+	side.custom_minimum_size.x = 230
+	cols.add_child(side)
+	var sv := UI.vbox(4)
+	side.add_child(sv)
+	var avg := Game.reputation
+	sv.add_child(UI.label("%.1f" % avg, 44, INK, true))
+	sv.add_child(UI.label(_stars(int(round(avg))), 22, red))
+	sv.add_child(UI.label("%d reviews" % Game.reviews.size(), 14, GREY))
+	var counts := [0, 0, 0, 0, 0]
+	for r in Game.reviews:
+		counts[r.stars - 1] += 1
+	for st in [5, 4, 3, 2, 1]:
+		var row := UI.hbox(4)
+		row.add_child(UI.label("%d★" % st, 12, GREY))
+		var bar := ProgressBar.new()
+		bar.max_value = max(1, Game.reviews.size())
+		bar.value = counts[st - 1]
+		bar.show_percentage = false
+		bar.custom_minimum_size = Vector2(150, 9)
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.9, 0.92), Color.TRANSPARENT, 3, 0, 0))
+		bar.add_theme_stylebox_override("fill", UI.box(red, Color.TRANSPARENT, 3, 0, 0))
+		row.add_child(bar)
+		row.add_child(UI.label(str(counts[st - 1]), 12, GREY))
+		sv.add_child(row)
+	sv.add_child(UI.rule(Color(0.85, 0.85, 0.88)))
+	var help := UI.label("Your rating sets how many people walk in, how patient they are, and which auctions will have you. 5★ customers send friends the next day.", 12, GREY)
+	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	help.custom_minimum_size.x = 220
+	sv.add_child(help)
+	if Game.referrals > 0:
+		sv.add_child(UI.label("%d referral(s) coming in tomorrow" % Game.referrals, 13, Color("1e7e34"), true))
+	var list := UI.vbox(8)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(UI.scroll(list))
+	var shown := Game.reviews.duplicate()
+	shown.reverse()
+	for r in shown.slice(0, 40):
+		list.add_child(_review_card(r, red))
+
+
+func _review_card(r: Dictionary, red: Color) -> Control:
+	var box := _web_box()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var h := UI.hbox(10)
+	box.add_child(h)
+	var face := PersonArt.new()
+	face.custom_minimum_size = Vector2(52, 52)
+	face.pid = r.get("pid", "p00")
+	face.mood = (r.stars - 3) * 0.5
+	h.add_child(face)
+	var v := UI.vbox(2)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	var top := UI.hbox(8)
+	top.add_child(UI.label(r.name, 15, INK, true))
+	top.add_child(UI.label(_stars(r.stars), 15, red))
+	top.add_child(UI.spacer())
+	top.add_child(UI.label("Day %d" % r.day if r.day > 0 else "Before you took over", 12, GREY))
+	v.add_child(top)
+	var t := UI.label(r.text, 14, INK)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(t)
+	if r.get("fixed", false):
+		v.add_child(UI.label("Updated: the owner reached out and made it right.", 12, Color("1e7e34")))
+	elif r.stars <= 2 and r.day > 0:
+		v.add_child(_small_btn("Make it right ($250 gift card)", func():
+			if Game.money < 250:
+				toast("Not enough money.")
+				return
+			Game.spend(250, "other")
+			r.stars = min(5, r.stars + 2)
+			r.fixed = true
+			Game._recompute_rep()
+			Game.save_game()
+			toast("%s bumped their review to %d★." % [r.name, r.stars])
+			show_screen("pc")))
+	return box
 
 
 func _tab_bank(inner: Control) -> void:
@@ -1019,6 +1245,9 @@ func _screen_showroom() -> void:
 	_build_lobby(stage)
 
 
+const CLASS_WORDS := {"economy": "a commuter", "suv": "an SUV", "truck": "a truck", "sport": "something sporty", "exotic": "an exotic"}
+
+
 func _build_lobby(stage: SceneArt) -> void:
 	for ch in stage.get_children():
 		ch.queue_free()
@@ -1043,9 +1272,10 @@ func _build_lobby(stage: SceneArt) -> void:
 		btn.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
 		btn.pressed.connect(_open_customer.bind(c))
 		stage.add_child(btn)
+		stage.move_child(btn, 0)  # customers stand behind the display cars
 		var p := PersonArt.new()
 		p.full_body = true
-		p.look = PersonArt.random_look(c.look_seed)
+		p.pid = Game.customer_pid(c)
 		p.mood = c.happiness * 2.0 - 1.0
 		p.set_anchors_preset(Control.PRESET_FULL_RECT)
 		btn.add_child(p)
@@ -1054,7 +1284,31 @@ func _build_lobby(stage: SceneArt) -> void:
 		name_tag.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 		name_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		btn.add_child(name_tag)
-		people.append([btn, name_tag])
+		# speech bubble: who they are and what they want
+		var bubble := UI.panel(Color(0.97, 0.97, 0.95, 0.95), Color.TRANSPARENT, 6)
+		bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bv := UI.vbox(0)
+		bubble.add_child(bv)
+		var badge: String = Game.BUYER_TYPES[c.type].title
+		if c.get("referral", false):
+			badge = "★ Referral · " + badge
+		var badge_col: Color = {"influencer": Color("8e44ad"), "whale": Color("b8860b"), "lowballer": Color("c0392b")}.get(c.type, Color("1f6fb2"))
+		bv.add_child(UI.label(badge, 12, badge_col, true))
+		bv.add_child(UI.label("Wants: %s · %s" % [CLASS_WORDS.get(c.wants_cls, c.wants_cls), "cash" if not c.finance else "financing"], 11, Color(0.15, 0.15, 0.2)))
+		btn.add_child(bubble)
+		# patience drains while they wait
+		var waited: float = max(0.0, Game.clock - c.arrived)
+		var limit := 240.0 if Game.has_upgrade("lounge") else 120.0
+		var pat := ProgressBar.new()
+		pat.show_percentage = false
+		pat.max_value = 1.0
+		pat.value = clamp(1.0 - waited / limit, 0.0, 1.0)
+		var pcol := UI.GOOD if pat.value > 0.5 else (UI.GOLD if pat.value > 0.25 else UI.BAD)
+		pat.add_theme_stylebox_override("background", UI.box(Color(0, 0, 0, 0.6), Color.TRANSPARENT, 3, 0, 0))
+		pat.add_theme_stylebox_override("fill", UI.box(pcol, Color.TRANSPARENT, 3, 0, 0))
+		pat.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		btn.add_child(pat)
+		people.append([btn, name_tag, bubble, pat, c])
 	var info := UI.panel(Color(0.03, 0.05, 0.1, 0.85), UI.GOLD_DIM, 12)
 	stage.add_child(info)
 	var iv := UI.vbox(4)
@@ -1067,6 +1321,25 @@ func _build_lobby(stage: SceneArt) -> void:
 	elif Game.cars.size() > 4:
 		iv.add_child(UI.label("+%d more cars outside on the lot" % (Game.cars.size() - 4), 14, UI.MUTED))
 	iv.add_child(UI.label("Tap a price tag to change a sticker price.", 13, UI.MUTED))
+	iv.add_child(UI.rule(UI.GOLD_DIM))
+	iv.add_child(UI.label("ON THE FLOOR", 13, UI.GOLD, true))
+	for st in Game.staff:
+		var row := UI.hbox(6)
+		var face := PersonArt.new()
+		face.custom_minimum_size = Vector2(30, 30)
+		face.pid = Game.staff_pid(st)
+		face.mood = 0.5
+		row.add_child(face)
+		row.add_child(UI.label("%s %s" % [st.name, _stars(st.stars)], 13))
+		row.add_child(UI.spacer())
+		var free: bool = st.get("busy_until", 0.0) <= Game.clock or st.get("busy_day", 0) != Game.day
+		row.add_child(UI.label("Free" if free else "With a customer", 12, UI.GOOD if free else UI.MUTED))
+		iv.add_child(row)
+	var rv := UI.hbox(6)
+	rv.add_child(UI.label("Yolp %.1f★" % Game.reputation, 13, UI.GOLD))
+	if Game.pending_referrals > 0:
+		rv.add_child(UI.label("· %d referral(s) still coming" % Game.pending_referrals, 12, UI.GOOD))
+	iv.add_child(rv)
 	var place := func():
 		stage._compute()
 		var w := stage.size.x
@@ -1085,10 +1358,26 @@ func _build_lobby(stage: SceneArt) -> void:
 		for i in people.size():
 			var pr: Array = people[i]
 			var ph: float = h * 0.5
-			pr[0].size = Vector2(ph * 0.42, ph)
-			pr[0].position = Vector2(w * (0.14 + i * 0.2), h * 0.68 - ph)
+			var pw: float = ph * 0.42
+			pr[0].size = Vector2(pw, ph)
+			var target := Vector2(w * (0.14 + i * 0.2), h * 0.68 - ph)
+			var cust: Dictionary = pr[4]
+			if not cust.get("entered", false):
+				# new arrivals walk in from the front door on the right
+				cust.entered = true
+				pr[0].position = Vector2(w * 0.92, target.y)
+				pr[0].modulate.a = 0.0
+				var tw: Tween = pr[0].create_tween().set_parallel()
+				tw.tween_property(pr[0], "position", target, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+				tw.tween_property(pr[0], "modulate:a", 1.0, 0.5)
+			else:
+				pr[0].position = target
 			pr[1].position = Vector2(-40, -22)
-			pr[1].size = Vector2(ph * 0.42 + 80, 20)
+			pr[1].size = Vector2(pw + 80, 20)
+			pr[2].position = Vector2(-30, -66)
+			pr[2].size = Vector2(pw + 60, 0)
+			pr[3].position = Vector2(pw * 0.1, 0)
+			pr[3].size = Vector2(pw * 0.8, 7)
 		info.position = Vector2(w - 360, 12)
 		info.size = Vector2(348, 0)
 	stage.resized.connect(place)
@@ -1154,8 +1443,9 @@ func _tick_walkins() -> void:
 		elif waited > patience:
 			lobby.erase(c)
 			Game.stats.walked += 1
-			Game.change_rep(-0.05)
-			toast("%s got tired of waiting and left." % c.name)
+			Game.month_walked += 1
+			Game.add_review(c, 2 if randf() < 0.5 else 1, "", "", ["Stood in the showroom forever. Nobody helped me. Left.", "Waited %d minutes and not one salesperson said hi." % int(waited)].pick_random())
+			toast("%s got tired of waiting, left, and posted a bad Yolp review." % c.name)
 			if lobby_stage:
 				_build_lobby(lobby_stage)
 
@@ -1200,14 +1490,22 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 	var car := _pick_car_for(c)
 	if car.is_empty():
 		toast("%s talked to %s, but nothing on the lot fit their budget." % [s.name, c.name])
-	elif randf() < Game.staff_close_chance(s):
-		var price: int = min(car.get("sticker", 0), _max_price(c, car, 50)) * randf_range(0.92, 1.0)
+	elif randf() < _handoff_chance(c, s):
+		# closing skill sets the price they get, finance skill the dealer reserve, upselling the warranty
+		var factor: float = 0.86 + Game.skill(s, "closing") / 700.0
+		var price: int = min(car.get("sticker", 0), _max_price(c, car, 50)) * min(1.0, factor * randf_range(0.97, 1.03))
 		price = int(round(price / 100.0)) * 100
-		var happy := 0.6
+		var income := {"sales": price}
+		if c.finance:
+			income.finance = int(price * 0.004 * (Game.skill(s, "finance") / 20.0))
+		if randf() < Game.skill(s, "upsell") / 180.0:
+			income.addons = 1200
+		var happy: float = clamp(0.3 + Game.skill(s, "rapport") / 180.0 + randf_range(-0.1, 0.1), 0.0, 1.0)
 		if s.trait == "Stretches the truth" and randf() < 0.4:
 			happy = 0.2
 			Game.add_liability(c.name, "promises %s made about the %s" % [s.name, car.model], 0.35, 4000)
-		_complete_sale(car, {"sales": price}, happy, s.name, {"customer": c.name})
+		Game.staff_practice(s)
+		_complete_sale(car, income, happy, s.name, {"customer": c.name, "cust": c})
 		return
 	else:
 		var lines := {
@@ -1215,11 +1513,24 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 			"Maruchan": "Maruchan got %s's Instagram but not a sale." % c.name,
 		}
 		toast(lines.get(s.name, "%s couldn't close %s today." % [s.name, c.name]))
+		if Game.skill(s, "rapport") < 40 and randf() < 0.5:
+			Game.add_review(c, 2, "", s.name, "%s was pushy and clueless. Didn't buy." % s.name)
 	if lobby_stage:
 		_build_lobby(lobby_stage)
 
 
 # ---------- customer menu: pitch, negotiate price, negotiate finance ----------
+
+## Close chance when you hand a walk-in to someone: their closing skill, plus rapport for picky buyers.
+func _handoff_chance(c: Dictionary, s: Dictionary) -> float:
+	var p := Game.staff_close_chance(s)
+	p += (Game.skill(s, "rapport") - 50) / 500.0 * (1.0 - Game.BUYER_TYPES[c.type].tolerance + 0.5)
+	if c.type == "lowballer":
+		p -= 0.1
+	if c.type == "whale" or c.get("referral", false):
+		p += 0.08
+	return clamp(p, 0.03, 0.95)
+
 
 func _open_customer(c: Dictionary) -> void:
 	customer = c
@@ -1360,7 +1671,7 @@ func _render_customer() -> void:
 	lv.add_child(UI.rule(UI.GOLD))
 	var who := UI.hbox(10)
 	var face := PersonArt.new()
-	face.look = PersonArt.random_look(c.look_seed)
+	face.pid = Game.customer_pid(c)
 	face.mood = c.happiness * 2.0 - 1.0
 	face.custom_minimum_size = Vector2(96, 110)
 	who.add_child(face)
@@ -1472,7 +1783,7 @@ func _actions_browse(r: Control) -> void:
 	row.add_child(talk)
 	for s in Game.staff:
 		var free: bool = s.get("busy_until", 0.0) <= Game.clock or s.get("busy_day", 0) != Game.day
-		var b := UI.button("Hand to %s" % s.name, func():
+		var b := UI.button("Hand to %s · %d%%" % [s.name, int(_handoff_chance(c, s) * 100)], func():
 			_close_overlay()
 			customer = {}
 			_staff_handles(c, s), 0, 44)
@@ -1655,8 +1966,8 @@ func _check_walkout() -> bool:
 
 func _storm_out(line: String) -> void:
 	customer.happiness = 0.0
-	Game.change_rep(-0.15)
-	_customer_leaves(line + "  (Bad review posted: -0.15 reputation)")
+	Game.add_review(customer, 1)
+	_customer_leaves(line + "  (1★ review posted on Yolp)")
 
 
 func _price_agreed(price: int, squeeze: float) -> void:
@@ -1789,7 +2100,7 @@ func _customer_leaves(line: String) -> void:
 		Game.stats.walked += 1
 		Game.month_walked += 1
 		if c.happiness < 0.25:
-			Game.change_rep(-0.05)
+			Game.add_review(c, 2)
 	c.stage = "done"
 	sale = {}
 	_render_customer()
@@ -2114,8 +2425,6 @@ func _finish_paperwork() -> void:
 		"apr":
 			Game.add_liability(c.name, "a contract APR that didn't match the deal", 0.5, 9000)
 			notes.append("The contract showed a higher APR than we quoted. Truth-in-lending violation.")
-	if s.error != "":
-		Game.change_rep(-0.1)
 	if car.history != "Clean" and not ("history" in c.get("used", [])):
 		Game.add_liability(c.name, "an undisclosed %s history" % car.history.to_lower(), 0.3, 6000)
 		notes.append("You never told them about the %s history. That can come back on us." % car.history.to_lower())
@@ -2126,7 +2435,7 @@ func _finish_paperwork() -> void:
 	customer = {}
 	_close_overlay()
 	_complete_sale(car, {"sales": s.price, "finance": c.get("reserve", 0), "addons": addon_total, "other": costs},
-		c.happiness, "you", {"customer": c.name, "reserve": c.get("reserve", 0), "notes": notes})
+		c.happiness, "you", {"customer": c.name, "cust": c, "reserve": c.get("reserve", 0), "notes": notes})
 
 
 # =====================================================================
@@ -2150,18 +2459,14 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.stats.goal_sold_today += 1
 	Game.stats.profit += profit
 	Game.stats.days_held += Game.day - car.day_bought
-	var rep := 0.0
-	if happiness >= 0.85: rep = 0.12
-	elif happiness >= 0.65: rep = 0.07
-	elif happiness >= 0.45: rep = 0.02
-	elif happiness >= 0.25: rep = -0.05
-	else: rep = -0.12
-	Game.change_rep(rep)
+	var stars := Game.stars_from_happiness(happiness)
+	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
+	info.review = stars
 	Game.remove_car(car)
 	var leveled := Game.add_xp(max(10, int(profit / 50)) + 10)
 	Game.save_game()
 	if seller != "you":
-		toast("%s sold the %s to %s for %s. Profit %s." % [seller, car.model, info.get("customer", "a customer"), Game.money_str(price), Game.money_str(profit)])
+		toast("%s sold the %s to %s for %s. Profit %s. %d★ review." % [seller, car.model, info.get("customer", "a customer"), Game.money_str(price), Game.money_str(profit), info.review])
 		if leveled:
 			play_dialogue([["Marco", "CEO & Financial Advisor", "You hit Level %d. %s" % [Game.level, _unlock_text()]]], _back_to_current)
 		elif current == "showroom" and lobby_stage:
@@ -2171,6 +2476,9 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	if info.get("reserve", 0) > 0:
 		summary += " Finance profit %s." % Game.money_str(info.reserve)
 	summary += " Total profit: %s. They left %s." % [Game.money_str(profit), _mood_word(happiness).to_lower()]
+	summary += " They gave us %d★ on Yolp." % info.review
+	if info.review == 5:
+		summary += " And they're sending a friend tomorrow."
 	var reaction := "Not bad. Keep that margin up."
 	if profit > 5000 and happiness >= 0.5:
 		reaction = "Big margin AND a happy customer. That's how we do it at Chief Auto."
@@ -2307,7 +2615,7 @@ func _show_next_line() -> void:
 		h.add_child(ph)
 	else:
 		var face := PersonArt.new()
-		face.look = {"Amna": PersonArt.AMNA, "Jeff": PersonArt.JEFF}.get(line[0], PersonArt.MARCO)
+		face.pid = line[0].to_lower() if line[0] in ["Amna", "Jeff"] else "marco"
 		face.mood = 0.5
 		face.custom_minimum_size = Vector2(112, 128)
 		h.add_child(face)
@@ -2352,8 +2660,10 @@ func _close_for_night() -> void:
 	var notes := []
 	# customers still in the showroom go home
 	if not lobby.is_empty():
-		notes.append("%d customer%s still waiting when we locked up. -%.2f reputation." % [lobby.size(), "" if lobby.size() == 1 else "s", 0.03 * lobby.size()])
-		Game.change_rep(-0.03 * lobby.size())
+		notes.append("%d customer%s still waiting when we locked up. Some of them went straight to Yolp." % [lobby.size(), "" if lobby.size() == 1 else "s"])
+		for c in lobby:
+			if randf() < 0.5:
+				Game.add_review(c, 2, "", "", "Showed up before closing and they just locked the doors on me.")
 		Game.month_walked += lobby.size()
 		lobby.clear()
 	_close_overlay()

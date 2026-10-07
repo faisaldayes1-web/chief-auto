@@ -8,11 +8,37 @@ const HAIRS := ["1b1b1b", "4a2c17", "8b5a2b", "d6b370", "a33a1f", "6e6e6e"]
 const SHIRTS := ["2d5d9f", "b03a2e", "3c7d4f", "e0e0e0", "6c3483", "d68910", "1f2a44", "17a589"]
 
 var look := {}
+## When set, draws the rendered illustration res://assets/people/<pid>_body.png / _face_<mood>.png instead.
+var pid := "":
+	set(v):
+		pid = v
+		_load()
 var mood := 0.0:
 	set(v):
 		mood = clamp(v, -1.0, 1.0)
-		queue_redraw()
-var full_body := false
+		_load()
+var full_body := false:
+	set(v):
+		full_body = v
+		_load()
+var _tex: Texture2D
+const POOL := 40
+
+
+static func pool_pid(n: int) -> String:
+	return "p%02d" % (abs(n) % POOL)
+
+
+func _load() -> void:
+	_tex = null
+	if pid != "":
+		var path := "res://assets/people/%s_body.png" % pid
+		if not full_body:
+			var m := "happy" if mood > 0.3 else ("angry" if mood < -0.3 else "neutral")
+			path = "res://assets/people/%s_face_%s.png" % [pid, m]
+		if ResourceLoader.exists(path):
+			_tex = load(path)
+	queue_redraw()
 var highlight := false:
 	set(v):
 		highlight = v
@@ -44,6 +70,14 @@ func _ready() -> void:
 
 
 func _draw() -> void:
+	if _tex:
+		var ts := _tex.get_size()
+		var sc: float = min(size.x / ts.x, size.y / ts.y)
+		var sz := ts * sc
+		if highlight:
+			draw_circle(Vector2(size.x / 2, size.y - sz.y * 0.75), sz.x * 0.45, Color(1, 0.85, 0.3, 0.18))
+		draw_texture_rect(_tex, Rect2(Vector2((size.x - sz.x) / 2.0, size.y - sz.y), sz), false)
+		return
 	if look.is_empty():
 		return
 	# Drawn in a 100 x 130 box (bust) or 100 x 240 box (full body).

@@ -39,6 +39,8 @@ const PAINTS := ["c0392b", "1f4e9c", "f2f2f2", "1b1b1f", "8e9aa6", "d4a017", "2e
 var car: Dictionary = {}
 var shine := true
 var _tex: Texture2D
+var _paint: Texture2D
+var _detail: Texture2D
 
 
 static func paint_for(c: Dictionary) -> Color:
@@ -53,8 +55,14 @@ static func slug(model: String) -> String:
 
 func set_car(c: Dictionary) -> void:
 	car = c
-	var path := "res://assets/cars/%s.png" % slug(c.get("model", ""))
+	var sl := slug(c.get("model", ""))
+	var path := "res://assets/cars/%s.png" % sl
 	_tex = load(path) if ResourceLoader.exists(path) else null
+	# rendered side views: a grey paint layer we tint, plus glass, wheels and trim on top
+	var pp := "res://assets/cars/%s_paint.png" % sl
+	_paint = load(pp) if ResourceLoader.exists(pp) else null
+	var dp := "res://assets/cars/%s_detail.png" % sl
+	_detail = load(dp) if ResourceLoader.exists(dp) else null
 	queue_redraw()
 
 
@@ -74,9 +82,33 @@ func _draw() -> void:
 		return
 	var s: float = min(size.x / W, size.y / H)
 	var off := (size - Vector2(W, H) * s) / 2.0
+	if _paint and _detail:
+		var rect := Rect2(off, Vector2(W, H) * s)
+		var col := paint_for(car)
+		# the grey layer peaks around 0.85, so lift the paint a little to keep colours true
+		draw_texture_rect(_paint, rect, false, Color(min(col.r * 1.12, 1.0), min(col.g * 1.12, 1.0), min(col.b * 1.12, 1.0)))
+		draw_set_transform(off, 0.0, Vector2(s, s))
+		_draw_wear()
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		draw_texture_rect(_detail, rect, false)
+		return
 	draw_set_transform(off, 0.0, Vector2(s, s))
 	draw_car(self, car, shine)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Rust and scuffs on top of a rendered car when the body is in bad shape.
+func _draw_wear() -> void:
+	var parts: Dictionary = car.get("parts", {})
+	var body_score: int = parts.get("body", 80)
+	if body_score >= 55:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(car.get("id", 1)) * 7919
+	for i in int((55 - body_score) / 6) + 2:
+		var p := Vector2(rng.randf_range(30, 170), rng.randf_range(52, 62))
+		draw_circle(p, rng.randf_range(1.2, 3.0), Color(0.42, 0.24, 0.1, 0.8))
+		draw_circle(p + Vector2(1, 1), rng.randf_range(0.6, 1.4), Color(0.25, 0.13, 0.05, 0.8))
 
 
 ## Draws a car in a 200 x 80 box on any CanvasItem (also used for the model car on the desk).

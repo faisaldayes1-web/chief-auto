@@ -53,7 +53,41 @@ const BUYER_TYPES := {
 		"intro": "I'll need to hear the cold start. And I brought a code reader."},
 	"parent": {"title": "Safety Parent", "budget": 1.0, "likes": ["history", "test_drive"], "tolerance": 1.0,
 		"intro": "Three kids, one dog. Is it safe?"},
+	"influencer": {"title": "Influencer", "budget": 1.15, "likes": ["features", "extras"], "tolerance": 0.8,
+		"intro": "Is it cool if I film this? I have 80k followers. My review goes out to all of them."},
+	"lowballer": {"title": "Lowballer", "budget": 0.85, "likes": ["discount"], "tolerance": 0.55,
+		"intro": "I'll give you half. Cash. Today. Final offer. Probably."},
+	"whale": {"title": "Cash Whale", "budget": 1.5, "likes": ["features", "test_drive"], "tolerance": 1.5,
+		"intro": "I sold my startup last week. Show me something fast."},
 }
+const REVIEW_NAMES := ["Brad K.", "Kayla M.", "Devon R.", "Priya S.", "Chad W.", "Monica L.", "Luis G.", "Tiffany B.",
+	"Grant H.", "Mei C.", "Omar A.", "Jasmine T.", "Tyler P.", "Sofia V.", "Hassan N.", "Brooke D."]
+const REVIEW_TEXT := {
+	5: ["Bought a {car} and {seller} made it painless. Coffee was great too. 10/10.", "Best dealership in Tewport Beach. Fair price, no games.",
+		"{seller} actually listened to me. The {car} is perfect. Telling all my friends.", "Smooth deal, honest numbers, and I drove off smiling."],
+	4: ["Good experience overall. Got the {car} for a fair price.", "Friendly staff. Paperwork took a minute but no complaints.",
+		"Nice showroom, solid deal on my {car}."],
+	3: ["It was fine. The {car} is okay, the negotiating was a lot.", "Decent cars, a little pushy on the numbers.", "Meh. Not bad, not great."],
+	2: ["Felt squeezed on price. The {car} better be worth it.", "Waited way too long and the rate they offered was rough.",
+		"They tried to upsell me on everything."],
+	1: ["Absolute rip-off. Walked out. Avoid.", "The salesman called me 'bro' eleven times. Never again.",
+		"Worst negotiation of my life. Went to Costa Mesa instead.", "Do NOT buy here. Check your contract twice."],
+}
+
+# Auction houses you can join as the dealership grows.
+const AUCTIONS := [
+	{"id": "autobidz", "name": "AutoBidz Public", "level": 1, "rep": 0.0, "fee": 0, "color": "c0392b", "url": "autobidz.ca/live",
+		"desc": "Open public auction. Anything goes, lots of bidders."},
+	{"id": "salvage", "name": "SalvageKing", "level": 2, "rep": 0.0, "fee": 1500, "color": "7f8c8d", "url": "salvageking.ca/yard",
+		"desc": "Wrecks, floods and rough cars for pennies. Bring a good mechanic."},
+	{"id": "dealer", "name": "Mannheim Dealer Exchange", "level": 4, "rep": 3.2, "fee": 5000, "color": "1f6fb2", "url": "mannheim-dx.ca/lanes",
+		"desc": "Dealer-only lanes. Cleaner cars, honest reports, fewer bidders."},
+	{"id": "exotic", "name": "Tewport Exotic Collective", "level": 7, "rep": 3.8, "fee": 15000, "color": "b8860b", "url": "tewport-exotics.ca/vault",
+		"desc": "Invite-only supercars from Coast Highway collectors."},
+]
+
+const SKILLS := ["closing", "rapport", "finance", "upsell"]
+const SKILL_NAMES := {"closing": "Closing", "rapport": "Rapport", "finance": "Finance & F&I", "upsell": "Upselling"}
 const BUYER_NAMES := ["Brad", "Kayla", "Devon", "Priya", "Chad", "Monica", "Luis", "Tiffany", "Grant", "Mei",
 	"Omar", "Jasmine", "Tyler", "Sofia", "Hassan", "Brooke", "Andre", "Leila", "Cody", "Nadia"]
 
@@ -115,7 +149,8 @@ const ADS := [
 const MONTHLY_RENT := 6000
 
 const STAFF_NAMES := ["Marisol", "Derek", "Yusuf", "Brianna", "Kenji", "Tasha", "Rafael", "Caitlin", "Malik", "Hana"]
-const STAFF_TRAITS := ["Closer", "Smooth talker", "Upsells warranties", "Nervous", "Stretches the truth", "Great with families", "Car nerd"]
+const STAFF_NAMES2 := ["Sofia", "Andre", "Leila", "Cody", "Nadia", "Victor", "Imani", "Trevor", "Rosa", "Dmitri", "Kiara", "Hector", "Ava", "Jamal"]
+const STAFF_TRAITS := ["Closer", "Smooth talker", "Upsells warranties", "Nervous", "Stretches the truth", "Great with families", "Car nerd", "VIP Relations", "Finance whiz"]
 
 # ---------- state ----------
 
@@ -145,7 +180,12 @@ var month_walked := 0
 var month_sold := 0
 var liabilities: Array = []       # shady deals that can still turn into lawsuits
 var last_month_report := {}       # filled on the 1st, shown by the night report
+var reviews: Array = []          # Yolp reviews, newest last
+var referrals := 0                # happy customers send friends tomorrow
+var pending_referrals := 0        # today's walk-ins who were referred
+var memberships: Array = ["autobidz"]
 var debug_day := 0
+var debug_level := 0
 var debug := false                # ?debug in the web build: start with cars and a customer (testing)
 
 
@@ -162,6 +202,9 @@ func _ready() -> void:
 		var dd := query.find("day=")
 		if dd >= 0:
 			debug_day = int(query.substr(dd + 4))
+		var lv := query.find("level=")
+		if lv >= 0:
+			debug_level = int(query.substr(lv + 6))
 	if not load_game():
 		new_game()
 
@@ -189,10 +232,19 @@ func new_game() -> void:
 	upgrades = []
 	ads_active = []
 	staff = [
-		{"name": "Amna", "stars": 4, "salary": 5000, "trait": "Closer", "look": "amna", "fixed": false},
-		{"name": "Maruchan", "stars": 3, "salary": 3800, "trait": "VIP Relations", "look": "maruchan", "fixed": false},
-		{"name": "Jeff", "stars": 1, "salary": 2200, "trait": "Stretches the truth", "look": "jeff", "fixed": true},
+		make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"),
+		make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations"),
+		make_staff("Jeff", "jeff", {"closing": 22, "rapport": 46, "finance": 8, "upsell": 38}, "Stretches the truth"),
 	]
+	staff[2].fixed = true
+	memberships = ["autobidz"]
+	referrals = 0
+	reviews = []
+	for r in [[4, "Kayla M.", "Nice lot, friendly people. Got a fair deal."], [2, "Chad W.", "The blond salesman tried to sell me a minivan as a sports car."],
+			[3, "Monica L.", "Under new management? We'll see."], [3, "Omar A.", "Cars are okay. Prices are okay. It's okay."],
+			[4, "Mei C.", "Amna was great. Jeff was... there."], [2, "Grant H.", "Waited 40 minutes for anyone to talk to me."]]:
+		reviews.append({"stars": r[0], "name": r[1], "text": r[2], "day": 0, "pid": PersonArt.pool_pid(r[1].length() * 7), "weight": 1, "fixed": false})
+	_recompute_rep()
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
 	generate_candidates()
@@ -285,6 +337,73 @@ func day_phase() -> String:
 func change_rep(delta: float) -> void:
 	reputation = clamp(reputation + delta, 0.0, 5.0)
 	emit_signal("changed")
+
+
+# ---------- reviews (Yolp) ----------
+
+func review_avg() -> float:
+	var total := 0.0
+	var w := 0.0
+	for r in reviews.slice(max(0, reviews.size() - 30)):
+		total += r.stars * r.weight
+		w += r.weight
+	return 3.0 if w == 0 else total / w
+
+
+func _recompute_rep() -> void:
+	reputation = clamp(review_avg(), 0.0, 5.0)
+	emit_signal("changed")
+
+
+## Posts a review. stars 1-5; influencers count three times. Five-star reviews send a friend tomorrow.
+func add_review(customer: Dictionary, stars: int, car_model := "", seller := "", text := "") -> void:
+	stars = clamp(stars, 1, 5)
+	if text == "":
+		text = REVIEW_TEXT[stars].pick_random().replace("{car}", car_model if car_model != "" else "car").replace("{seller}", seller if seller != "" else "the staff")
+	var nm: String = customer.get("name", REVIEW_NAMES.pick_random())
+	if not nm.contains("."):
+		nm += " " + "ABCDEFGHJKLMNPRSTW"[randi() % 18] + "."
+	var infl: bool = customer.get("type", "") == "influencer"
+	if infl:
+		text = "[Influencer · 80k followers] " + text
+	reviews.append({"stars": stars, "name": nm, "text": text, "day": day, "pid": customer_pid(customer), "weight": 3 if infl else 1, "fixed": false})
+	if stars == 5:
+		referrals += 1
+	_recompute_rep()
+
+
+func stars_from_happiness(h: float) -> int:
+	if h >= 0.8: return 5
+	if h >= 0.6: return 4
+	if h >= 0.4: return 3
+	if h >= 0.2: return 2
+	return 1
+
+
+func customer_pid(c: Dictionary) -> String:
+	if c.has("pid"):
+		return c.pid
+	return PersonArt.pool_pid(int(c.get("look_seed", 0)))
+
+
+func staff_pid(s: Dictionary) -> String:
+	match s.get("look", "random"):
+		"amna", "jeff", "maruchan":
+			return s.look
+	return s.get("pid", PersonArt.pool_pid(int(s.get("seed", 1))))
+
+
+# ---------- auctions ----------
+
+func auction(id: String) -> Dictionary:
+	for a in AUCTIONS:
+		if a.id == id:
+			return a
+	return {}
+
+
+func auction_unlocked(a: Dictionary) -> bool:
+	return level >= a.level and reputation >= a.rep
 
 
 func has_upgrade(id: String) -> bool:
@@ -388,13 +507,18 @@ func walkins_today() -> int:
 
 func schedule_walkins() -> void:
 	walkin_schedule = []
-	for i in walkins_today():
+	for i in walkins_today() + referrals:
 		walkin_schedule.append(randi_range(9 * 60, 18 * 60))
 	walkin_schedule.sort()
+	pending_referrals = referrals
+	referrals = 0
 
 
 func make_customer() -> Dictionary:
-	var type_key: String = BUYER_TYPES.keys().pick_random()
+	var types := ["bargain", "local", "first", "nerd", "parent", "bargain", "local", "first", "nerd", "parent", "influencer", "lowballer", "lowballer"]
+	if reputation >= 3.5 or "billboard" in ads_active:
+		types += ["whale", "whale"]
+	var type_key: String = types.pick_random()
 	var rich := 0.0
 	if "radio" in ads_active:
 		rich += 0.1
@@ -410,40 +534,98 @@ func make_customer() -> Dictionary:
 		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1), "patience": 1.0,
 		"arrived": clock, "wants_cls": ["economy", "suv", "truck", "sport", "exotic"].pick_random(),
 	}
+	c.pid = PersonArt.pool_pid(randi())
+	if type_key == "whale":
+		c.finance = false
+		c.wants_cls = ["sport", "exotic", "suv"].pick_random()
+	if type_key == "influencer":
+		c.wants_cls = ["sport", "exotic"].pick_random()
+	if pending_referrals > 0:
+		pending_referrals -= 1
+		c.referral = true
+		c.happiness += 0.15
 	next_id += 1
 	return c
 
 
 # ---------- staff ----------
 
+## Builds a salesperson. Stars and salary follow their skills: better people cost a lot more.
+func make_staff(name: String, look: String, skills: Dictionary, trait_name: String) -> Dictionary:
+	var s := {"name": name, "look": look, "skills": skills, "trait": trait_name, "fixed": false, "sales": 0}
+	if look == "random":
+		s.pid = PersonArt.pool_pid(randi())
+	_rate_staff(s)
+	return s
+
+
+func _rate_staff(s: Dictionary) -> void:
+	var avg := 0.0
+	for k in SKILLS:
+		avg += s.skills[k]
+	avg /= SKILLS.size()
+	s.stars = clamp(int(round(avg / 20.0 + 0.2)), 1, 5)
+	s.salary = int(round((1400 + pow(avg / 100.0, 2.2) * 8500) / 100.0)) * 100
+	s.hire_fee = int(round(s.salary * (0.4 + avg / 200.0) / 100.0)) * 100
+
+
 func generate_candidates() -> void:
 	candidates = []
-	for i in 3:
-		var stars := randi_range(1, 5)
-		candidates.append({
-			"name": STAFF_NAMES.pick_random(), "stars": stars,
-			"salary": 1800 + stars * 900 + randi_range(0, 4) * 100,
-			"trait": STAFF_TRAITS.pick_random(), "look": "random", "seed": randi(), "fixed": false,
-		})
+	# tiers: rookies are cheap, stars only apply once the dealership has a name
+	var tiers := [[18, 45], [38, 68], [58, 84]]
+	if level >= 3 or reputation >= 3.8:
+		tiers.append([78, 97])
+	var used := []
+	for s in staff:
+		used.append(s.name)
+	for i in 4:
+		var t: Array = tiers[min(i, tiers.size() - 1)] if i < 3 else tiers.pick_random()
+		var skills := {}
+		for k in SKILLS:
+			skills[k] = clamp(randi_range(t[0], t[1]), 5, 99)
+		var spec: String = SKILLS.pick_random()
+		skills[spec] = clamp(skills[spec] + randi_range(8, 18), 5, 99)
+		var nm: String = (STAFF_NAMES + STAFF_NAMES2).pick_random()
+		while nm in used:
+			nm = (STAFF_NAMES + STAFF_NAMES2).pick_random()
+		used.append(nm)
+		var tr_name: String = STAFF_TRAITS.pick_random()
+		if spec == "finance" and randf() < 0.5:
+			tr_name = "Finance whiz"
+		candidates.append(make_staff(nm, "random", skills, tr_name))
+
+
+func skill(s: Dictionary, k: String) -> int:
+	return int(s.get("skills", {}).get(k, s.get("stars", 2) * 18))
 
 
 func staff_close_chance(s: Dictionary) -> float:
-	var c: float = 0.15 + s.stars * 0.14
-	if s.trait == "VIP Relations":
-		c -= 0.05
+	var c: float = 0.08 + skill(s, "closing") * 0.0072
 	if s.trait == "Closer":
-		c += 0.08
+		c += 0.06
 	if s.trait == "Nervous":
 		c -= 0.1
-	return clamp(c, 0.05, 0.95)
+	return clamp(c, 0.05, 0.92)
+
+
+## Staff get a little better with every car they sell.
+func staff_practice(s: Dictionary) -> void:
+	s.sales = s.get("sales", 0) + 1
+	var k: String = SKILLS.pick_random()
+	s.skills[k] = min(99, s.skills[k] + randi_range(1, 2))
+	var old_salary: int = s.salary
+	_rate_staff(s)
+	s.salary = old_salary  # raises are negotiated, not automatic
 
 
 # ---------- cars ----------
 
-func make_car(max_base: int) -> Dictionary:
+func make_car(max_base: int, house := "autobidz") -> Dictionary:
 	var pool := MODELS.filter(func(m): return m[2] <= max_base)
 	if has_perk("sourcing"):
 		pool += MODELS.filter(func(m): return m[1] in ["sport", "exotic"] and m[2] <= max_base * 2)
+	if house == "exotic":
+		pool = MODELS.filter(func(m): return m[1] in ["sport", "exotic"] and m[2] >= 45000)
 	var m: Array = pool.pick_random()
 	var age := randi_range(2, 14)
 	var car := {
@@ -456,9 +638,18 @@ func make_car(max_base: int) -> Dictionary:
 		"history_known": false, "paid": 0, "spent": 0, "day_bought": 0,
 	}
 	next_id += 1
+	var lo: int = {"salvage": 10, "dealer": 50, "exotic": 55}.get(house, 25)
+	var hi: int = {"salvage": 55, "dealer": 92, "exotic": 95}.get(house, 90)
 	for p in PARTS:
-		car.parts[p] = randi_range(25, 90)
+		car.parts[p] = randi_range(lo, hi)
 	var faults := randi_range(0, 2)
+	match house:
+		"salvage":
+			faults += 1
+			car.history = ["Minor accident", "Major accident", "Major accident", "Flood", "Flood", "Clean"].pick_random()
+		"dealer", "exotic":
+			faults = randi_range(0, 1)
+			car.history = ["Clean", "Clean", "Clean", "Clean", "Minor accident"].pick_random()
 	if car.history == "Flood":
 		faults += 1
 	for i in faults:
@@ -523,23 +714,33 @@ func listing_count() -> int:
 
 func generate_listings() -> void:
 	listings = []
-	var used := []
-	for i in listing_count():
-		var car := make_car(max_auction_base())
-		for attempt in 4:
-			if not used.has(car.model):
-				break
-			car = make_car(max_auction_base())
-		used.append(car.model)
-		var v := value(car)
-		var start: int = int(round(v * randf_range(0.25, 0.4) / 100.0) * 100)
-		listings.append({
-			"car": car, "current": start, "start": start,
-			"leader": "", "rival": RIVALS.pick_random(),
-			"rival_max": int(v * randf_range(0.55, 0.85)),
-			"buy_now": int(round(v * randf_range(0.85, 0.95) / 100.0) * 100) if randf() < 0.35 else 0,
-			"haggled": false, "sold": false, "winner": "",
-		})
+	# price ranges per house: [start lo, start hi, rival max lo, rival max hi, buy-now chance, buy-now lo, buy-now hi]
+	var deal := {
+		"autobidz": [0.25, 0.4, 0.55, 0.85, 0.35, 0.85, 0.95],
+		"salvage": [0.1, 0.2, 0.3, 0.5, 0.5, 0.5, 0.62],
+		"dealer": [0.28, 0.4, 0.5, 0.7, 0.45, 0.72, 0.82],
+		"exotic": [0.3, 0.45, 0.55, 0.75, 0.3, 0.78, 0.88],
+	}
+	for house in memberships:
+		var used := []
+		var n: int = listing_count() if house == "autobidz" else 4
+		for i in n:
+			var car := make_car(max_auction_base(), house)
+			for attempt in 4:
+				if not used.has(car.model):
+					break
+				car = make_car(max_auction_base(), house)
+			used.append(car.model)
+			var v := value(car)
+			var d: Array = deal[house]
+			var start: int = int(round(v * randf_range(d[0], d[1]) / 100.0) * 100)
+			listings.append({
+				"car": car, "current": start, "start": start, "house": house,
+				"leader": "", "rival": RIVALS.pick_random(),
+				"rival_max": int(v * randf_range(d[2], d[3])),
+				"buy_now": int(round(v * randf_range(d[5], d[6]) / 100.0) * 100) if randf() < d[4] else 0,
+				"haggled": false, "sold": false, "winner": "",
+			})
 
 
 func add_car(car: Dictionary, price: int) -> void:
@@ -575,7 +776,7 @@ func end_day() -> Array:
 			money -= cost
 			log_money("legal", -cost)
 			stats.lawsuits = stats.get("lawsuits", 0) + 1
-			reputation = clamp(reputation - 0.35, 0.0, 5.0)
+			add_review({"name": l.customer}, 1, "", "", "Sued them over %s. Read your contract before you sign anything here." % l.reason)
 			notes.append("LAWSUIT: %s sued us over %s. Settled for %s." % [l.customer, l.reason, money_str(cost)])
 	day += 1
 	clock = OPEN_MIN
@@ -623,11 +824,11 @@ func legal_exposure() -> int:
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
-	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities"]
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships"]
 
 
 func save_game() -> void:
-	var data := {"version": 3}
+	var data := {"version": 4}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -642,7 +843,7 @@ func load_game() -> bool:
 	if f == null:
 		return false
 	var data = JSON.parse_string(f.get_as_text())
-	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 3:
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 4:
 		return false
 	new_game()
 	for k in SAVE_KEYS:
