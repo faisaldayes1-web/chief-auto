@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/p10_body.png-4b3e703ce00ec8e6e08f53ae1b22861b
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

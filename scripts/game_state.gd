@@ -148,6 +148,45 @@ const ADS := [
 
 const MONTHLY_RENT := 6000
 
+## First-day coach steps: [title, hint, nav screen to point at]. Each finishes when its check below passes.
+const TUTORIAL := [
+	["Buy your first car", "Open the Office PC and bid on a car at the AutoBidz auction. Cheap cars with good bones make the easiest profit.", "pc"],
+	["Fix it up", "Go to the Garage. Click the dents, rust or a worn part on the car, pick a mechanic and repair it. Better condition sells for more.", "garage"],
+	["Sell to a walk-in", "Customers wait in the Showroom. Tap one, show them a car, and haggle. Don't push past their bad-deal line or they walk.", "showroom"],
+	["Close up and sleep", "When you're done for the day, hit Close & sleep. Marco reads the numbers, and you rest upstairs in your apartment.", "home"],
+]
+
+
+func tutorial_active() -> bool:
+	return tutorial < TUTORIAL.size()
+
+
+## Advances the first-day coach when the player has done the current step. Returns true when it moved.
+func check_tutorial() -> bool:
+	if not tutorial_active():
+		return false
+	var done := false
+	match tutorial:
+		0: done = not cars.is_empty() or stats.sold > 0
+		1: done = cars.any(func(c): return c.get("spent", 0) > 0) or stats.sold > 0
+		2: done = stats.sold > 0
+		3: done = day > 1
+	if done:
+		tutorial += 1
+		save_game()
+	return done
+
+
+## Where you sleep: the apartment on the showroom roof. Each tier is a visual upgrade of the same room.
+const APARTMENTS := [
+	{"tier": 1, "name": "Storage-room studio", "price": 0, "monthly": 0, "fresh": 0.0,
+		"desc": "A mattress, some boxes and a light bulb. Free, and you're never late for work."},
+	{"tier": 2, "name": "Harbour condo", "price": 35000, "monthly": 1500, "fresh": 0.05,
+		"desc": "Oak floors, a real bed and a TV. You sleep well: customers find you a little more likeable (+5% mood)."},
+	{"tier": 3, "name": "Tewport penthouse", "price": 180000, "monthly": 5000, "fresh": 0.1,
+		"desc": "Marble, a bar and a hot tub over the marina. +10% customer mood, and your rooftop parties bring a Cash Whale or two (+1 walk-in a day)."},
+]
+
 const STAFF_NAMES := ["Marisol", "Derek", "Yusuf", "Brianna", "Kenji", "Tasha", "Rafael", "Caitlin", "Malik", "Hana"]
 const STAFF_NAMES2 := ["Sofia", "Andre", "Leila", "Cody", "Nadia", "Victor", "Imani", "Trevor", "Rosa", "Dmitri", "Kiara", "Hector", "Ava", "Jamal"]
 const STAFF_TRAITS := ["Closer", "Smooth talker", "Upsells warranties", "Nervous", "Stretches the truth", "Great with families", "Car nerd", "VIP Relations", "Finance whiz"]
@@ -166,6 +205,8 @@ var hot_class: String = "suv"
 var next_id: int = 1
 var stats := {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0, "walked": 0, "lawsuits": 0}
 var seen_intro := false
+var dealer_name := "Chief Auto"   # the player names their dealership on a new game
+var tutorial := 0                 # first-day coach: index of the current step, TUTORIAL.size() when finished or skipped
 var owned: Array = ["folding", "plastic", "crt"]
 var equipped := {"desk": "folding", "chair": "plastic", "monitor": "crt"}
 var decor_on: Array = []
@@ -184,6 +225,7 @@ var reviews: Array = []          # Yolp reviews, newest last
 var referrals := 0                # happy customers send friends tomorrow
 var pending_referrals := 0        # today's walk-ins who were referred
 var memberships: Array = ["autobidz"]
+var apartment := 1                # tier of the rooftop apartment (see APARTMENTS)
 var debug_day := 0
 var debug_level := 0
 var debug_screen := ""
@@ -224,6 +266,8 @@ func new_game() -> void:
 	next_id = 1
 	stats = {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0, "walked": 0, "lawsuits": 0}
 	seen_intro = false
+	dealer_name = "Chief Auto"
+	tutorial = 0
 	ledger_day = {}
 	ledger_month = {}
 	month_walked = 0
@@ -235,6 +279,7 @@ func new_game() -> void:
 	decor_on = []
 	upgrades = []
 	ads_active = []
+	apartment = 1
 	staff = [
 		make_staff("Amna", "amna", {"closing": 86, "rapport": 74, "finance": 70, "upsell": 64}, "Closer"),
 		make_staff("Maruchan", "maruchan", {"closing": 52, "rapport": 92, "finance": 38, "upsell": 66}, "VIP Relations"),
@@ -247,7 +292,7 @@ func new_game() -> void:
 	for r in [[4, "Kayla M.", "Nice lot, friendly people. Got a fair deal."], [2, "Chad W.", "The blond salesman tried to sell me a minivan as a sports car."],
 			[3, "Monica L.", "Under new management? We'll see."], [3, "Omar A.", "Cars are okay. Prices are okay. It's okay."],
 			[4, "Mei C.", "Amna was great. Jeff was... there."], [2, "Grant H.", "Waited 40 minutes for anyone to talk to me."]]:
-		reviews.append({"stars": r[0], "name": r[1], "text": r[2], "day": 0, "pid": PersonArt.pool_pid(r[1].length() * 7), "weight": 1, "fixed": false})
+		reviews.append({"stars": r[0], "name": r[1], "text": r[2], "day": 0, "pid": PersonArt.pool_pid(r[1].length() * 7, r[1]), "weight": 1, "fixed": false})
 	_recompute_rep()
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
@@ -387,14 +432,14 @@ func stars_from_happiness(h: float) -> int:
 func customer_pid(c: Dictionary) -> String:
 	if c.has("pid"):
 		return c.pid
-	return PersonArt.pool_pid(int(c.get("look_seed", 0)))
+	return PersonArt.pool_pid(int(c.get("look_seed", 0)), c.get("name", ""))
 
 
 func staff_pid(s: Dictionary) -> String:
 	match s.get("look", "random"):
 		"amna", "jeff", "maruchan":
 			return s.look
-	return s.get("pid", PersonArt.pool_pid(int(s.get("seed", 1))))
+	return s.get("pid", PersonArt.pool_pid(int(s.get("seed", 1)), s.name))
 
 
 # ---------- auctions ----------
@@ -486,7 +531,28 @@ func monthly_bills() -> Dictionary:
 	for a in ADS:
 		if a.id in ads_active:
 			ads += a.monthly
-	return {"rent": MONTHLY_RENT, "salaries": salaries, "ads": ads, "total": MONTHLY_RENT + salaries + ads}
+	var home: int = apartment_info().monthly
+	return {"rent": MONTHLY_RENT + home, "salaries": salaries, "ads": ads, "total": MONTHLY_RENT + home + salaries + ads}
+
+
+func apartment_info(tier := -1) -> Dictionary:
+	var t: int = apartment if tier < 0 else tier
+	return APARTMENTS[clamp(t, 1, APARTMENTS.size()) - 1]
+
+
+## Moves into the next apartment tier. Returns false when you can't afford it.
+func upgrade_apartment() -> bool:
+	if apartment >= APARTMENTS.size():
+		return false
+	var nxt := apartment_info(apartment + 1)
+	if money < nxt.price:
+		return false
+	money -= nxt.price
+	log_money("shop", -nxt.price)
+	apartment += 1
+	save_game()
+	emit_signal("changed")
+	return true
 
 
 func next_bill_date() -> String:
@@ -506,6 +572,8 @@ func walkins_today() -> int:
 		n += 1
 	if reputation < 2.0:
 		n -= 1
+	if apartment >= 3:
+		n += 1
 	return max(1, n)
 
 
@@ -520,7 +588,7 @@ func schedule_walkins() -> void:
 
 func make_customer() -> Dictionary:
 	var types := ["bargain", "local", "first", "nerd", "parent", "bargain", "local", "first", "nerd", "parent", "influencer", "lowballer", "lowballer"]
-	if reputation >= 3.5 or "billboard" in ads_active:
+	if reputation >= 3.5 or "billboard" in ads_active or apartment >= 3:
 		types += ["whale", "whale"]
 	var type_key: String = types.pick_random()
 	var rich := 0.0
@@ -535,10 +603,10 @@ func make_customer() -> Dictionary:
 		"id": next_id, "name": BUYER_NAMES.pick_random(), "type": type_key,
 		"look_seed": randi(), "credit": tier,
 		"budget": BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich),
-		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1), "patience": 1.0,
+		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1) + apartment_info().fresh, "patience": 1.0,
 		"arrived": clock, "wants_cls": ["economy", "suv", "truck", "sport", "exotic"].pick_random(),
 	}
-	c.pid = PersonArt.pool_pid(randi())
+	c.pid = PersonArt.pool_pid(randi(), c.name)
 	if type_key == "whale":
 		c.finance = false
 		c.wants_cls = ["sport", "exotic", "suv"].pick_random()
@@ -558,7 +626,7 @@ func make_customer() -> Dictionary:
 func make_staff(name: String, look: String, skills: Dictionary, trait_name: String) -> Dictionary:
 	var s := {"name": name, "look": look, "skills": skills, "trait": trait_name, "fixed": false, "sales": 0}
 	if look == "random":
-		s.pid = PersonArt.pool_pid(randi())
+		s.pid = PersonArt.pool_pid(randi(), name)
 	_rate_staff(s)
 	return s
 
@@ -828,7 +896,7 @@ func legal_exposure() -> int:
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
-	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships"]
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial"]
 
 
 func save_game() -> void:
@@ -850,6 +918,7 @@ func load_game() -> bool:
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 4:
 		return false
 	new_game()
+	tutorial = TUTORIAL.size()   # saves from before the tutorial existed skip it
 	for k in SAVE_KEYS:
 		if data.has(k):
 			set(k, _fix_ints(data[k]))

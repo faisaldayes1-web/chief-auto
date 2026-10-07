@@ -1,11 +1,14 @@
 class_name SceneArt
 extends Control
 ## Drawn backdrops built around the OC Chief Auto photos: the office desk, the showroom lobby and the service bay.
-## Windows look out on the real lot photo, tinted for the time of day.
+## Each one is a render of the same dealership (tools/dealership3d.py), tinted for the time of day.
 
-const LOT := preload("res://assets/bg_lot.jpg")
-const SHOWROOM := preload("res://assets/bg_showroom.jpg")
+const SHOWROOM := preload("res://assets/world/bg_showroom.jpg")
+const GARAGE := preload("res://assets/world/bg_garage.jpg")
+const DESK := preload("res://assets/world/bg_desk.jpg")
 
+const SHOWROOM_EYE := 0.48     # camera eye level in the showroom render (tools/dealership3d.py "showroom" view)
+const SHOWROOM_FLOOR := 0.58   # where the showroom floor meets the back glass, as a fraction of the render height
 var mode := "lobby"
 var monitor_rect := Rect2()   # where the PC screen sits (desk mode), set in _compute()
 var podiums: Array = []       # floor spots for display cars (lobby mode), Vector2 centers
@@ -39,7 +42,7 @@ func _compute() -> void:
 		var n: int = max(1, Game.lot_capacity())
 		var per_row: int = min(n, 4)
 		for i in per_row:
-			podiums.append(Vector2(w * (i + 0.5) / per_row, h * 0.8))
+			podiums.append(Vector2(w * (i + 0.5) / per_row, h * 0.62))   # back of the showroom floor, sized to match the render perspective
 
 
 func _draw() -> void:
@@ -51,21 +54,29 @@ func _draw() -> void:
 
 # ---------- shared pieces ----------
 
-func _window(rect: Rect2, src: Rect2, mullions := 0) -> void:
-	draw_texture_rect_region(LOT, rect, src, Game.sky_tint())
+func cover_rect(tex: Texture2D) -> Rect2:
+	var ts := tex.get_size()
+	var sc: float = max(size.x / ts.x, size.y / ts.y)
+	var dsz := ts * sc
+	return Rect2(Vector2((size.x - dsz.x) / 2.0, size.y - dsz.y), dsz)
+
+
+## Screen height of a person standing with their feet at feet_y in the showroom render
+## (the camera is at eye level, so a 1.75 m person's head lands just above the horizon line).
+func person_height(feet_y: float) -> float:
+	var r := cover_rect(SHOWROOM)
+	var eye := r.position.y + r.size.y * SHOWROOM_EYE
+	return max(40.0, (feet_y - eye) * 1.06)
+
+
+## Draws one of the dealership renders to cover the whole stage, bottom-aligned, tinted for the time of day.
+func _cover(tex: Texture2D, dim := 0.35) -> Rect2:
+	var dst := cover_rect(tex)
+	draw_texture_rect(tex, dst, false, Game.sky_tint())
 	var night: float = Game.night_amount()
 	if night > 0.0:
-		draw_rect(rect, Color(0.02, 0.04, 0.12, night * 0.55))
-		var rng := RandomNumberGenerator.new()
-		rng.seed = int(rect.position.x * 13 + rect.size.y)
-		for i in int(rect.size.x * rect.size.y / 3000.0):
-			var p := rect.position + Vector2(rng.randf() * rect.size.x, rng.randf() * rect.size.y * 0.45)
-			draw_circle(p, rng.randf_range(0.6, 1.4), Color(1, 1, 1, night * rng.randf_range(0.4, 0.9)))
-	var frame := Color(0.08, 0.08, 0.09)
-	draw_rect(rect, frame, false, 6.0)
-	for i in range(1, mullions + 1):
-		var x := rect.position.x + rect.size.x * i / float(mullions + 1)
-		draw_line(Vector2(x, rect.position.y), Vector2(x, rect.end.y), frame, 5.0)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.1, night * dim))
+	return dst
 
 
 func _vgrad(rect: Rect2, top: Color, bottom: Color) -> void:
@@ -99,16 +110,9 @@ func _text(pos: Vector2, text: String, size_px: int, col: Color) -> void:
 func _draw_lobby() -> void:
 	var w := size.x
 	var h := size.y
-	# the real showroom photo, bottom-aligned so the marble floor is always in view
-	var ts := SHOWROOM.get_size()
-	var sc: float = max(w / ts.x, h / ts.y)
-	var dsz := ts * sc
-	var dst := Rect2(Vector2((w - dsz.x) / 2.0, h - dsz.y), dsz)
-	draw_texture_rect(SHOWROOM, dst, false, Game.sky_tint())
-	var night: float = Game.night_amount()
-	if night > 0.0:
-		draw_rect(Rect2(0, 0, w, h), Color(0.02, 0.03, 0.1, night * 0.35))
-	var horizon := dst.position.y + dsz.y * 0.69
+	# the showroom render, bottom-aligned so the marble floor is always in view
+	var dst := _cover(SHOWROOM)
+	var horizon := dst.position.y + dst.size.y * SHOWROOM_FLOOR
 	# upgrades
 	if Game.has_upgrade("coffee"):
 		draw_rect(Rect2(w * 0.005, horizon - 70, w * 0.09, 70), Color("2b2b2f"))
@@ -138,11 +142,9 @@ func _draw_lobby() -> void:
 func _draw_desk() -> void:
 	var w := size.x
 	var h := size.y
-	_vgrad(Rect2(0, 0, w, h), Color("2a2420"), Color("1e1a17"))
+	_cover(DESK)
 	var m := monitor_rect
-	# side window onto the coast
 	if m.position.x > w * 0.1:
-		_window(Rect2(w * 0.015, h * 0.08, m.position.x - w * 0.04, h * 0.5), Rect2(0, 0, 500, 420), 1)
 		# right wall shelf
 		var sx := m.end.x + w * 0.015
 		draw_rect(Rect2(sx, h * 0.36, w - sx - w * 0.01, 8), Color("6b4a2f"))
@@ -235,38 +237,4 @@ func _draw_desk() -> void:
 # ---------- service bay ----------
 
 func _draw_garage() -> void:
-	var w := size.x
-	var h := size.y
-	var horizon := h * 0.62
-	_vgrad(Rect2(0, 0, w, horizon), Color("5b5f66"), Color("4a4e55"))
-	for i in 12:
-		draw_line(Vector2(0, i * horizon / 12.0), Vector2(w, i * horizon / 12.0), Color(0, 0, 0, 0.12), 1.0)
-	# roll-up door, half open onto the lot
-	var door := Rect2(w * 0.04, h * 0.12, w * 0.3, horizon - h * 0.12)
-	_window(Rect2(door.position + Vector2(0, door.size.y * 0.45), Vector2(door.size.x, door.size.y * 0.55)), Rect2(500, 200, 700, 300), 0)
-	for i in 9:
-		var y := door.position.y + i * door.size.y * 0.05
-		draw_rect(Rect2(door.position.x, y, door.size.x, door.size.y * 0.05 - 2), Color("aab0b8"))
-	draw_rect(door, Color("2c2f34"), false, 8.0)
-	# pegboard with tools
-	var pb := Rect2(w * 0.38, h * 0.12, w * 0.2, h * 0.3)
-	draw_rect(pb, Color("b98b5e"))
-	for x in range(int(pb.position.x) + 10, int(pb.end.x), 16):
-		for y in range(int(pb.position.y) + 10, int(pb.end.y), 16):
-			draw_circle(Vector2(x, y), 1.5, Color(0, 0, 0, 0.35))
-	draw_line(pb.position + Vector2(30, 20), pb.position + Vector2(30, 90), Color("c0392b"), 6.0)
-	draw_line(pb.position + Vector2(70, 20), pb.position + Vector2(70, 80), Color("7f8c8d"), 5.0)
-	draw_circle(pb.position + Vector2(70, 84), 8, Color("7f8c8d"))
-	draw_rect(Rect2(pb.position + Vector2(110, 30), Vector2(60, 16)), Color("2471a3"))
-	_text(Vector2(w * 0.38, h * 0.08), "SERVICE BAY", 22, Color("f1c40f"))
-	# floor
-	_vgrad(Rect2(0, horizon, w, h - horizon), Color("3a3d42"), Color("2a2c30"))
-	draw_line(Vector2(0, horizon + (h - horizon) * 0.55), Vector2(w, horizon + (h - horizon) * 0.55), Color("f1c40f"), 4.0)
-	# lift posts around the car spot
-	var cxp := w * 0.3
-	draw_rect(Rect2(cxp - w * 0.22, horizon - h * 0.25, 18, h * 0.42), Color("c0392b"))
-	draw_rect(Rect2(cxp + w * 0.22 - 18, horizon - h * 0.25, 18, h * 0.42), Color("c0392b"))
-	draw_rect(Rect2(cxp - w * 0.2, horizon + h * 0.12, w * 0.4, 10), Color("7f8c8d"))
-	# lamp light at night
-	var night: float = Game.night_amount()
-	draw_rect(Rect2(0, 0, w, h), Color(0, 0, 0.05, night * 0.25))
+	_cover(GARAGE, 0.25)

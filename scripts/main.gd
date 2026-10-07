@@ -3,12 +3,15 @@ extends Control
 ## Office PC (auctions + shops) -> Garage -> Showroom walk-ins -> negotiation -> paperwork -> grow.
 
 const BG := {
-	"lot": preload("res://assets/bg_lot.jpg"),
-	"office": preload("res://assets/bg_office.jpg"),
+	"lot": preload("res://assets/world/bg_lot.jpg"),
+	"office": preload("res://assets/world/bg_office.jpg"),
+	"apartment1": preload("res://assets/world/bg_apartment1.jpg"),
+	"apartment2": preload("res://assets/world/bg_apartment2.jpg"),
+	"apartment3": preload("res://assets/world/bg_apartment3.jpg"),
 }
 const LOGO := preload("res://assets/logo.png")
 const CASH_ICON := preload("res://assets/icons/cash.png")
-const DEAL_DESK := preload("res://assets/bg_dealdesk.jpg")
+const DEAL_DESK := preload("res://assets/world/bg_dealdesk.jpg")
 const PORTRAITS := {"Marco": preload("res://assets/portrait_marco.jpg"), "Maruchan": preload("res://assets/portrait_maruchan.jpg")}
 const MINUTES_PER_SECOND := 3.5   # game clock speed: a 13-hour day takes about 4 minutes
 const MAX_IN_LOBBY := 4
@@ -45,6 +48,7 @@ var garage_log := ""
 var garage_view: Car3DView
 var garage_box: VBoxContainer
 var garage_part := ""
+var sleeping := false   # true between the closing report and the Sleep button
 
 # Showroom
 var lobby: Array = []          # customers standing in the showroom
@@ -125,7 +129,8 @@ func _build_hud() -> Control:
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	logo.custom_minimum_size = Vector2(44, 44)
 	hud.add_child(logo)
-	hud.add_child(UI.label("OC CHIEF AUTO", 20, UI.GOLD, true))
+	hud_name = UI.label(Game.dealer_name.to_upper(), 20, UI.GOLD, true)
+	hud.add_child(hud_name)
 	hud.add_child(UI.spacer())
 	hud_lobby = UI.label("", 16, UI.BLUE)
 	hud.add_child(hud_lobby)
@@ -168,6 +173,9 @@ func _build_hud() -> Control:
 func _refresh_hud() -> void:
 	if hud_money == null:
 		return
+	hud_name.text = Game.dealer_name.to_upper()
+	if Game.tutorial_active() and current != "title" and Game.check_tutorial():
+		_update_coach.call_deferred()
 	var old := hud_money.text
 	hud_money.text = Game.money_str(Game.money)
 	if old != "" and old != hud_money.text:
@@ -197,11 +205,12 @@ func _build_nav() -> Control:
 	nav = UI.hbox(8)
 	nav.alignment = BoxContainer.ALIGNMENT_CENTER
 	p.add_child(nav)
-	for item in [["Lot", "lot"], ["Office PC", "pc"], ["Garage", "garage"], ["Showroom", "showroom"], ["Marco", "marco"]]:
+	for item in [["Lot", "lot"], ["Office PC", "pc"], ["Garage", "garage"], ["Showroom", "showroom"], ["Marco", "marco"], ["Home", "home"]]:
 		var b := UI.button(item[0], show_screen.bind(item[1]), 140, 52)
+		b.set_meta("screen", item[1])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nav.add_child(b)
-	var end := UI.gold_button("Close for the night", _close_for_night, 170, 52)
+	var end := UI.gold_button("Close & sleep", _close_for_night, 170, 52)
 	end.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav.add_child(end)
 	return p
@@ -221,6 +230,10 @@ func _margins(px: int) -> void:
 
 
 func show_screen(name: String) -> void:
+	if sleeping and name != "home":
+		# leaving home without pressing Sleep still starts the new day
+		sleeping = false
+		closing = false
 	current = name
 	auction_view = {}
 	lobby_stage = null
@@ -228,9 +241,6 @@ func show_screen(name: String) -> void:
 	_margins(16)
 	hud.get_parent().visible = name != "title"
 	nav.get_parent().visible = name != "title"
-	for b in nav.get_children():
-		if b is Button and b.get_meta("screen", "") == name:
-			pass
 	match name:
 		"title": _screen_title()
 		"lot": _screen_lot()
@@ -238,7 +248,10 @@ func show_screen(name: String) -> void:
 		"garage": _screen_garage()
 		"showroom": _screen_showroom()
 		"marco": _screen_marco()
+		"home": _screen_home()
 	_refresh_clock()
+	if Game.seen_intro or name == "title":
+		_update_coach()
 
 
 func _stage(mode: String) -> SceneArt:
@@ -278,7 +291,7 @@ func _screen_title() -> void:
 			_start_game(), 320))
 	else:
 		v.add_child(UI.gold_button("Start", _start_game, 320))
-	var tag := UI.label("Prototype build · OC Chief Auto, Tewport Beach", 14, UI.MUTED)
+	var tag := UI.label("Prototype build · %s, Tewport Beach" % Game.dealer_name if has_save else "Prototype build · Tewport Beach", 14, UI.MUTED)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tag)
 
@@ -297,18 +310,110 @@ func _start_game() -> void:
 		lobby.append(Game.make_customer())
 	show_screen(Game.debug_screen if Game.debug_screen != "" else "lot")
 	if not Game.seen_intro:
+		_name_dealership()
+	else:
+		_update_coach()
+
+
+## New game: the player names the dealership, then Marco's welcome, then the first-day coach.
+func _name_dealership() -> void:
+	var p := _modal(UI.NAVY, 0)
+	p.custom_minimum_size = Vector2(560, 0)
+	var v := UI.vbox(12)
+	p.add_child(v)
+	v.add_child(UI.header("Name your dealership"))
+	v.add_child(UI.para("This goes on the sign, the contracts and your Yolp page. You can't change it later, so make it count.", 15, UI.MUTED))
+	var edit := LineEdit.new()
+	edit.text = "Chief Auto"
+	edit.max_length = 28
+	edit.custom_minimum_size = Vector2(0, 52)
+	edit.add_theme_font_size_override("font_size", 24)
+	edit.select_all_on_focus = true
+	v.add_child(edit)
+	var ideas := UI.hbox(8)
+	for idea in ["Chief Auto", "Tewport Motors", "Harbour Auto Gallery", "Coastline Cars"]:
+		var b := UI.button(idea, func(): edit.text = idea, 0, 36)
+		b.add_theme_font_size_override("font_size", 13)
+		ideas.add_child(b)
+	v.add_child(ideas)
+	var go := func(_t := ""):
+		var n := edit.text.strip_edges()
+		if n.length() < 2:
+			toast("Give it a name first.")
+			return
+		Game.dealer_name = n
 		Game.seen_intro = true
 		Game.save_game()
-		var m := ["Marco", "CEO & Financial Advisor"]
-		play_dialogue([
-			m + ["Welcome to OC Chief Auto. I'm Marco. I run this place, and I watch every dollar."],
-			m + ["Win cars at auction on your office PC, fix them in the garage, and sell them to the walk-ins in the showroom."],
-			m + ["Rent is $6,000 a month, plus staff salaries and any advertising you buy. Bills hit on the 1st, so watch the countdown up top. October is paid."],
-			["Amna", "Senior Sales Consultant", "Hi, I'm Amna. If customers are waiting and you're busy, I'll take care of them. Four stars, ask anyone."],
-			["Jeff", "Sales Associate", "And I'm Jeff! One star, but it's a really shiny star."],
-			["Maruchan", "Leasing & VIP Relations", "Maruchan. I handle the VIPs. Let me say hi to a customer and they're 15% happier. Guaranteed."],
-			m + ["We open at 8 and close at 9. Push a customer past their bad-deal line and they storm out. Cut corners on paperwork and we get sued. Go."],
-		], func(): pass)
+		_refresh_hud()
+		_close_overlay()
+		_intro()
+	edit.text_submitted.connect(go)
+	v.add_child(UI.gold_button("Open for business", go, 0, 52))
+	edit.grab_focus.call_deferred()
+
+
+func _intro() -> void:
+	var m := ["Marco", "CEO & Financial Advisor"]
+	play_dialogue([
+		m + ["Welcome to %s. I'm Marco. I run the money here, and I watch every dollar." % Game.dealer_name],
+		m + ["Win cars at auction on your office PC, fix them in the garage, and sell them to the walk-ins in the showroom."],
+		m + ["Rent is $6,000 a month, plus staff salaries and any advertising you buy. Bills hit on the 1st, so watch the countdown up top. October is paid."],
+		["Amna", "Senior Sales Consultant", "Hi, I'm Amna. If customers are waiting and you're busy, I'll take care of them. Four stars, ask anyone."],
+		["Jeff", "Sales Associate", "And I'm Jeff! One star, but it's a really shiny star."],
+		["Maruchan", "Leasing & VIP Relations", "Maruchan. I handle the VIPs. Let me say hi to a customer and they're 15% happier. Guaranteed."],
+		m + ["We open at 8 and close at 9. Push a customer past their bad-deal line and they storm out. Cut corners on paperwork and we get sued."],
+		m + ["First day, so I'll walk you through it. Follow the card in the corner. Skip it if you already know the business."],
+	], _update_coach)
+
+
+# ---------- first-day coach ----------
+
+var coach: PanelContainer
+var hud_name: Label
+
+
+## Shows (or hides) the tutorial card for the current step and lights up the nav button it points at.
+func _update_coach() -> void:
+	Game.check_tutorial()
+	if coach:
+		coach.queue_free()
+		coach = null
+	for b in nav.get_children():
+		if b is Button:
+			b.modulate = Color.WHITE
+	if not Game.tutorial_active() or current == "title":
+		return
+	var step: Array = Game.TUTORIAL[Game.tutorial]
+	coach = UI.panel(Color(0.03, 0.06, 0.12, 0.94), UI.GOLD, 14)
+	coach.mouse_filter = Control.MOUSE_FILTER_STOP
+	var v := UI.vbox(6)
+	coach.add_child(v)
+	v.add_child(UI.label("FIRST DAY · STEP %d OF %d" % [Game.tutorial + 1, Game.TUTORIAL.size()], 12, UI.GOLD, true))
+	v.add_child(UI.label(step[0], 20, UI.TEXT, true))
+	var hint := UI.para(step[1], 14, UI.MUTED)
+	hint.custom_minimum_size.x = 330
+	v.add_child(hint)
+	var row := UI.hbox(8)
+	if current != step[2]:
+		row.add_child(UI.gold_button("Take me there", show_screen.bind(step[2]), 150, 36))
+	row.add_child(UI.spacer())
+	var skip := UI.button("Skip tutorial", func():
+		Game.tutorial = Game.TUTORIAL.size()
+		Game.save_game()
+		_update_coach(), 120, 36)
+	skip.add_theme_font_size_override("font_size", 13)
+	row.add_child(skip)
+	v.add_child(row)
+	add_child(coach)
+	move_child(coach, overlay.get_index())   # below popups and dialogue
+	coach.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
+	coach.position = Vector2(14, size.y - 100 - 230)
+	coach.size = Vector2(380, 0)
+	coach.reset_size()
+	coach.position.y = size.y - 96 - coach.size.y
+	for b in nav.get_children():
+		if b is Button and b.get_meta("screen", "") == step[2]:
+			b.modulate = Color(1.4, 1.25, 0.7)
 
 
 # =====================================================================
@@ -938,45 +1043,91 @@ func _card_grid() -> GridContainer:
 const SKILL_COLORS := {"closing": Color("c0392b"), "rapport": Color("e67e22"), "finance": Color("1f6fb2"), "upsell": Color("8e44ad")}
 
 
-func _staff_card(s: Dictionary, applicant: bool) -> Control:
-	var box := _web_box()
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var v := UI.vbox(3)
-	box.add_child(v)
-	var top := UI.hbox(6)
+const CARD_BG := Color(0.06, 0.1, 0.14, 0.96)
+const CARD_TEXT := Color(0.9, 0.95, 0.98)
+const CARD_MUTED := Color(0.55, 0.65, 0.72)
+const CARD_CYAN := Color("2fd4e8")
+
+
+## Portrait window like the team cards: the rendered face over a glowing gradient, framed in the accent colour.
+func _portrait_frame(pid: String, mood: float, accent: Color, h := 120.0) -> PanelContainer:
+	var frame := PanelContainer.new()
+	var sb := UI.box(Color(0.1, 0.2, 0.26), Color(accent, 0.8), 10, 2, 0)
+	sb.shadow_color = Color(accent, 0.35)
+	sb.shadow_size = 8
+	frame.add_theme_stylebox_override("panel", sb)
+	frame.custom_minimum_size = Vector2(0, h)
+	frame.clip_contents = true
+	var glow := GlowBack.new()
+	glow.accent = accent
+	frame.add_child(glow)
 	var art := PersonArt.new()
-	art.custom_minimum_size = Vector2(64, 76)
-	art.pid = Game.staff_pid(s)
-	art.mood = 0.6
-	top.add_child(art)
-	var tv := UI.vbox(0)
-	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tv.add_child(UI.label(s.name, 17, INK, true))
-	tv.add_child(UI.label(_stars(s.stars), 15, Color("d4a017")))
-	tv.add_child(UI.label(s.trait, 12, GREY))
-	top.add_child(tv)
-	v.add_child(top)
+	art.pid = pid
+	art.mood = mood
+	frame.add_child(art)
+	return frame
+
+
+## Radial light behind a portrait.
+class GlowBack extends Control:
+	var accent := Color.WHITE
+
+	func _ready() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		var c := Vector2(size.x / 2.0, size.y * 0.42)
+		for i in 10:
+			var r: float = size.x * 0.75 * (1.0 - i / 10.0)
+			draw_circle(c, r, Color(accent, 0.05))
+		draw_rect(Rect2(0, size.y * 0.7, size.x, size.y * 0.3), Color(0, 0, 0, 0.18))
+
+
+func _skill_bar(parent: Control, name: String, val: int, col: Color) -> void:
+	var row := UI.hbox(4)
+	var nm := UI.label(name, 12, CARD_MUTED)
+	nm.custom_minimum_size.x = 78
+	row.add_child(nm)
+	var bar := ProgressBar.new()
+	bar.max_value = 100
+	bar.value = val
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 7)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_theme_stylebox_override("background", UI.box(Color(0, 0, 0, 0.55), Color.TRANSPARENT, 3, 0, 0))
+	var fill := UI.box(col, Color.TRANSPARENT, 3, 0, 0)
+	fill.shadow_color = Color(col, 0.5)
+	fill.shadow_size = 3
+	bar.add_theme_stylebox_override("fill", fill)
+	row.add_child(bar)
+	var vl := UI.label(str(val), 12, CARD_TEXT, true)
+	vl.custom_minimum_size.x = 24
+	vl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	row.add_child(vl)
+	parent.add_child(row)
+
+
+func _staff_card(s: Dictionary, applicant: bool) -> Control:
+	var accent: Color = UI.GOLD if s.stars >= 4.5 else (CARD_CYAN if not applicant else Color("e04fa0"))
+	var box := UI.panel(CARD_BG, Color(accent, 0.55), 10)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := UI.vbox(4)
+	box.add_child(v)
+	v.add_child(_portrait_frame(Game.staff_pid(s), 0.6, accent, 132))
+	var nm := UI.hbox(6)
+	nm.add_child(UI.label(s.name, 18, CARD_TEXT, true))
+	nm.add_child(UI.spacer())
+	nm.add_child(UI.label(_stars(s.stars), 14, UI.GOLD))
+	v.add_child(nm)
+	v.add_child(UI.label(s.trait.to_upper(), 11, accent, true))
 	for k in Game.SKILLS:
-		var row := UI.hbox(4)
-		var nm := UI.label(Game.SKILL_NAMES[k], 11, GREY)
-		nm.custom_minimum_size.x = 74
-		row.add_child(nm)
-		var bar := ProgressBar.new()
-		bar.max_value = 100
-		bar.value = Game.skill(s, k)
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(0, 8)
-		bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bar.add_theme_stylebox_override("background", UI.box(Color(0.88, 0.89, 0.92), Color.TRANSPARENT, 3, 0, 0))
-		bar.add_theme_stylebox_override("fill", UI.box(SKILL_COLORS[k], Color.TRANSPARENT, 3, 0, 0))
-		row.add_child(bar)
-		row.add_child(UI.label(str(Game.skill(s, k)), 11, INK))
-		v.add_child(row)
-	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, INK))
-	v.add_child(UI.label("%s / month" % Game.money_str(s.salary), 15, Color("1e7e34"), true))
+		_skill_bar(v, Game.SKILL_NAMES[k], Game.skill(s, k), CARD_CYAN.lerp(Color("e04fa0"), Game.SKILLS.find(k) / 3.0))
+	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, CARD_TEXT))
+	v.add_child(UI.label("%s / month" % Game.money_str(s.salary), 15, UI.GOOD, true))
 	if applicant:
-		v.add_child(UI.label("Signing fee %s" % Game.money_str(s.get("hire_fee", 0)), 12, GREY))
+		v.add_child(UI.label("Signing fee %s" % Game.money_str(s.get("hire_fee", 0)), 12, CARD_MUTED))
 		v.add_child(_small_btn("Hire", func():
 			if Game.staff.size() >= 5:
 				toast("Your sales floor is full (5 people).")
@@ -992,12 +1143,12 @@ func _staff_card(s: Dictionary, applicant: bool) -> Control:
 			toast("%s joins the team. First salary on the 1st." % s.name)
 			show_screen("pc"), true))
 	elif s.fixed:
-		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, CARD_MUTED))
 		var b := _small_btn("Marco says no", func(): pass)
 		b.disabled = true
 		v.add_child(b)
 	else:
-		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, CARD_MUTED))
 		v.add_child(_small_btn("Let go", func():
 			Game.staff.erase(s)
 			Game.save_game()
@@ -1010,7 +1161,7 @@ func _staff_card(s: Dictionary, applicant: bool) -> Control:
 
 func _tab_reviews(inner: Control) -> void:
 	var red := Color("d32323")
-	_site_head(inner, "Yolp", red, "OC Chief Auto · Used Car Dealer · Tewport Beach")
+	_site_head(inner, "Yolp", red, Game.dealer_name + " · Used Car Dealer · Tewport Beach")
 	var cols := UI.hbox(12)
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	inner.add_child(cols)
@@ -1096,7 +1247,7 @@ func _review_card(r: Dictionary, red: Color) -> Control:
 
 
 func _tab_bank(inner: Control) -> void:
-	_site_head(inner, "TewportBank", Color("1e7e34"), "Business banking for OC Chief Auto")
+	_site_head(inner, "TewportBank", Color("1e7e34"), "Business banking for " + Game.dealer_name)
 	var b := Game.monthly_bills()
 	var box := _web_box()
 	inner.add_child(box)
@@ -1104,7 +1255,7 @@ func _tab_bank(inner: Control) -> void:
 	box.add_child(v)
 	v.add_child(UI.label("Available balance: %s" % Game.money_str(Game.money), 22, INK, true))
 	v.add_child(UI.label("Next bills due %s" % Game.next_bill_date(), 16, Color("c0392b")))
-	for row in [["Rent (OC Chief Auto lot)", b.rent], ["Staff salaries (%d people)" % Game.staff.size(), b.salaries], ["Advertising", b.ads]]:
+	for row in [["Rent (%s lot)" % Game.dealer_name, b.rent], ["Staff salaries (%d people)" % Game.staff.size(), b.salaries], ["Advertising", b.ads]]:
 		var h := UI.hbox()
 		h.add_child(UI.label(row[0], 16, INK))
 		h.add_child(UI.spacer())
@@ -1467,7 +1618,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		btn.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
 		btn.pressed.connect(_open_customer.bind(c))
 		stage.add_child(btn)
-		stage.move_child(btn, 0)  # customers stand behind the display cars
+		# customers stand in front of the display cars (the cars sit further back on the floor)
 		var p := PersonArt.new()
 		p.full_body = true
 		p.pid = Game.customer_pid(c)
@@ -1542,8 +1693,8 @@ func _build_lobby(stage: SceneArt) -> void:
 		var pods: Array = stage.podiums
 		for i in displays.size():
 			var d: Array = displays[i]
-			var c: Vector2 = pods[i] if i < pods.size() else Vector2(w * 0.5, h * 0.8)
-			var cw: float = min(260.0, w / max(1, pods.size()) - 20)
+			var c: Vector2 = pods[i] if i < pods.size() else Vector2(w * 0.5, h * 0.62)
+			var cw: float = min(340.0, w / max(1, pods.size()) - 16)
 			d[0].position = Vector2(c.x - cw / 2, c.y - cw * 0.42)
 			d[0].size = Vector2(cw, cw * 0.42 + 56)
 			d[1].position = Vector2.ZERO
@@ -1552,10 +1703,12 @@ func _build_lobby(stage: SceneArt) -> void:
 			d[2].size = Vector2(cw * 0.6, 46)
 		for i in people.size():
 			var pr: Array = people[i]
-			var ph: float = h * 0.5
+			# stand on the marble at slightly different depths; size follows the camera's perspective
+			var feet: float = h * (0.74 + 0.035 * (i % 2))
+			var ph: float = stage.person_height(feet)
 			var pw: float = ph * 0.42
 			pr[0].size = Vector2(pw, ph)
-			var target := Vector2(w * (0.14 + i * 0.2), h * 0.68 - ph)
+			var target := Vector2(w * (0.1 + i * 0.17), feet - ph)
 			var cust: Dictionary = pr[4]
 			if not cust.get("entered", false):
 				# new arrivals walk in from the front door on the right
@@ -1865,10 +2018,8 @@ func _render_customer() -> void:
 	lv.add_child(top)
 	lv.add_child(UI.rule(UI.GOLD))
 	var who := UI.hbox(10)
-	var face := PersonArt.new()
-	face.pid = Game.customer_pid(c)
-	face.mood = c.happiness * 2.0 - 1.0
-	face.custom_minimum_size = Vector2(96, 110)
+	var face := _portrait_frame(Game.customer_pid(c), c.happiness * 2.0 - 1.0, CARD_CYAN, 124)
+	face.custom_minimum_size.x = 110
 	who.add_child(face)
 	var wv := UI.vbox(1)
 	wv.add_child(UI.label(c.name.to_upper(), 22, UI.GOLD, true))
@@ -1999,7 +2150,7 @@ func _pitch(id: String) -> void:
 		"maruchan":
 			c.happiness += 0.15
 			c.patience += 0.1
-			c.log.append("Maruchan: \"Welcome to Chief Auto, my friend. You want a water? You look like a Porsha guy.\"  (+15% happiness)")
+			c.log.append("Maruchan: \"Welcome to " + Game.dealer_name + ", my friend. You want a water? You look like a Porsha guy.\"  (+15% happiness)")
 		"espresso":
 			c.happiness += 0.15
 			c.patience += 0.15
@@ -2422,7 +2573,7 @@ func _sig_box(title: String, key: String) -> Control:
 	var v := UI.vbox(0)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var signed: bool = sale.signed[key]
-	var name: String = sale.customer.name if key == "buyer" else "OC Chief Auto"
+	var name: String = sale.customer.name if key == "buyer" else Game.dealer_name
 	var line := UI.hbox(4)
 	line.add_child(UI.label("X", 20, PAPER_INK, true))
 	if signed:
@@ -2461,7 +2612,7 @@ func _render_paperwork() -> void:
 	paper.add_child(v)
 	var top := UI.hbox(8)
 	var brand := UI.vbox(0)
-	brand.add_child(UI.label("OC CHIEF AUTO", 15, PAPER_RED, true))
+	brand.add_child(UI.label(Game.dealer_name.to_upper(), 15, PAPER_RED, true))
 	brand.add_child(UI.label("1500 Coast Hwy · Tewport Beach, Canioria", 10, PAPER_INK))
 	top.add_child(brand)
 	top.add_child(UI.spacer())
@@ -2474,7 +2625,7 @@ func _render_paperwork() -> void:
 	var r1 := UI.hbox(0)
 	r1.add_child(_pbox("Buyer's name", _field_val("buyer"), "buyer", 250))
 	r1.add_child(_pbox("Co-buyer", "None"))
-	r1.add_child(_pbox("Seller / creditor", "OC Chief Auto, Tewport Beach"))
+	r1.add_child(_pbox("Seller / creditor", Game.dealer_name + ", Tewport Beach"))
 	v.add_child(r1)
 	var r2 := UI.hbox(0)
 	r2.add_child(_pbox("New/Used", "USED", "", 60))
@@ -2676,7 +2827,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 		summary += " And they're sending a friend tomorrow."
 	var reaction := "Not bad. Keep that margin up."
 	if profit > 5000 and happiness >= 0.5:
-		reaction = "Big margin AND a happy customer. That's how we do it at Chief Auto."
+		reaction = "Big margin AND a happy customer. That's how we do it at %s." % Game.dealer_name
 	elif profit > 5000:
 		reaction = "Big margin, but that customer won't send their friends."
 	elif profit < 0:
@@ -2740,6 +2891,58 @@ func _screen_marco() -> void:
 		v.add_child(UI.label(("✓ " if on else "Lvl %d · " % perk.level) + perk.name, 16, UI.TEXT if on else UI.MUTED, true))
 		v.add_child(UI.para(perk.desc, 13, UI.MUTED))
 	v.add_child(UI.gold_button("Ask Marco for advice", func(): play_dialogue(_marco_tips(), func(): pass)))
+
+
+# =====================================================================
+# Home: the apartment on the showroom roof
+# =====================================================================
+
+func _screen_home() -> void:
+	set_bg("apartment%d" % Game.apartment, 0.0)
+	if sleeping:
+		bg.modulate = Color(0.3, 0.36, 0.6)
+	var h := UI.hbox(16)
+	content.add_child(h)
+	h.add_child(UI.spacer())
+	var p := UI.panel(Color(0.03, 0.05, 0.1, 0.82), UI.GOLD_DIM, 18)
+	p.custom_minimum_size = Vector2(430, 0)
+	p.size_flags_vertical = Control.SIZE_SHRINK_END
+	h.add_child(p)
+	var v := UI.vbox(8)
+	p.add_child(v)
+	var cur := Game.apartment_info()
+	v.add_child(UI.label("HOME · ABOVE THE SHOWROOM", 13, UI.GOLD, true))
+	v.add_child(UI.label(cur.name, 26, UI.TEXT, true))
+	var stars := ""
+	for i in Game.APARTMENTS.size():
+		stars += "■ " if i < Game.apartment else "□ "
+	v.add_child(UI.label(stars.strip_edges(), 16, UI.GOLD))
+	v.add_child(UI.para(cur.desc, 14, UI.MUTED))
+	if cur.monthly > 0:
+		v.add_child(UI.label("Upkeep %s a month (added to your bills)" % Game.money_str(cur.monthly), 13, UI.BLUE))
+	if sleeping:
+		v.add_child(UI.rule(UI.GOLD_DIM))
+		v.add_child(UI.para("Lights off at the dealership. Tomorrow is %s." % Game.date_str(), 15))
+		v.add_child(UI.gold_button("Sleep until 8:00 AM", _wake_up, 0, 52))
+	else:
+		v.add_child(UI.gold_button("Sleep (close the dealership for today)", _close_for_night, 0, 48))
+	if Game.apartment < Game.APARTMENTS.size():
+		var nxt := Game.apartment_info(Game.apartment + 1)
+		v.add_child(UI.rule(UI.GOLD_DIM))
+		v.add_child(UI.label("NEXT UPGRADE", 13, UI.GOLD, true))
+		v.add_child(UI.label(nxt.name, 19, UI.TEXT, true))
+		v.add_child(UI.para(nxt.desc, 13, UI.MUTED))
+		var afford: bool = Game.money >= nxt.price
+		var b := UI.gold_button("Move in · %s" % Game.money_str(nxt.price), func():
+			if Game.upgrade_apartment():
+				toast("Welcome home: %s." % nxt.name)
+				show_screen("home")
+			else:
+				toast("You need %s for that." % Game.money_str(nxt.price)), 0, 46)
+		b.disabled = not afford
+		v.add_child(b)
+	else:
+		v.add_child(UI.label("You own the best address in Tewport Beach.", 14, UI.GOOD))
 
 
 func _stat_row(parent: Control, name: String, val: String, pct: float) -> void:
@@ -2809,10 +3012,8 @@ func _show_next_line() -> void:
 		ph.custom_minimum_size = Vector2(112, 128)
 		h.add_child(ph)
 	else:
-		var face := PersonArt.new()
-		face.pid = line[0].to_lower() if line[0] in ["Amna", "Jeff"] else "marco"
-		face.mood = 0.5
-		face.custom_minimum_size = Vector2(112, 128)
+		var face := _portrait_frame(line[0].to_lower() if line[0] in ["Amna", "Jeff"] else "marco", 0.5, CARD_CYAN, 128)
+		face.custom_minimum_size.x = 112
 		h.add_child(face)
 	var v := UI.vbox(8)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2952,6 +3153,13 @@ func _month_report(r: Dictionary) -> void:
 
 func _night_done() -> void:
 	_close_overlay()
+	sleeping = true
+	show_screen("home")
+
+
+## The Sleep button at home: wake up and get Marco's morning briefing.
+func _wake_up() -> void:
+	sleeping = false
 	var m := ["Marco", "CEO & Financial Advisor"]
 	var lines := []
 	if Game.money < 0:

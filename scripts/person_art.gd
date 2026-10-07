@@ -22,15 +22,38 @@ var full_body := false:
 		full_body = v
 		_load()
 var _tex: Texture2D
-const POOL := 40
+const POOL := 24   # rendered Rocketbox people p00..p23 (tools/people3d.py)
 
 
-static func pool_pid(n: int) -> String:
-	return "p%02d" % (abs(n) % POOL)
+const STAFF_LOOKS := [4, 17]   # p04 is Amna, p17 is Jeff: walk-ins never share their faces
+
+
+## Rocketbox pool: p00-p11 are women, p12-p23 are men.
+const FEMALE_NAMES := ["Kayla", "Priya", "Monica", "Tiffany", "Mei", "Jasmine", "Sofia", "Brooke", "Leila", "Nadia",
+	"Marisol", "Brianna", "Tasha", "Caitlin", "Hana", "Imani", "Rosa", "Kiara", "Ava", "Amna", "Sarah", "Eliza", "Maya", "Elena"]
+
+
+## Picks a face from the pool. With a first name, the face matches it (women's names get a woman, and so on).
+static func pool_pid(n: int, name := "") -> String:
+	var lo := 0
+	var hi := POOL
+	if name != "":
+		var first := name.split(" ")[0].rstrip(".")
+		if first in FEMALE_NAMES:
+			hi = POOL / 2
+		else:
+			lo = POOL / 2
+	var options := []
+	for i in range(lo, hi):
+		if not i in STAFF_LOOKS:
+			options.append(i)
+	return "p%02d" % options[absi(n) % options.size()]
 
 
 func _load() -> void:
 	_tex = null
+	if pid.begins_with("p") and pid.substr(1).is_valid_int() and int(pid.substr(1)) >= POOL:
+		pid = pool_pid(int(pid.substr(1)))   # saves from before the 24-person pool
 	if pid != "":
 		var path := "res://assets/people/%s_body.png" % pid
 		if not full_body:
@@ -76,6 +99,12 @@ func _draw() -> void:
 		var sz := ts * sc
 		if highlight:
 			draw_circle(Vector2(size.x / 2, size.y - sz.y * 0.75), sz.x * 0.45, Color(1, 0.85, 0.3, 0.18))
+		if full_body:
+			# feet sit on the bottom edge (renders are cropped to the figure); ground them with a soft contact shadow
+			var foot := Vector2(size.x / 2.0, size.y - sz.y * 0.012)
+			for k in 4:
+				var f := 1.0 - k * 0.22
+				_shadow(foot, sz.x * 0.62 * f, sz.y * 0.022 * f, 0.13)
 		draw_texture_rect(_tex, Rect2(Vector2((size.x - sz.x) / 2.0, size.y - sz.y), sz), false)
 		return
 	if look.is_empty():
@@ -93,6 +122,14 @@ func _draw() -> void:
 		draw_circle(Vector2(50, 70), 52, Color(1, 0.85, 0.3, 0.18))
 	_draw_bust(y0)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _shadow(c: Vector2, rx: float, ry: float, a: float) -> void:
+	var pts := PackedVector2Array()
+	for i in 28:
+		var t := TAU * i / 28.0
+		pts.append(c + Vector2(cos(t) * rx, sin(t) * ry))
+	draw_colored_polygon(pts, Color(0, 0, 0, a))
 
 
 func _draw_legs() -> void:
