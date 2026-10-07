@@ -7,6 +7,7 @@ const BG := {
 	"office": preload("res://assets/bg_office.jpg"),
 }
 const LOGO := preload("res://assets/logo.png")
+const CASH_ICON := preload("res://assets/icons/cash.png")
 const DEAL_DESK := preload("res://assets/bg_dealdesk.jpg")
 const PORTRAITS := {"Marco": preload("res://assets/portrait_marco.jpg"), "Maruchan": preload("res://assets/portrait_maruchan.jpg")}
 const MINUTES_PER_SECOND := 3.5   # game clock speed: a 13-hour day takes about 4 minutes
@@ -41,6 +42,9 @@ var pc_tab := "auction"
 var selected_car_id := -1
 var mechanic_index := 0
 var garage_log := ""
+var garage_view: Car3DView
+var garage_box: VBoxContainer
+var garage_part := ""
 
 # Showroom
 var lobby: Array = []          # customers standing in the showroom
@@ -131,12 +135,24 @@ func _build_hud() -> Control:
 	dv.add_child(hud_day)
 	dv.add_child(hud_clock)
 	hud.add_child(dv)
-	var mv := UI.vbox(0)
-	hud_money = UI.label("", 22, UI.GOOD, true)
-	hud_rent = UI.label("", 13, UI.MUTED)
+	# funds: big cash icon and balance, the number you watch all game
+	var cash := UI.panel(Color(0.02, 0.09, 0.05, 0.85), Color(0.37, 0.82, 0.48, 0.6), 4)
+	var ch := UI.hbox(8)
+	cash.add_child(ch)
+	var icon := TextureRect.new()
+	icon.texture = CASH_ICON
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(62, 48)
+	ch.add_child(icon)
+	var mv := UI.vbox(-4)
+	mv.add_child(UI.label("FUNDS", 11, Color(0.6, 0.85, 0.65), true))
+	hud_money = UI.label("", 28, UI.GOOD, true)
+	hud_rent = UI.label("", 12, UI.MUTED)
 	mv.add_child(hud_money)
 	mv.add_child(hud_rent)
-	hud.add_child(mv)
+	ch.add_child(mv)
+	hud.add_child(cash)
 	var lv := UI.vbox(2)
 	hud_level = UI.label("", 15, UI.TEXT)
 	lv.add_child(hud_level)
@@ -152,7 +168,13 @@ func _build_hud() -> Control:
 func _refresh_hud() -> void:
 	if hud_money == null:
 		return
+	var old := hud_money.text
 	hud_money.text = Game.money_str(Game.money)
+	if old != "" and old != hud_money.text:
+		hud_money.pivot_offset = hud_money.size / 2
+		var tw := hud_money.create_tween()
+		hud_money.scale = Vector2(1.12, 1.12)
+		tw.tween_property(hud_money, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	hud_money.add_theme_color_override("font_color", UI.GOOD if Game.money >= 0 else UI.BAD)
 	hud_level.text = "Level %d" % Game.level
 	hud_xp.max_value = Game.xp_to_next()
@@ -273,7 +295,7 @@ func _start_game() -> void:
 			Game.add_car(l.car, int(Game.value(l.car) * 0.6))
 		lobby.append(Game.make_customer())
 		lobby.append(Game.make_customer())
-	show_screen("lot")
+	show_screen(Game.debug_screen if Game.debug_screen != "" else "lot")
 	if not Game.seen_intro:
 		Game.seen_intro = true
 		Game.save_game()
@@ -535,7 +557,11 @@ func _num(n: int) -> String:
 
 
 func _grade(cond: int) -> String:
-	return "%.1f / 5" % (1.0 + cond / 25.0)
+	# auction-house condition grades
+	for g in [[90, "A1"], [80, "A2"], [70, "B1"], [60, "B2"], [45, "C1"]]:
+		if cond >= g[0]:
+			return g[1]
+	return "C2"
 
 
 func _open_listing(l: Dictionary) -> void:
@@ -1119,22 +1145,68 @@ func _screen_garage() -> void:
 	if _find_car(selected_car_id).is_empty():
 		selected_car_id = Game.cars[0].id
 	var car := _find_car(selected_car_id)
-	var art := _car_art(car, Vector2.ZERO)
-	stage.add_child(art)
+	Game.ensure_damage(car)
+	garage_view = Car3DView.new()
+	stage.add_child(garage_view)
+	garage_view.set_car(car)
+	garage_view.part_clicked.connect(func(p: String):
+		garage_part = p
+		_fill_garage_panel())
+	var tip := UI.label("", 15, UI.TEXT, true)
+	tip.add_theme_constant_override("outline_size", 5)
+	tip.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage.add_child(tip)
+	garage_view.part_hovered.connect(func(p: String): tip.text = _garage_part_title(car, p) if p != "" else "")
+	var hint := UI.label("Drag to turn the car · scroll to zoom · click any part to inspect and fix it", 14, UI.MUTED)
+	hint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage.add_child(hint)
 	var panel := UI.panel()
 	stage.add_child(panel)
 	var place := func():
 		var w := stage.size.x
 		var h := stage.size.y
-		art.position = Vector2(w * 0.08, h * 0.32)
-		art.size = Vector2(w * 0.44, h * 0.42)
-		panel.position = Vector2(w * 0.56, 12)
-		panel.size = Vector2(w * 0.44 - 12, h - 24)
+		garage_view.position = Vector2(0, 0)
+		garage_view.size = Vector2(w * 0.6, h)
+		tip.position = Vector2(20, 16)
+		hint.position = Vector2(20, h - 30)
+		panel.position = Vector2(w * 0.6, 10)
+		panel.size = Vector2(w * 0.4 - 10, h - 20)
 	stage.resized.connect(place)
 	place.call_deferred()
+	var sc := UI.scroll(UI.vbox(8))
+	panel.add_child(sc)
+	garage_box = sc.get_child(0)
+	garage_part = ""
+	_fill_garage_panel()
 
-	var v := UI.vbox(8)
-	panel.add_child(v)
+
+func _garage_part_title(car: Dictionary, p: String) -> String:
+	if Game.PART_NAMES.has(p):
+		return "%s · %d/100" % [Game.PART_NAMES[p], car.parts[p]]
+	var d: Dictionary = car.damage.get(p, {})
+	var name: String = Game.PANEL_NAMES.get(p, p.capitalize())
+	if d.is_empty():
+		return name + " · no damage"
+	var kinds := []
+	for k in d:
+		kinds.append("broken" if k == "broken" else Game.DAMAGE_KINDS[k].to_lower())
+	return name + " · " + ", ".join(kinds)
+
+
+func _garage_refresh() -> void:
+	Game.save_game()
+	if garage_view and is_instance_valid(garage_view):
+		garage_view.refresh()
+	_fill_garage_panel()
+
+
+func _fill_garage_panel() -> void:
+	if garage_box == null or not is_instance_valid(garage_box):
+		return
+	var v: VBoxContainer = garage_box
+	UI.clear(v)
+	var car := _find_car(selected_car_id)
 	var picker := UI.hbox(6)
 	for c in Game.cars:
 		var b := UI.button(c.model, func():
@@ -1151,9 +1223,9 @@ func _screen_garage() -> void:
 	ps.add_child(picker)
 	v.add_child(ps)
 	v.add_child(UI.label("%d %s" % [car.year, car.model], 22, UI.GOLD, true))
-	v.add_child(UI.para("Condition %d · Value %s · Repairs so far %s" % [Game.condition(car), Game.money_str(Game.value(car)), Game.money_str(car.spent)], 15, UI.MUTED))
+	v.add_child(UI.para("Condition %d · Value %s · Repairs so far %s · %d damage spots" % [Game.condition(car), Game.money_str(Game.value(car)), Game.money_str(car.spent), Game.damage_count(car)], 14, UI.MUTED))
 	var opt := OptionButton.new()
-	opt.custom_minimum_size = Vector2(0, 40)
+	opt.custom_minimum_size = Vector2(0, 38)
 	for i in Game.MECHANICS.size():
 		var m: Dictionary = Game.MECHANICS[i]
 		if Game.level >= m.level:
@@ -1166,38 +1238,160 @@ func _screen_garage() -> void:
 	opt.select(opt.get_item_index(mechanic_index))
 	opt.item_selected.connect(func(idx):
 		mechanic_index = opt.get_item_id(idx)
-		show_screen("garage"))
+		_fill_garage_panel())
 	v.add_child(opt)
 	var mech: Dictionary = Game.MECHANICS[mechanic_index]
+	if garage_log != "":
+		v.add_child(UI.para(garage_log, 14, UI.GOOD))
+	# ---- the part you clicked
+	var card := UI.panel(Color(0.05, 0.08, 0.14, 0.9), UI.GOLD, 10)
+	v.add_child(card)
+	var cv := UI.vbox(6)
+	card.add_child(cv)
+	var p := garage_part
+	if p == "":
+		cv.add_child(UI.label("INSPECT", 14, UI.GOLD, true))
+		cv.add_child(UI.para("Click a panel, light, wheel, the glass or the grille on the car. Damaged panels show dents, rust and scratches.", 14, UI.MUTED))
+	elif Game.PART_NAMES.has(p):
+		cv.add_child(UI.label(Game.PART_NAMES[p].to_upper(), 16, UI.GOLD, true))
+		var where := {"engine": "Under the hood", "transmission": "Underneath the car", "interior": "Seats, dash and headliner", "tires": "All four wheels, brakes and rotors", "body": "Every panel"}
+		cv.add_child(UI.label(where.get(p, ""), 13, UI.MUTED))
+		_system_row(cv, car, p, mech)
+	else:
+		cv.add_child(UI.label(Game.PANEL_NAMES.get(p, p.capitalize()).to_upper(), 16, UI.GOLD, true))
+		var d: Dictionary = car.damage.get(p, {})
+		if d.is_empty():
+			cv.add_child(UI.label("No damage here.", 14, UI.GOOD))
+		for k in d.keys():
+			var row := UI.hbox(8)
+			var label: String = "Broken lens" if k == "broken" else "%s · %d%%" % [Game.DAMAGE_KINDS[k], int(d[k] * 100)]
+			var l := UI.label(label, 15)
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(l)
+			var cost := Game.panel_fix_cost(car, k, mech)
+			var verb: String = {"dent": "Pull dent", "rust": "Cut out rust", "scratch": "Buff out", "broken": "Replace"}[k]
+			row.add_child(UI.button("%s %s" % [verb, Game.money_str(cost)], _fix_panel.bind(car, p, k, cost, mech), 0, 34))
+			cv.add_child(row)
+		if p in Game.PANELS and (d.has("scratch") or d.has("rust")):
+			var cost := Game.panel_fix_cost(car, "repaint", mech)
+			cv.add_child(UI.button("Repaint this panel %s" % Game.money_str(cost), _fix_panel.bind(car, p, "repaint", cost, mech), 0, 34))
+		if p == "hood":
+			cv.add_child(UI.rule())
+			cv.add_child(UI.label("Under the hood", 13, UI.MUTED))
+			_system_row(cv, car, "engine", mech)
+	# ---- all systems
+	v.add_child(UI.label("ALL SYSTEMS", 14, UI.GOLD, true))
 	for part in Game.PARTS:
-		var row := UI.hbox(8)
-		var nl := UI.label(Game.PART_NAMES[part], 15)
-		nl.custom_minimum_size = Vector2(120, 0)
-		row.add_child(nl)
-		var val: int = car.parts[part]
-		row.add_child(UI.bar(val, 100, UI.cond_color(val), 12))
-		var vl := UI.label(str(val), 15, UI.cond_color(val))
-		vl.custom_minimum_size = Vector2(32, 0)
-		row.add_child(vl)
-		var b := UI.button("Fix " + Game.money_str(_repair_cost(car, mech)), _repair.bind(car, part, mech), 116, 36)
-		b.add_theme_font_size_override("font_size", 15)
-		b.disabled = val >= 100
-		row.add_child(b)
-		v.add_child(row)
+		_system_row(v, car, part, mech)
+	# ---- paint, trim and wheels
+	v.add_child(UI.label("PAINT, TRIM & WHEELS", 14, UI.GOLD, true))
+	var sw := HFlowContainer.new()
+	sw.add_theme_constant_override("h_separation", 6)
+	sw.add_theme_constant_override("v_separation", 6)
+	var repaint := int(round(car.base * 0.03 / 100.0)) * 100 + 1200
+	for col in CarArt.PAINTS:
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(34, 34)
+		b.tooltip_text = "Full respray %s" % Game.money_str(repaint)
+		var on: bool = car.get("color", "") == col
+		b.add_theme_stylebox_override("normal", UI.box(Color(col), UI.GOLD if on else Color(1, 1, 1, 0.3), 17, 3 if on else 1, 0))
+		b.add_theme_stylebox_override("hover", UI.box(Color(col).lightened(0.15), UI.CYAN, 17, 2, 0))
+		b.pressed.connect(func():
+			if car.get("color", "") == col:
+				return
+			if not Game.spend(repaint, "repairs"):
+				toast("A full respray costs %s." % Game.money_str(repaint))
+				return
+			car.spent += repaint
+			car.color = col
+			for pn in car.damage.keys():
+				var dd: Dictionary = car.damage[pn]
+				dd.erase("scratch")
+				dd.erase("rust")
+				if dd.is_empty():
+					car.damage.erase(pn)
+			car.parts.body = min(100, car.parts.body + 8)
+			garage_log = "Full respray done. Scratches and surface rust are gone."
+			_garage_refresh())
+		sw.add_child(b)
+	v.add_child(UI.label("Full respray %s (clears scratches and surface rust)" % Game.money_str(repaint), 13, UI.MUTED))
+	v.add_child(sw)
+	_choice_row(v, "Trim", Game.TRIMS, car.get("trim", "chrome"), 350, func(k):
+		car.trim = k
+		garage_log = "Trim swapped to %s." % Game.TRIMS[k].to_lower())
+	_choice_row(v, "Wheels", Game.RIMS, car.get("rims", "silver"), 600, func(k):
+		car.rims = k
+		garage_log = "Wheels refinished in %s." % Game.RIMS[k].to_lower())
 	var det_cost := _detail_cost(car)
 	var det := UI.button("Detailing %s" % Game.money_str(det_cost) if not car.detailed else "Detailed ✓", func():
 		if Game.spend(det_cost, "repairs"):
 			car.detailed = true
 			car.spent += det_cost
 			garage_log = "The detailer made it sparkle. Customers will notice."
-			Game.save_game()
-			show_screen("garage")
+			_garage_refresh()
 		else:
 			toast("Not enough money."), 0, 38)
 	det.disabled = car.detailed
 	v.add_child(det)
-	if garage_log != "":
-		v.add_child(UI.para(garage_log, 15, UI.GOOD))
+
+
+func _system_row(parent: Control, car: Dictionary, part: String, mech: Dictionary) -> void:
+	var row := UI.hbox(8)
+	var nl := UI.label(Game.PART_NAMES[part], 15)
+	nl.custom_minimum_size = Vector2(120, 0)
+	row.add_child(nl)
+	var val: int = car.parts[part]
+	row.add_child(UI.bar(val, 100, UI.cond_color(val), 12))
+	var vl := UI.label(str(val), 15, UI.cond_color(val))
+	vl.custom_minimum_size = Vector2(32, 0)
+	row.add_child(vl)
+	var b := UI.button("Fix " + Game.money_str(_repair_cost(car, mech)), _repair.bind(car, part, mech), 116, 34)
+	b.add_theme_font_size_override("font_size", 14)
+	b.disabled = val >= 100
+	row.add_child(b)
+	parent.add_child(row)
+
+
+func _choice_row(parent: Control, title: String, options: Dictionary, current: String, cost: int, apply: Callable) -> void:
+	var row := UI.hbox(6)
+	var t := UI.label(title, 14)
+	t.custom_minimum_size = Vector2(64, 0)
+	row.add_child(t)
+	for k in options:
+		var b := UI.button(options[k], func():
+			if k == current:
+				return
+			if not Game.spend(cost, "repairs"):
+				toast("That costs %s." % Game.money_str(cost))
+				return
+			var car := _find_car(selected_car_id)
+			car.spent += cost
+			apply.call(k)
+			_garage_refresh(), 0, 32)
+		b.add_theme_font_size_override("font_size", 13)
+		b.tooltip_text = Game.money_str(cost)
+		if k == current:
+			b.add_theme_stylebox_override("normal", UI.box(Color(0.3, 0.24, 0.1, 0.95), UI.GOLD, 6, 2, 8))
+		row.add_child(b)
+	parent.add_child(row)
+
+
+func _fix_panel(car: Dictionary, panel: String, kind: String, cost: int, mech: Dictionary) -> void:
+	if not Game.spend(cost, "repairs"):
+		toast("Not enough money for that job.")
+		return
+	car.spent += cost
+	var gain := Game.fix_panel(car, panel, kind)
+	var name: String = Game.PANEL_NAMES.get(panel, panel)
+	if randf() < mech.botch * 0.6:
+		# a botched job leaves a little behind
+		car.damage[panel] = car.damage.get(panel, {})
+		car.damage[panel]["scratch"] = 0.5
+		garage_log = "%s botched the %s a bit. Body +%d." % [mech.name, name.to_lower(), gain]
+	else:
+		garage_log = "%s on the %s is done. Body +%d." % [{"dent": "Dent repair", "rust": "Rust repair", "scratch": "Polishing", "broken": "New light", "repaint": "Respray"}[kind], name.to_lower(), gain]
+	car.sticker = max(car.get("sticker", 0), int(round(Game.sale_value(car) * 1.05 / 100.0)) * 100)
+	_garage_refresh()
 
 
 func _repair_cost(car: Dictionary, mech: Dictionary) -> int:
@@ -1220,6 +1414,8 @@ func _repair(car: Dictionary, part: String, mech: Dictionary) -> void:
 		msg = "%s found a hidden problem in the %s and fixed it. " % [mech.name, Game.PART_NAMES[part].to_lower()]
 		car.hidden.erase(part)
 	car.parts[part] = min(100, car.parts[part] + gain)
+	if part == "body":
+		Game.clear_some_damage(car, gain)
 	if randf() < mech.botch:
 		var bad: String = Game.PARTS.pick_random()
 		car.hidden[bad] = car.hidden.get(bad, 0) + randi_range(10, 20)
@@ -1231,8 +1427,7 @@ func _repair(car: Dictionary, part: String, mech: Dictionary) -> void:
 	}
 	garage_log = msg + "%s +%d. %s" % [Game.PART_NAMES[part], gain, lines[mech.name].pick_random()]
 	car.sticker = max(car.get("sticker", 0), int(round(Game.sale_value(car) * 1.05 / 100.0)) * 100)
-	Game.save_game()
-	show_screen("garage")
+	_garage_refresh()
 
 
 # =====================================================================

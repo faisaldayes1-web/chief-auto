@@ -186,6 +186,7 @@ var pending_referrals := 0        # today's walk-ins who were referred
 var memberships: Array = ["autobidz"]
 var debug_day := 0
 var debug_level := 0
+var debug_screen := ""
 var debug := false                # ?debug in the web build: start with cars and a customer (testing)
 
 
@@ -202,6 +203,9 @@ func _ready() -> void:
 		var dd := query.find("day=")
 		if dd >= 0:
 			debug_day = int(query.substr(dd + 4))
+		var sc := query.find("screen=")
+		if sc >= 0:
+			debug_screen = query.substr(sc + 7).split("&")[0]
 		var lv := query.find("level=")
 		if lv >= 0:
 			debug_level = int(query.substr(lv + 6))
@@ -873,3 +877,106 @@ func _fix_ints(v):
 				out[k] = _fix_ints(v[k])
 			return out
 	return v
+
+
+# ---------- visible body damage (3D service bay) ----------
+
+const PANELS := ["front_bumper", "hood", "fender_fl", "fender_fr", "door_fl", "door_fr", "door_rl", "door_rr",
+	"quarter_rl", "quarter_rr", "roof", "trunk", "rear_bumper", "bed"]
+const LIGHTS := ["headlight_l", "headlight_r", "taillight_l", "taillight_r"]
+const PANEL_NAMES := {"front_bumper": "Front bumper", "hood": "Hood", "fender_fl": "Front fender (left)",
+	"fender_fr": "Front fender (right)", "door_fl": "Front door (left)", "door_fr": "Front door (right)",
+	"door_rl": "Rear door (left)", "door_rr": "Rear door (right)", "quarter_rl": "Rear quarter (left)",
+	"quarter_rr": "Rear quarter (right)", "roof": "Roof", "trunk": "Trunk lid", "rear_bumper": "Rear bumper",
+	"bed": "Truck bed", "headlight_l": "Headlight (left)", "headlight_r": "Headlight (right)",
+	"taillight_l": "Taillight (left)", "taillight_r": "Taillight (right)"}
+const DAMAGE_KINDS := {"dent": "Dent", "rust": "Rust", "scratch": "Scratches"}
+const TRIMS := {"chrome": "Chrome", "black": "Gloss black", "body": "Body color"}
+const RIMS := {"silver": "Silver", "black": "Satin black", "gunmetal": "Gunmetal", "gold": "Bronze"}
+
+
+## Gives a car visible damage that matches its body condition and history (once).
+func ensure_damage(car: Dictionary) -> void:
+	if car.has("damage"):
+		return
+	var dmg := {}
+	var sev: float = 1.0 - car.parts.body / 100.0
+	var n := int(round(sev * 9.0 + randf() * 2.0))
+	var pool := PANELS.duplicate()
+	pool.shuffle()
+	for i in min(n, pool.size()):
+		var d := {}
+		var p: String = pool[i]
+		if randf() < 0.55:
+			d.scratch = snappedf(randf_range(0.4, 1.0), 0.01)
+		if randf() < sev + 0.15:
+			d.dent = snappedf(randf_range(0.4, 1.0), 0.01)
+		if randf() < sev * 0.8 or car.history == "Flood":
+			d.rust = snappedf(randf_range(0.3, 0.9) * (1.3 if car.history == "Flood" else 1.0), 0.01)
+		if d.is_empty():
+			d.scratch = 0.6
+		dmg[p] = d
+	if car.history == "Major accident":
+		dmg["front_bumper"] = {"dent": 1.0, "scratch": 1.0}
+		dmg["hood"] = {"dent": 0.8}
+	for l in LIGHTS:
+		if randf() < sev * 0.35 or (car.history == "Major accident" and l.begins_with("head") and randf() < 0.5):
+			dmg[l] = {"broken": 1.0}
+	car.damage = dmg
+	if not car.has("trim"):
+		car.trim = "chrome" if randf() < 0.5 else "black"
+	if not car.has("rims"):
+		car.rims = "silver"
+
+
+func damage_count(car: Dictionary) -> int:
+	ensure_damage(car)
+	var n := 0
+	for p in car.damage:
+		n += car.damage[p].size()
+	return n
+
+
+## Cost to fix one kind of damage on one panel with a given shop.
+func panel_fix_cost(car: Dictionary, kind: String, mech: Dictionary) -> int:
+	var base: int = {"dent": 380, "rust": 520, "scratch": 220, "broken": 450, "repaint": 900}[kind]
+	var lux: float = 1.0 + car.base / 120000.0
+	var shop: float = 0.6 + mech.cost * 60.0
+	return int(round(base * lux * shop / 10.0)) * 10
+
+
+## Fixes damage on a panel; returns the body-condition points gained.
+func fix_panel(car: Dictionary, panel: String, kind: String) -> int:
+	var d: Dictionary = car.damage.get(panel, {})
+	var gain := 0
+	if kind == "repaint":
+		for k in ["scratch", "rust"]:
+			if d.has(k):
+				gain += int(d[k] * 4) + 2
+				d.erase(k)
+	elif d.has(kind):
+		gain = int(d[kind] * 5) + 2
+		d.erase(kind)
+	if d.is_empty():
+		car.damage.erase(panel)
+	car.parts.body = min(100, car.parts.body + gain)
+	return gain
+
+
+## When the shop does a general body job, clear the worst panels too so the car looks it.
+func clear_some_damage(car: Dictionary, points: int) -> void:
+	ensure_damage(car)
+	var keys: Array = car.damage.keys()
+	keys.shuffle()
+	var left := points
+	for p in keys:
+		if left <= 0:
+			break
+		var d: Dictionary = car.damage[p]
+		for k in d.keys():
+			left -= int(d[k] * 5) + 2
+			d.erase(k)
+			if left <= 0:
+				break
+		if d.is_empty():
+			car.damage.erase(p)
