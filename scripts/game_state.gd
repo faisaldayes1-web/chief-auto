@@ -4,6 +4,7 @@ extends Node
 signal changed
 
 const SAVE_PATH := "user://chief_auto_save.json"
+const LEADERBOARD_PATH := "user://chief_auto_leaderboard.json"
 const CURRENT_YEAR := 2026
 const START_UNIX := 1790812800  # Oct 1, 2026 (UTC)
 const OPEN_MIN := 8 * 60        # dealership opens 8:00
@@ -254,9 +255,13 @@ var memberships: Array = ["autobidz"]
 var dealership := 1               # tier of the dealership building (see DEALERSHIPS)
 var apartment := 1                # tier of the rooftop apartment (see APARTMENTS)
 var loan := 0                     # TewportBank line of credit you owe; interest is billed on the 1st
+var run_id := 0                   # identifies this dealership's row on the leaderboard
+var peak_worth := 0
+var bankrupt := {}                # set when the bills can't be paid; the dealership closes and the run is over
 var debug_day := 0
 var debug_level := 0
 var debug_screen := ""
+var debug_broke := false          # &broke: start deep in the red (tests the closing-down screen)
 var debug := false                # ?debug in the web build: start with cars and a customer (testing)
 
 
@@ -270,6 +275,7 @@ func _ready() -> void:
 		if at >= 0:
 			seed(int(query.substr(at + 5)))
 		debug = query.find("debug") >= 0
+		debug_broke = query.find("broke") >= 0
 		var dd := query.find("day=")
 		if dd >= 0:
 			debug_day = int(query.substr(dd + 4))
@@ -284,6 +290,9 @@ func _ready() -> void:
 
 
 func new_game() -> void:
+	run_id = randi()
+	peak_worth = 0
+	bankrupt = {}
 	money = 40000
 	xp = 0
 	level = 1
@@ -992,7 +1001,30 @@ func end_day() -> Array:
 		notes.append("New month. Paid %s in bills: rent %s, staff %s, advertising %s%s." % [money_str(b.total), money_str(b.rent), money_str(b.salaries), money_str(b.ads),
 			", loan interest %s" % money_str(b.interest) if b.interest > 0 else ""])
 		if money < 0:
-			notes.append("We're overdrawn. TewportBank on the Office PC will lend us up to %s." % money_str(loan_limit() - loan))
+			# TewportBank covers what it can; if even the full credit line can't pay the bills, the dealership closes
+			var cover: int = min(-money, loan_limit() - loan)
+			if cover > 0:
+				loan += cover
+				money += cover
+				notes.append("We couldn't cover the bills, so TewportBank drew %s from our credit line. We owe %s." % [money_str(cover), money_str(loan)])
+			# still short: wholesale the lot to a liquidator at 60% of value, cheapest cars first
+			var sorted := cars.duplicate()
+			sorted.sort_custom(func(a, b): return value(a) < value(b))
+			var dumped := []
+			for c in sorted:
+				if money >= 0:
+					break
+				var got := int(value(c) * 0.6)
+				money += got
+				log_money("sales", got)
+				cars.erase(c)
+				dumped.append("%s %s" % [c.get("year", ""), c.model])
+			if not dumped.is_empty():
+				notes.append("BILLS: a liquidator hauled off %s at 60%% of value to pay the bills." % ", ".join(dumped))
+			if money < 0:
+				bankrupt = {"short": -money, "day": day, "date": date_str()}
+				notes.append("BANKRUPT: we're %s short on the bills and the bank won't lend another cent." % money_str(-money))
+			last_month_report.money = money
 		generate_candidates()
 	if date_dict().weekday == 1:
 		generate_candidates()
@@ -1022,10 +1054,11 @@ func legal_exposure() -> int:
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
-	"loan", "pending_referrals"]
+	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt"]
 
 
 func save_game() -> void:
+	update_leaderboard("Closed down" if not bankrupt.is_empty() else "Open")
 	var data := {"version": 4}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
@@ -1052,6 +1085,38 @@ func load_game() -> bool:
 	reputation = float(reputation)
 	clock = float(clock)
 	return true
+
+
+# ---------- leaderboard (kept across runs, on this device) ----------
+
+## What the dealership is worth: cash, minus what we owe, plus the cars on the lot.
+func net_worth() -> int:
+	var w := money - loan
+	for c in cars:
+		w += value(c)
+	return w
+
+
+func load_leaderboard() -> Array:
+	if not FileAccess.file_exists(LEADERBOARD_PATH):
+		return []
+	var f := FileAccess.open(LEADERBOARD_PATH, FileAccess.READ)
+	var data = JSON.parse_string(f.get_as_text()) if f else null
+	return _fix_ints(data) if typeof(data) == TYPE_ARRAY else []
+
+
+## Updates this run's row (best net worth so far, cars sold, how far it got). Top 10 are kept.
+func update_leaderboard(status: String) -> void:
+	if not seen_intro or run_id == 0:
+		return
+	peak_worth = max(peak_worth, net_worth())
+	var rows := load_leaderboard().filter(func(r): return int(r.get("run", 0)) != run_id)
+	rows.append({"run": run_id, "name": dealer_name, "worth": peak_worth, "sold": stats.sold, "days": day,
+		"tier": dealership, "level": level, "status": status})
+	rows.sort_custom(func(a, b): return a.worth > b.worth)
+	var f := FileAccess.open(LEADERBOARD_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(JSON.stringify(rows.slice(0, 10)))
 
 
 func reset_save() -> void:
@@ -1092,13 +1157,27 @@ const RIMS := {"silver": "Silver", "black": "Satin black", "gunmetal": "Gunmetal
 
 
 ## Gives a car visible damage that matches its body condition and history (once).
+const TWO_DOOR := ["Porsha 911", "Forde Mustank", "Mazdo Miota", "Ferrano 488", "Lamborgo Aventa", "BMV M4"]
+
+
 func ensure_damage(car: Dictionary) -> void:
 	if car.has("damage"):
 		return
 	var dmg := {}
 	var sev: float = 1.0 - car.parts.body / 100.0
 	var n := int(round(sev * 9.0 + randf() * 2.0))
-	var pool := PANELS.duplicate()
+	# only panels this body actually has: coupes have no rear doors, pickups have a bed instead of a trunk
+	var truck: bool = car.get("cls", "") == "truck"
+	var pool := PANELS.filter(func(p):
+		if p in ["door_rl", "door_rr"] and car.get("model", "") in TWO_DOOR:
+			return false
+		if p == "roof" and car.get("model", "") == "Rang Rovah":
+			return false   # black roof on that model, not paint
+		if p == "bed":
+			return truck
+		if p == "trunk":
+			return not truck
+		return true)
 	pool.shuffle()
 	for i in min(n, pool.size()):
 		var d := {}

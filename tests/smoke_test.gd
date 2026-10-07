@@ -64,6 +64,21 @@ func _initialize() -> void:
 	G.end_day()
 	G.check_tutorial()
 	check(not G.tutorial_active(), "tutorial finishes")
+	# bills the bank can cover draw on the credit line; bills it can't close the dealership
+	G.new_game()
+	G.seen_intro = true
+	G.money = 1000
+	while G.date_dict().day != 1 or G.day == 1:
+		G.end_day()
+	check(G.bankrupt.is_empty() and G.loan > 0 and G.money >= 0, "bank covers a small shortfall (loan %d)" % G.loan)
+	G.money = -200000
+	for i in 31:
+		if not G.bankrupt.is_empty():
+			break
+		G.end_day()
+	check(not G.bankrupt.is_empty(), "can't pay the bills: dealership closes")
+	check(G.load_leaderboard().any(func(r): return int(r.run) == G.run_id and r.status == "Closed down"), "closed run is on the leaderboard")
 	G.reset_save()
+	check(G.bankrupt.is_empty(), "starting over clears the bankruptcy")
 	print("smoke test: %s" % ("OK" if fails == 0 else "%d failures" % fails))
 	quit(1 if fails > 0 else 0)

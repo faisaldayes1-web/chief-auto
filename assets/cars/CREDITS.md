@@ -18,6 +18,10 @@ The models themselves are not shipped with the game.
 | Forde Rangler | Ford Ranger 2001 | BadKarma | https://sketchfab.com/3d-models/ford-ranger-2001-cc83fff3a6eb42f8acb90e1e60c593af |
 | Rang Rovah | Custom Range Rover Sport | BadKarma | https://sketchfab.com/3d-models/custom-range-rover-sport-1bd2ecc36e5148bb9e339b51d8638b37 |
 | Mercedez G-Wagon | Mercedes-Benz BRABUS G900 | DAS AUTO | https://sketchfab.com/3d-models/mercedes-benz-brabus-g900-aad90805a0a84381bbee50f569e45d50 |
+| Chevro Tahoma (stand-in: a boxy full-size SUV, rescaled to Tahoe length) | toyota prado 2025 | sultan | https://sketchfab.com/3d-models/toyota-prado-2025-d314ebc5f7b94f4fb1ee98a207b0ce34 |
+
+The Toyoda Camri, Dodgy Charjer, Teslo Model 3, Subaro Outbuck and Jeap Wrangle sprites, and every one of the six
+garage models for those cars and the Chevro Tahoma, are built procedurally by tools/car3d.py (no third-party model).
 
 Before a commercial release: confirm each Sketchfab page still shows CC-BY, and get trademark advice on real car
 shapes and any badge detail left in textures (grilles, wheel centres).

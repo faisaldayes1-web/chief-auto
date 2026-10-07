@@ -294,16 +294,22 @@ func _screen_title() -> void:
 			_start_game(), 320))
 	else:
 		v.add_child(UI.gold_button("Start", _start_game, 320))
+	v.add_child(UI.button("Leaderboard", _leaderboard, 320))
 	var tag := UI.label("Prototype build · %s, Tewport Beach" % Game.dealer_name if has_save else "Prototype build · Tewport Beach", 14, UI.MUTED)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tag)
 
 
 func _start_game() -> void:
+	if not Game.bankrupt.is_empty():
+		_closed_down()
+		return
 	if Game.debug and Game.cars.is_empty():
 		Game.seen_intro = true
 		if Game.debug_day > 0:
 			Game.day = Game.debug_day
+		if Game.debug_broke:
+			Game.money = -150000
 		if Game.debug_level > 0:
 			Game.level = Game.debug_level
 			Game.money += 50000
@@ -3297,7 +3303,7 @@ func _night_report(today: String, ledger: Dictionary, notes: Array) -> void:
 	if exposure > 0:
 		v.add_child(UI.label("Pending legal risk from shady deals: about %s" % Game.money_str(exposure), 15, UI.BAD))
 	for n in notes:
-		v.add_child(UI.para(n, 15, UI.BAD if n.begins_with("LAWSUIT") else UI.MUTED))
+		v.add_child(UI.para(n, 15, UI.BAD if n.begins_with("LAWSUIT") or n.begins_with("BANKRUPT") or n.begins_with("BILLS") else UI.MUTED))
 	var next := UI.gold_button("Acknowledge", func():
 		if not Game.last_month_report.is_empty():
 			_month_report(Game.last_month_report)
@@ -3346,8 +3352,62 @@ func _month_report(r: Dictionary) -> void:
 
 func _night_done() -> void:
 	_close_overlay()
+	if not Game.bankrupt.is_empty():
+		_closed_down()
+		return
 	sleeping = true
 	show_screen("home")
+
+
+## The bills couldn't be paid, even with the bank's help: the dealership closes and the player starts over.
+func _closed_down() -> void:
+	Game.save_game()
+	var p := _modal(Color(0.12, 0.03, 0.03, 0.98), 0)
+	p.custom_minimum_size = Vector2(640, 0)
+	var v := UI.vbox(10)
+	p.add_child(v)
+	v.add_child(UI.header("%s has closed down" % Game.dealer_name))
+	v.add_child(UI.para("On %s the monthly bills came due and we were %s short. TewportBank wouldn't lend another cent, the landlord changed the locks and the cars went back to auction." % [Game.bankrupt.get("date", Game.date_str()), Game.money_str(int(Game.bankrupt.get("short", 0)))], 16, UI.TEXT))
+	v.add_child(UI.para("Days in business: %d    Cars sold: %d    Best net worth: %s" % [Game.day, Game.stats.sold, Game.money_str(Game.peak_worth)], 15, UI.GOLD))
+	v.add_child(UI.rule())
+	_leaderboard_table(v, Game.run_id)
+	v.add_child(UI.gold_button("Start over", func():
+		_close_overlay()
+		Game.reset_save()
+		show_screen("lot")
+		_name_dealership(), 0, 52))
+
+
+func _leaderboard() -> void:
+	var p := _modal(UI.NAVY, 0)
+	p.custom_minimum_size = Vector2(640, 0)
+	var v := UI.vbox(10)
+	p.add_child(v)
+	v.add_child(UI.header("Leaderboard"))
+	v.add_child(UI.para("Your best dealerships on this device, ranked by their highest net worth (cash minus loans, plus cars on the lot).", 14, UI.MUTED))
+	_leaderboard_table(v, Game.run_id)
+	v.add_child(UI.button("Close", _close_overlay, 0, 44))
+
+
+func _leaderboard_table(parent: Control, highlight: int) -> void:
+	var rows := Game.load_leaderboard()
+	if rows.is_empty():
+		parent.add_child(UI.para("No dealerships yet. Open one and sell some cars.", 15, UI.MUTED))
+		return
+	var tiers := ["", "Corner Lot", "Street Showroom", "Harbour Flagship"]
+	for i in rows.size():
+		var r: Dictionary = rows[i]
+		var h := UI.hbox(10)
+		var col := UI.GOLD if int(r.get("run", 0)) == highlight else UI.TEXT
+		h.add_child(UI.label("#%d" % (i + 1), 16, col, true))
+		var name_l := UI.label("%s" % r.get("name", "?"), 16, col, true)
+		name_l.custom_minimum_size = Vector2(190, 0)
+		h.add_child(name_l)
+		h.add_child(UI.label("%s · %d sold · day %d · %s" % [tiers[clamp(int(r.get("tier", 1)), 1, 3)], int(r.get("sold", 0)), int(r.get("days", 1)), r.get("status", "")], 13,
+			UI.BAD if r.get("status", "") == "Closed down" else UI.MUTED))
+		h.add_child(UI.spacer())
+		h.add_child(UI.label(Game.money_str(int(r.get("worth", 0))), 16, UI.GOOD, true))
+		parent.add_child(h)
 
 
 ## The Sleep button at home: wake up and get Marco's morning briefing.
@@ -3357,6 +3417,9 @@ func _wake_up() -> void:
 	var lines := []
 	if Game.money < 0:
 		lines.append(m + ["We're in the red. Sell something tomorrow, or take the TewportBank line of credit on the PC. And don't tell my mother."])
+	var due: int = Game.monthly_bills().total
+	if Game.days_until_bills() <= 7 and Game.money + Game.loan_limit() - Game.loan < due:
+		lines.append(m + ["Bills of %s are due in %d days and we can't cover them, even with the bank. If we don't sell cars before then, we close for good." % [Game.money_str(due), Game.days_until_bills()]])
 	var tips := _marco_tips()
 	lines.append(tips[0])
 	if tips.size() > 2:

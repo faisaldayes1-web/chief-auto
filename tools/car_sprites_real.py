@@ -39,6 +39,11 @@ CARS = {
     "forde_rangler": dict(src="ranger2001_badkarma/scene.gltf", length=5.15, paint=r"^material_0$", front=-1),
     "rang_rovah": dict(src="rrsport_custom/scene.gltf", length=4.88, paint=r"^Car_Paint$", front=-1),
     "mercedez_g_wagon": dict(src="g900_dasauto/scene.gltf", length=4.82, paint=r"^bodypaint", front=-1),
+    # stand-in for the Tahoe: a boxy full-size Toyota SUV, scaled to Tahoe length. prado_clean.glb is the Sketchfab
+    # export with draco stripped (gltf-transform) and the quarter-panel lettering given its own material ("decal_text")
+    "chevro_tahoma": dict(src="prado2025_sultan/prado_clean.glb", length=5.2,
+                          paint=r"^WorldGridMaterial(\.001|\.007|\.019|\.020)?$",
+                          badge=r"^decal_text$", drop_mat=r"^WorldGridMaterial\.030$", front=-1),
 }
 
 
