@@ -19,15 +19,21 @@ import bpy  # noqa: I001
 from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SAMPLES = int(os.environ.get("SAMPLES", 64))
+SAMPLES = int(os.environ.get("SAMPLES", 64))                       # bodies and faces
+PORTRAIT_SAMPLES = int(os.environ.get("PORTRAIT_SAMPLES", SAMPLES * 3))  # portraits and the hero, seen large
 PARTS = os.environ.get("PARTS", "body,face,portrait").split(",")
 
 # Named staff built on a Rocketbox base avatar with recombined textures (tools/people_staff_tex.py) and props.
 STAFF = {
-    "marco": {"base": "Male_Adult_01", "legs": "Business_Male_01", "hair_cards": False, "glasses": "clear",
-              "watch": True},
-    "maruchan": {"base": "Male_Adult_01", "legs": "Business_Male_01", "hair_cards": False,
-                 "hair_from": "Female_Adult_03", "glasses": "sun", "watch": False},
+    # Marco: short combed-back strand hair (dark, grey at the temples) grown where his texture has hair,
+    # Male_Adult_05's older skin detail (normal/specular maps), a stockier build, thin metal glasses, gold watch
+    "marco": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.6, "hair_cards": False,
+              "strand_hair": True, "head_maps": "Male_Adult_05",
+              "stocky": True, "glasses": "clear", "watch": True},
+    # Maruchan: Female_Adult_14's layered long dark hair (not in the walk-in pool), dyed black, sunglasses
+    "maruchan": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.7, "hair_cards": False,
+                 "hair_from": "Female_Adult_14", "hair_tint": (0.06, 0.055, 0.05), "head_maps": "Male_Adult_15",
+                 "glasses": "sun", "watch": False},
 }
 SRCS = []
 
@@ -36,8 +42,109 @@ def reset():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
+def _img(nt, path, non_color=False):
+    n = nt.nodes.new("ShaderNodeTexImage")
+    n.image = bpy.data.images.load(path, check_existing=True)
+    if non_color:
+        n.image.colorspace_settings.name = "Non-Color"
+    return n
+
+
+def _map(nt, src, lo_in, hi_in, lo_out, hi_out):
+    n = nt.nodes.new("ShaderNodeMapRange")
+    n.clamp = True
+    n.inputs["From Min"].default_value = lo_in
+    n.inputs["From Max"].default_value = hi_in
+    n.inputs["To Min"].default_value = lo_out
+    n.inputs["To Max"].default_value = hi_out
+    nt.links.new(src, n.inputs["Value"])
+    return n.outputs["Result"]
+
+
+# Per material part: roughness where the Rocketbox specular map is 0 -> where it is high, specular level likewise,
+# normal-map strength, subsurface, sheen. Skin is soft and translucent, cloth matte with a little sheen, hair glossy
+# along the strands.
+SURFACES = {
+    "head": dict(rough=(0.6, 0.32), spec=(0.3, 0.85), normal=0.75, sss=0.85, sss_radius=(1.0, 0.42, 0.25),
+                 sss_scale=0.0045, sheen=0.0),
+    "body": dict(rough=(0.88, 0.42), spec=(0.06, 0.6), normal=0.9, sss=0.2, sss_radius=(1.0, 0.42, 0.25),
+                 sss_scale=0.004, sheen=0.15),
+    "opacity": dict(rough=(0.52, 0.52), spec=(0.4, 0.4), normal=0.0, sss=0.0, sss_radius=(1, 1, 1),
+                    sss_scale=0.0, sheen=0.0),
+}
+
+
+def setup_material(m, folder, base, override):
+    """Rocketbox textures -> a Principled surface: colour, tangent-space normal map and the specular map driving
+    roughness and specular level. override: {"head": colour path, "head_normal": path, ...}."""
+    part = base.split("_")[-1]
+    cfg = SURFACES.get(part, SURFACES["body"])
+
+    def find(kind):
+        p = override.get(part if kind == "color" else part + "_" + kind) or os.path.join(folder, f"{base}_{kind}.tga")
+        return p if os.path.exists(p) else None
+
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    nt.links.new(bsdf.outputs[0], out.inputs[0])
+    bsdf.inputs["Roughness"].default_value = cfg["rough"][0]
+    bsdf.inputs["Specular IOR Level"].default_value = cfg["spec"][0]
+    color = find("color")
+    if color:
+        img = _img(nt, color)
+        nt.links.new(img.outputs["Color"], bsdf.inputs["Base Color"])
+        if part == "opacity":
+            nt.links.new(img.outputs["Alpha"], bsdf.inputs["Alpha"])
+    spec = find("specular")
+    if spec and part != "opacity":
+        sp = _img(nt, spec, True).outputs["Color"]
+        nt.links.new(_map(nt, sp, 0.0, 0.22, *cfg["rough"]), bsdf.inputs["Roughness"])
+        nt.links.new(_map(nt, sp, 0.0, 0.22, *cfg["spec"]), bsdf.inputs["Specular IOR Level"])
+    normal = find("normal")
+    if normal and cfg["normal"] > 0:
+        nm = nt.nodes.new("ShaderNodeNormalMap")
+        nm.inputs["Strength"].default_value = cfg["normal"]
+        tex = _img(nt, normal, True)
+        if FLIP_GREEN:
+            sep = nt.nodes.new("ShaderNodeSeparateColor")
+            comb = nt.nodes.new("ShaderNodeCombineColor")
+            inv = nt.nodes.new("ShaderNodeMath")
+            inv.operation = "SUBTRACT"
+            inv.inputs[0].default_value = 1.0
+            nt.links.new(tex.outputs["Color"], sep.inputs[0])
+            nt.links.new(sep.outputs[0], comb.inputs[0])
+            nt.links.new(sep.outputs[1], inv.inputs[1])
+            nt.links.new(inv.outputs[0], comb.inputs[1])
+            nt.links.new(sep.outputs[2], comb.inputs[2])
+            nt.links.new(comb.outputs[0], nm.inputs["Color"])
+        else:
+            nt.links.new(tex.outputs["Color"], nm.inputs["Color"])
+        nt.links.new(nm.outputs[0], bsdf.inputs["Normal"])
+    if cfg["sss"]:
+        bsdf.subsurface_method = "RANDOM_WALK_SKIN"
+        bsdf.inputs["Subsurface Weight"].default_value = cfg["sss"]
+        bsdf.inputs["Subsurface Radius"].default_value = cfg["sss_radius"]
+        bsdf.inputs["Subsurface Scale"].default_value = cfg["sss_scale"]
+    if cfg["sheen"]:
+        bsdf.inputs["Sheen Weight"].default_value = cfg["sheen"]
+        bsdf.inputs["Sheen Roughness"].default_value = 0.5
+    if part == "opacity":
+        # strands: anisotropic highlight running along the hair cards
+        bsdf.inputs["Anisotropic"].default_value = 0.35
+        tg = nt.nodes.new("ShaderNodeTangent")
+        tg.direction_type = "UV_MAP"
+        nt.links.new(tg.outputs[0], bsdf.inputs["Tangent"])
+    return bsdf
+
+
+FLIP_GREEN = os.environ.get("FLIP_GREEN", "0") == "1"
+
+
 def load_avatar(folder, override=None):
-    """override: {"head"|"body"|"opacity": texture path} replaces those textures."""
+    """override: {"head"|"body"|"opacity": colour texture, "head_normal", "head_specular", ...} replaces textures."""
     override = override or {}
     name = os.path.basename(folder.rstrip("/"))
     before = set(bpy.context.scene.objects)
@@ -47,33 +154,9 @@ def load_avatar(folder, override=None):
     meshes = [o for o in new if o.type == "MESH"]
     for ob in meshes:
         for slot in ob.material_slots:
-            m = slot.material
-            base = m.name.split(".")[0]
-            tex = os.path.join(folder, base + "_color.tga")
-            part = base.split("_")[-1]
-            if part in override:
-                tex = override[part]
-            m.use_nodes = True
-            nt = m.node_tree
-            nt.nodes.clear()
-            out = nt.nodes.new("ShaderNodeOutputMaterial")
-            bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
-            nt.links.new(bsdf.outputs[0], out.inputs[0])
-            bsdf.inputs["Roughness"].default_value = 0.55
-            if os.path.exists(tex):
-                img = nt.nodes.new("ShaderNodeTexImage")
-                img.image = bpy.data.images.load(tex)
-                nt.links.new(img.outputs["Color"], bsdf.inputs["Base Color"])
-                if base.endswith("opacity"):
-                    nt.links.new(img.outputs["Alpha"], bsdf.inputs["Alpha"])
-                    bsdf.inputs["Roughness"].default_value = 0.45
-            if base.endswith("head"):
-                bsdf.inputs["Subsurface Weight"].default_value = 0.12
-                bsdf.inputs["Subsurface Radius"].default_value = (0.9, 0.35, 0.2)
-                bsdf.inputs["Subsurface Scale"].default_value = 0.008
-                bsdf.inputs["Roughness"].default_value = 0.45
-            for p in ob.data.polygons:
-                p.use_smooth = True
+            setup_material(slot.material, folder, slot.material.name.split(".")[0], override)
+        for p in ob.data.polygons:
+            p.use_smooth = True
     return arm, meshes
 
 
@@ -183,15 +266,16 @@ def studio(res):
     sc.render.resolution_x, sc.render.resolution_y = res
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
+    sc.view_settings.exposure = -0.2      # keeps lit skin from blowing out
     w = bpy.data.worlds.new("w")
     sc.world = w
     w.use_nodes = True
     w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.55, 0.5, 0.45, 1)
-    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.6
-    # warm key (golden hour), cool rim, soft fill
-    for loc, energy, size, col in (((2.2, -3.0, 2.8), 650, 2.5, (1.0, 0.88, 0.75)),
+    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.5
+    # soft, large warm key (golden hour), cool rim, soft fill
+    for loc, energy, size, col in (((2.2, -3.0, 2.8), 700, 4.5, (1.0, 0.86, 0.72)),
                                    ((-2.5, 2.0, 2.6), 450, 1.5, (0.65, 0.78, 1.0)),
-                                   ((-2.5, -2.5, 1.5), 180, 3.0, (1, 1, 1))):
+                                   ((-2.5, -2.5, 1.5), 200, 4.0, (1, 0.97, 0.95))):
         ld = bpy.data.lights.new("l", "AREA")
         ld.energy = energy
         ld.size = size
@@ -274,6 +358,181 @@ def _beam(name, a, b, w, h, up, mat):
     return _mesh(name, vs, faces, mat)
 
 
+def _glass(name, see_through, rough, ior=1.5, refl=1.0):
+    """A thin lens or a wet film: see-through (tinted) with a Fresnel reflection (scaled by refl, e.g. an
+    anti-reflective coating) and no refraction."""
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    tr = nt.nodes.new("ShaderNodeBsdfTransparent")
+    tr.inputs["Color"].default_value = (*see_through, 1)
+    gl = nt.nodes.new("ShaderNodeBsdfGlossy")
+    gl.inputs["Roughness"].default_value = rough
+    fr = nt.nodes.new("ShaderNodeFresnel")
+    fr.inputs["IOR"].default_value = ior
+    mix = nt.nodes.new("ShaderNodeMixShader")
+    k = nt.nodes.new("ShaderNodeMath")
+    k.operation = "MULTIPLY"
+    k.inputs[1].default_value = refl
+    nt.links.new(fr.outputs[0], k.inputs[0])
+    nt.links.new(k.outputs[0], mix.inputs[0])
+    nt.links.new(tr.outputs[0], mix.inputs[1])
+    nt.links.new(gl.outputs[0], mix.inputs[2])
+    nt.links.new(mix.outputs[0], out.inputs[0])
+    return m
+
+
+def add_corneas(arm, meshes):
+    """A wet, clear film over each eyeball (Rocketbox eyes are matte): gives catchlights and a living look."""
+    import bmesh
+    ob = meshes[0]
+    mw = ob.matrix_world
+    wet = _glass("cornea", (1, 1, 1), 0.015, ior=1.376)
+    for side in ("L", "R"):
+        g = ob.vertex_groups.get(f"Bip01 {side}Eye")
+        if g is None:
+            continue
+        c = arm.matrix_world @ arm.pose.bones[f"Bip01 {side}Eye"].head
+        pts = []
+        for v in ob.data.vertices:
+            for ge in v.groups:
+                if ge.group == g.index and ge.weight > 0.6:
+                    pts.append(mw @ v.co)
+        if len(pts) < 8:
+            continue
+        r = sorted((p - c).length for p in pts)[int(len(pts) * 0.9)]
+        me = bpy.data.meshes.new("cornea")
+        bm = bmesh.new()
+        bmesh.ops.create_uvsphere(bm, u_segments=32, v_segments=16, radius=r * 1.035)
+        bm.to_mesh(me)
+        bm.free()
+        for p in me.polygons:
+            p.use_smooth = True
+        o = bpy.data.objects.new("cornea", me)
+        o.location = c
+        o.data.materials.append(wet)
+        bpy.context.scene.collection.objects.link(o)
+
+
+def _mask_weights(ob, mask_path, part="head"):
+    """Per-vertex weights from a greyscale UV mask (the head texture's layout) on one material part."""
+    import numpy as np
+    img = bpy.data.images.load(mask_path, check_existing=True)
+    w, h = img.size
+    px = np.empty(w * h * img.channels, np.float32)
+    img.pixels.foreach_get(px)
+    px = px.reshape(h, w, img.channels)[..., 0]
+    idx = [i for i, sl in enumerate(ob.material_slots) if sl.material.name.split(".")[0].endswith(part)][0]
+    uv = ob.data.uv_layers.active.data
+    acc = {}
+    for p in ob.data.polygons:
+        if p.material_index != idx:
+            continue
+        for li in p.loop_indices:
+            u, v = uv[li].uv
+            val = px[min(h - 1, max(0, int(v * h))), min(w - 1, max(0, int(u * w)))]
+            acc.setdefault(ob.data.loops[li].vertex_index, []).append(val)
+    return {vi: sum(vs) / len(vs) for vi, vs in acc.items()}
+
+
+def strand_hair(ob, fwd, mask_path, grey_path=None, length=0.022, count=60000, melanin=0.9, seed=1):
+    """Short strand hair (Cycles curves, Principled Hair) grown on the scalp where the mask is white, combed back
+    (grown along the scalp normal plus backwards and down); a second, sparse grey/white system where grey_path is
+    white (salt and pepper at the temples)."""
+    inv = ob.matrix_world.to_3x3().inverted()
+    comb = inv @ (-fwd * 1.0 + Vector((0, 0, -0.5)))
+    comb = comb.normalized() * 0.9
+
+    def system(name, weights, n, mel, rnd_col, length):
+        vg = ob.vertex_groups.new(name=name)
+        for vi, wt in weights.items():
+            if wt > 0.02:
+                vg.add([vi], min(1.0, wt * 1.3), "REPLACE")
+        mod = ob.modifiers.new(name, "PARTICLE_SYSTEM")
+        psys = mod.particle_system
+        psys.vertex_group_density = name
+        psys.vertex_group_length = name
+        psys.seed = seed
+        st = psys.settings
+        st.type = "HAIR"
+        st.count = n
+        st.emit_from = "FACE"
+        st.use_emit_random = True
+        # hair length follows the emit velocities; on Rocketbox's 0.01-scaled meshes 1.0 grows ~4.15 m
+        k = length / 4.15
+        st.normal_factor = 0.55 * k
+        st.tangent_factor = 0.0
+        st.object_align_factor = comb * k
+        st.child_type = "INTERPOLATED"
+        st.rendered_child_count = 5
+        st.child_length = 0.9
+        st.roughness_1 = 0.002
+        st.roughness_endpoint = 0.003
+        st.clump_factor = 0.15
+        st.root_radius = 1.0
+        st.tip_radius = 0.2
+        st.radius_scale = 0.00028 / max(ob.matrix_world.to_scale())
+        st.display_step = 3
+        st.render_step = 4
+        m = bpy.data.materials.new(name + "_mat")
+        m.use_nodes = True
+        nt = m.node_tree
+        nt.nodes.clear()
+        out = nt.nodes.new("ShaderNodeOutputMaterial")
+        hb = nt.nodes.new("ShaderNodeBsdfHairPrincipled")
+        hb.parametrization = "MELANIN"
+        hb.inputs["Melanin"].default_value = mel
+        hb.inputs["Melanin Redness"].default_value = 0.35
+        hb.inputs["Roughness"].default_value = 0.32
+        hb.inputs["Radial Roughness"].default_value = 0.4
+        hb.inputs["Random Color"].default_value = rnd_col
+        hb.inputs["Random Roughness"].default_value = 0.2
+        nt.links.new(hb.outputs[0], out.inputs[0])
+        ob.data.materials.append(m)
+        st.material_slot = m.name
+        return psys
+
+    system("scalp_hair", _mask_weights(ob, mask_path), count, melanin, 0.15, length)
+    if grey_path:
+        system("grey_hair", _mask_weights(ob, grey_path), count // 5, 0.35, 0.25, length * 0.9)
+
+
+def stocky(arm, waist=1.1, chest=1.08, shoulders=1.06, limbs=1.07):
+    """A broader, heavier build by scaling the spine, neck, clavicle and arm bones across (not along) their length.
+    Children keep their own scale so the head, hands and legs stay the same size."""
+    bones = arm.data.bones
+    mw3 = arm.matrix_world.to_3x3()
+    plan = {"Bip01 Spine": (waist, waist * 1.04), "Bip01 Spine1": (waist, waist), "Bip01 Spine2": (chest, chest * 0.98),
+            "Bip01 Neck": (1.06, 1.06), "Bip01 L UpperArm": (limbs, limbs), "Bip01 R UpperArm": (limbs, limbs),
+            "Bip01 L Forearm": (limbs * 0.98, limbs * 0.98), "Bip01 R Forearm": (limbs * 0.98, limbs * 0.98)}
+    for name in list(plan) + ["Bip01 L Clavicle", "Bip01 R Clavicle"]:
+        for ch in bones[name].children:
+            ch.inherit_scale = "NONE"
+    for name, (lat, dep) in plan.items():
+        b = bones[name]
+        axes = [(mw3 @ b.matrix_local.to_3x3().col[i]).normalized() for i in range(3)]
+        sc = [1.0, 1.0, 1.0]
+        along = max(range(3), key=lambda i: abs(axes[i].z) if "Arm" not in name else abs(axes[i].x))
+        for i in range(3):
+            if i == along:
+                continue
+            if "Arm" in name:
+                sc[i] = lat
+            else:
+                sc[i] = lat if abs(axes[i].x) > abs(axes[i].y) else dep
+        arm.pose.bones[name].scale = sc
+    for side in ("L", "R"):   # wider shoulders: longer clavicles
+        b = bones[f"Bip01 {side} Clavicle"]
+        axes = [(mw3 @ b.matrix_local.to_3x3().col[i]).normalized() for i in range(3)]
+        along = max(range(3), key=lambda i: abs(axes[i].x))
+        sc = [1.0, 1.0, 1.0]
+        sc[along] = shoulders
+        arm.pose.bones[b.name].scale = sc
+    bpy.context.view_layer.update()
+
+
 def add_glasses(arm, kind):
     """Rectangular glasses ('clear', thin dark frame) or sunglasses ('sun', dark lenses) in front of the eyes."""
     bpy.context.view_layer.update()
@@ -287,11 +546,11 @@ def add_glasses(arm, kind):
     if kind == "sun":
         lw, lh, ft, dz, ahead = 0.054, 0.04, 0.0045, -0.003, 0.03
         frame = _mat("sunframe", (0.012, 0.012, 0.014), 0.25, spec=0.6)
-        lens = _mat("sunlens", (0.006, 0.006, 0.008), 0.16, alpha=0.97, spec=0.6)
+        lens = _glass("sunlens", (0.025, 0.025, 0.03), 0.3, refl=0.35)
     else:
-        lw, lh, ft, dz, ahead = 0.05, 0.03, 0.0032, 0.0, 0.03
-        frame = _mat("frame", (0.02, 0.018, 0.018), 0.3, spec=0.6)
-        lens = _mat("lens", (0.8, 0.85, 0.9), 0.05, alpha=0.05, spec=0.8)
+        lw, lh, ft, dz, ahead = 0.05, 0.03, 0.0026, 0.0, 0.03
+        frame = _mat("frame", (0.06, 0.06, 0.065), 0.28, metal=1.0)
+        lens = _glass("lens", (0.97, 0.98, 1.0), 0.02, refl=0.2)
     wrap = 0.007   # outer edges sit further back, following the face
     corners = {}
     for eye, out in ((le, across), (re, -across)):
@@ -371,7 +630,7 @@ def drop_hair_cards(meshes):
         bm.free()
 
 
-def swap_legs(arm, meshes, donor_folder):
+def swap_legs(arm, meshes, donor_folder, tint=1.0):
     """Replaces the legs (everything below the shirt hem, in the rest pose) with another avatar's, so a polo-and-shorts
     body can wear long trousers and shoes. Rocketbox avatars share one skeleton, and the legs are not posed."""
     import bmesh
@@ -416,6 +675,18 @@ def swap_legs(arm, meshes, donor_folder):
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if not keep(f)], context="FACES")
     bm.to_mesh(legs.data)
     bm.free()
+    if tint != 1.0:   # darker trousers
+        for sl in legs.material_slots:
+            nt = sl.material.node_tree
+            bsdf = [n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"][0]
+            link = bsdf.inputs["Base Color"].links
+            if link:
+                mul = nt.nodes.new("ShaderNodeMixRGB")
+                mul.blend_type = "MULTIPLY"
+                mul.inputs[0].default_value = 1
+                mul.inputs[2].default_value = (tint, tint, tint, 1)
+                nt.links.new(link[0].from_socket, mul.inputs[1])
+                nt.links.new(mul.outputs[0], bsdf.inputs["Base Color"])
     wm = legs.matrix_world.copy()
     legs.parent = arm
     legs.matrix_world = wm
@@ -429,29 +700,40 @@ def swap_legs(arm, meshes, donor_folder):
 
 
 def transplant_hair(arm, meshes, donor_folder, tint=(0.05, 0.047, 0.045)):
-    """Gives the avatar another avatar's hair cards (Maruchan's long hair), fitted to this skull and dyed near-black.
+    """Gives the avatar another avatar's hair cards, fitted to this skull and multiplied by tint (dyed).
     Run in the rest pose, before relax_pose."""
     import bmesh
+
+    def skull(ob, hp):
+        """Bounding box of the head-material vertices above the head bone (world): min, max."""
+        mw = ob.matrix_world
+        hidx = [i for i, sl in enumerate(ob.material_slots) if sl.material.name.split(".")[0].endswith("head")][0]
+        vids = {v for p in ob.data.polygons if p.material_index == hidx for v in p.vertices}
+        pts = [mw @ ob.data.vertices[v].co for v in vids]
+        pts = [p for p in pts if p.z > hp.z]
+        return (Vector([min(p[i] for p in pts) for i in range(3)]), Vector([max(p[i] for p in pts) for i in range(3)]))
+
     hp = head_pos(arm)
-    top = head_top(meshes, hp)
+    t0, t1 = skull(meshes[0], hp)
     d_arm, d_meshes = load_avatar(donor_folder)
     dhp = head_pos(d_arm)
     dob = d_meshes[0]
     dmw = dob.matrix_world
+    d0, d1 = skull(dob, dhp)
     slots = [sl.material.name.split(".")[0] for sl in dob.material_slots]
-    hidx = [i for i, n in enumerate(slots) if n.endswith("head")][0]
     oidx = [i for i, n in enumerate(slots) if n.endswith("opacity")][0]
-    dtop = max((dmw @ dob.data.vertices[v].co).z for p in dob.data.polygons if p.material_index == hidx
-               for v in p.vertices)
-    scale = (top - hp.z) / (dtop - dhp.z) * 1.03
     bm = bmesh.new()
     bm.from_mesh(dob.data)
     bmesh.ops.delete(bm, geom=[f for f in bm.faces if f.material_index != oidx], context="FACES")
     bm.to_mesh(dob.data)
     bm.free()
+    # fit the donor skull box onto this skull box (per axis; height measured up from the head bone), 2% proud
+    tc, dc = (t0 + t1) / 2, (d0 + d1) / 2
+    k = [(t1[i] - t0[i]) / (d1[i] - d0[i]) * 1.02 for i in range(2)] + [(t1.z - hp.z) / (d1.z - dhp.z) * 1.02]
     inv = dmw.inverted()
     for v in dob.data.vertices:
-        v.co = inv @ (hp + (dmw @ v.co - dhp) * scale)
+        w = dmw @ v.co
+        v.co = inv @ Vector((tc.x + (w.x - dc.x) * k[0], tc.y + (w.y - dc.y) * k[1], hp.z + (w.z - dhp.z) * k[2]))
     nt = dob.material_slots[oidx].material.node_tree
     bsdf = [n for n in nt.nodes if n.type == "BSDF_PRINCIPLED"][0]
     img = [n for n in nt.nodes if n.type == "TEX_IMAGE"][0]
@@ -496,6 +778,7 @@ PORTRAIT_LENS = 85
 def render_portrait(arm, meshes, cam, out, pid):
     sc = bpy.context.scene
     sc.render.resolution_x, sc.render.resolution_y = 720, 900
+    sc.cycles.samples = PORTRAIT_SAMPLES
     cam.data.sensor_fit = "VERTICAL"
     cam.data.sensor_height = 24
     fwd, _ = facing(arm)
@@ -511,6 +794,7 @@ def render_portrait(arm, meshes, cam, out, pid):
     reset_face(arm)
     set_mood(arm, 0.45)
     render(os.path.join(out, f"{pid}_portrait.png"))
+    sc.cycles.samples = SAMPLES
     cam.data.sensor_fit = "AUTO"
     cam.data.sensor_width = 36
 
@@ -522,6 +806,7 @@ def render_hero(arm, meshes, cam, out, pid):
     """Large standing figure for the Marco screen: head to mid-thigh, slight three-quarter turn, arms crossed."""
     sc = bpy.context.scene
     sc.render.resolution_x, sc.render.resolution_y = 1100, 1500
+    sc.cycles.samples = PORTRAIT_SAMPLES
     cam.data.sensor_fit = "VERTICAL"
     cam.data.sensor_height = 24
     fwd, _ = facing(arm)
@@ -569,13 +854,26 @@ def do_avatar(folder, out, pid, staff=None):
             f = os.path.join(tdir, part + "_color.png")
             if os.path.exists(f):
                 override[part] = f
+        if staff.get("head_maps"):
+            src = find(SRCS, staff["head_maps"])
+            for kind in ("normal", "specular"):
+                hits = [f for f in os.listdir(src) if f.endswith("_head_%s.tga" % kind)]
+                if hits:
+                    override["head_" + kind] = os.path.join(src, hits[0])
     arm, meshes = load_avatar(folder, override)
     if staff and not staff["hair_cards"]:
         drop_hair_cards(meshes)
     if staff and staff.get("legs"):
-        swap_legs(arm, meshes, find(SRCS, staff["legs"]))
+        swap_legs(arm, meshes, find(SRCS, staff["legs"]), staff.get("legs_tint", 1.0))
     if staff and staff.get("hair_from"):
-        transplant_hair(arm, meshes, find(SRCS, staff["hair_from"]))
+        transplant_hair(arm, meshes, find(SRCS, staff["hair_from"]), staff.get("hair_tint", (0.05, 0.047, 0.045)))
+    if staff and staff.get("strand_hair"):
+        tdir = os.path.join(os.environ["STAFF_TEX"], pid)
+        grey = os.path.join(tdir, "grey_mask.png")
+        strand_hair(meshes[0], facing(arm)[0], os.path.join(tdir, "hair_mask.png"), grey if os.path.exists(grey) else None)
+    if staff and staff.get("stocky"):
+        stocky(arm)
+    add_corneas(arm, meshes)
     if PARTS == ["hero"]:
         cross_arms(arm)
     else:

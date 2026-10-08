@@ -93,22 +93,36 @@ def marco_head(rb, rbx):
     sides = (soft_box(shape, 0, 0, 660, 640, 40) + soft_box(shape, 1390, 0, 2048, 640, 40)).clip(0, 1)
     m = np.maximum(top, sides * hairness)
     out = mix(face, hair_t, m)
+    # where people3d.py grows strand hair (scalp hair only, not the forehead), and where it greys (temples)
+    hair_mask = blur(m * hairness * np.clip((215 - hl) / 40, 0, 1) * 255, 6) / 255.0
+    temples = hair_mask * (soft_box(shape, 480, 300, 760, 820, 40) + soft_box(shape, 1290, 300, 1570, 820, 40)).clip(0, 1)
     # grey the goatee and moustache (salt and pepper)
     beard = np.maximum(ellipse(shape, 1024, 960, 170, 190, 25), ellipse(shape, 1024, 785, 150, 45, 12))
     dark = np.clip((95 - lum(out)) / 60, 0, 1) * beard
     n = noise(shape, 5)
     grey = np.stack([lum(out) * 1.2 + 70] * 3, -1) * np.array([1.0, 0.98, 0.95])
-    out = mix(out, grey, dark * np.clip(n * 1.5 - 0.3, 0, 1) * 0.75)
+    out = mix(out, grey, dark * np.clip(n * 1.6 - 0.2, 0, 1) * 0.9)
     # a little grey in the sideburns
-    sb = (soft_box(shape, 560, 520, 700, 760, 25) + soft_box(shape, 1350, 520, 1490, 760, 25)).clip(0, 1)
+    sb = (soft_box(shape, 520, 380, 720, 780, 30) + soft_box(shape, 1330, 380, 1530, 780, 30)).clip(0, 1)
     sdark = np.clip((80 - lum(out)) / 50, 0, 1) * sb
-    out = mix(out, grey, sdark * np.clip(n * 1.6 - 0.4, 0, 1) * 0.6)
+    out = mix(out, grey, sdark * np.clip(n * 1.7 - 0.3, 0, 1) * 0.85)
+    # age (~50): under-eye bags and nasolabial folds, as soft shading
+    age = np.zeros(shape, np.float32)
+    for cx in (905, 1143):
+        age = np.maximum(age, ellipse(shape, cx, 628, 70, 20, 14) * 0.55)
+    im = Image.new("L", (shape[1], shape[0]), 0)
+    d = ImageDraw.Draw(im)
+    d.line([(958, 712), (930, 770), (918, 835)], fill=255, width=14)
+    d.line([(1090, 712), (1118, 770), (1130, 835)], fill=255, width=14)
+    age = np.maximum(age, np.asarray(im.filter(ImageFilter.GaussianBlur(10)), np.float32) / 255.0 * 0.6)
+    out = mix(out, out * np.array([0.8, 0.76, 0.76]), age)
+    out = flush(out)
     out = fill_chest(out, rb)
     # Male_Adult_17 keeps its eyeballs and mouth pieces elsewhere on the sheet; take them from Male_Adult_15, which has
     # them where Male_Adult_01's mesh looks (brown eyes)
     eyes = tex(os.path.join(rbx, "Male_Adult_15"), "head")
     m = soft_box(shape, 0, 1150, 860, 2048, 3) * (1 - soft_box(shape, 240, 1300, 860, 1540, 3))
-    return mix(out, eyes, m)
+    return mix(out, eyes, m), hair_mask, temples
 
 
 def maruchan_head(rb, rbx):
@@ -124,7 +138,16 @@ def maruchan_head(rb, rbx):
     out = mix(face, cheek, m)
     # blacken the chin beard a touch so it reads like the art
     out = mix(out, out * 0.8, keep * np.clip((90 - lum(out)) / 60, 0, 1))
-    return fill_chest(out, rb)
+    return fill_chest(flush(out), rb)
+
+
+def flush(out):
+    """A little living redness at the nose, cheeks and ears."""
+    shape = out.shape[:2]
+    m = np.maximum.reduce([ellipse(shape, 1024, 715, 45, 40, 18) * 0.8,
+                           ellipse(shape, 860, 700, 85, 65, 40) * 0.6, ellipse(shape, 1188, 700, 85, 65, 40) * 0.6,
+                           ellipse(shape, 490, 640, 60, 110, 25) * 0.7, ellipse(shape, 1558, 640, 60, 110, 25) * 0.7])
+    return mix(out, out * np.array([1.07, 0.93, 0.9]), m * 0.6)
 
 
 def fill_chest(out, rb):
@@ -235,7 +258,9 @@ def main():
     rb, rbx, out = sys.argv[1:4]
     for pid in ("marco", "maruchan"):
         os.makedirs(os.path.join(out, pid), exist_ok=True)
-    mh = marco_head(rb, rbx)
+    mh, hm, tm = marco_head(rb, rbx)
+    Image.fromarray((hm * 255).astype(np.uint8)).save(os.path.join(out, "marco", "hair_mask.png"))
+    Image.fromarray((tm * 255).astype(np.uint8)).save(os.path.join(out, "marco", "grey_mask.png"))
     Image.fromarray(np.clip(mh, 0, 255).astype(np.uint8)).save(os.path.join(out, "marco", "head_color.png"))
     body(rb, mean_rgb(mh, *SKIN_REF), (17, 17, 19), (20, 20, 22), (26, 22, 20), marco_badge).save(
         os.path.join(out, "marco", "body_color.png"))
