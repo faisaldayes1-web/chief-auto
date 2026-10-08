@@ -764,9 +764,9 @@ func _class_name(c: String) -> String:
 
 # =====================================================================
 # Office PC: a desk with a computer. Browser tabs: auctions and shops.
+# Every tab is its own website: a brand with a logo (assets/web), a palette and a layout that parodies the real thing.
 # =====================================================================
 
-const PC_TAB_ICONS := {"auction": "gavel", "desk": "pc", "showroom": "showroom", "ads": "megaphone", "staff": "staff", "reviews": "star", "bank": "bank"}
 const PC_TABS := [["auction", "AutoBidz"], ["desk", "DeskDepot"], ["showroom", "ShowroomPro"], ["ads", "AdSpace"], ["staff", "StaffHire"], ["reviews", "Yolp"], ["bank", "TewportBank"]]
 const PC_URLS := {
 	"auction": "https://www.autobidz.ca/live?region=orange-county",
@@ -779,21 +779,39 @@ const PC_URLS := {
 }
 var auction_house := "autobidz"
 
+## Browser chrome.
+const CHROME := Color(0.16, 0.18, 0.22)
+const CHROME_TEXT := Color(0.82, 0.85, 0.9)
+
+## Auction lanes inside AutoBidz, each co-branded: header bar and its text, the lane band and its text,
+## a lane badge, the logo (assets/web/<logo>_logo.svg) and the colour of the lane's buttons.
+const LANES := {
+	"autobidz": {"bar": Color("1b1f24"), "bar_ink": Color.WHITE, "band": Color("e0262b"), "ink": Color.WHITE, "badge": "PUBLIC AUCTION", "logo": "autobidz", "btn": Color("e0262b"), "btn_ink": Color.WHITE, "seller": "Private seller · Orange County"},
+	"salvage": {"bar": Color("f5c400"), "bar_ink": Color("161616"), "band": Color("161616"), "ink": Color("f5c400"), "badge": "SALVAGE YARD", "logo": "salvage", "btn": Color("161616"), "btn_ink": Color("f5c400"), "seller": "Insurance salvage · sold as-is"},
+	"dealer": {"bar": Color("0f2f5a"), "bar_ink": Color.WHITE, "band": Color("1f6fb2"), "ink": Color.WHITE, "badge": "DEALER EXCHANGE", "logo": "mannheim", "btn": Color("1f6fb2"), "btn_ink": Color.WHITE, "seller": "Franchise dealer trade-in"},
+	"exotic": {"bar": Color("070707"), "bar_ink": Color("d4a84a"), "band": Color("1c1a14"), "ink": Color("d4a84a"), "badge": "THE VAULT", "logo": "exotic", "btn": Color("d4a84a"), "btn_ink": Color("161206"), "seller": "Collector consignment · Coast Highway"},
+}
+
 
 func _screen_pc() -> void:
 	var stage := _stage("desk")
 	var win := UI.panel(Color(0.93, 0.94, 0.96, 1.0), Color(0.1, 0.1, 0.1), 0)
+	win.clip_contents = true
 	stage.add_child(win)
 	var place := func():
 		stage._compute()
 		win.position = stage.monitor_rect.position
 		win.size = stage.monitor_rect.size
 	stage.resized.connect(place)
+	# wrapped labels report a tall minimum on their first pass and a Control never shrinks back on its own,
+	# so the window is re-fitted to the monitor whenever its minimum size settles
+	win.minimum_size_changed.connect(place)
 	place.call_deferred()
 	var v := UI.vbox(0)
 	win.add_child(v)
-	var tabs := UI.hbox(3)
-	var strip := UI.panel(Color(0.78, 0.8, 0.85), Color.TRANSPARENT, 5)
+	# tab strip: dark chrome, rounded tabs with each site's favicon
+	var strip := _flat(CHROME, 0, 6)
+	var tabs := UI.hbox(2)
 	strip.add_child(tabs)
 	v.add_child(strip)
 	for t in PC_TABS:
@@ -801,33 +819,44 @@ func _screen_pc() -> void:
 		var b := UI.button(t[1], func():
 			pc_tab = t[0]
 			show_screen("pc"), 0, 30)
-		b.add_theme_font_size_override("font_size", 14)
-		var bg_c := Color(0.93, 0.94, 0.96) if active else Color(0.68, 0.7, 0.75)
-		b.add_theme_stylebox_override("normal", UI.box(bg_c, Color.TRANSPARENT, 6, 0, 10))
-		b.add_theme_stylebox_override("hover", UI.box(bg_c.lightened(0.2), Color.TRANSPARENT, 6, 0, 10))
-		b.add_theme_color_override("font_color", Color(0.15, 0.15, 0.2) if active else Color(0.3, 0.3, 0.35))
-		_with_icon(b, PC_TAB_ICONS.get(t[0], "pc"), 16)
-		b.add_theme_color_override("icon_normal_color", Color(0.2, 0.22, 0.3))
-		b.add_theme_color_override("icon_hover_color", Color(0.2, 0.22, 0.3))
-		b.add_theme_color_override("icon_pressed_color", Color(0.2, 0.22, 0.3))
+		b.add_theme_font_size_override("font_size", 13)
+		for st in ["normal", "hover", "pressed"]:
+			var sb := UI.box(Color.WHITE if active else (Color.TRANSPARENT if st == "normal" else Color(1, 1, 1, 0.1)), Color.TRANSPARENT, 8, 0, 10)
+			sb.corner_radius_bottom_left = 0
+			sb.corner_radius_bottom_right = 0
+			b.add_theme_stylebox_override(st, sb)
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			b.add_theme_color_override(c, INK if active else CHROME_TEXT)
+		b.icon = web_tex(t[1].to_lower() + "_icon")
+		b.add_theme_constant_override("icon_max_width", 16)
+		b.add_theme_constant_override("h_separation", 6)
 		tabs.add_child(b)
-	var addr_wrap := UI.panel(Color(0.93, 0.94, 0.96), Color.TRANSPARENT, 6)
-	var addr := LineEdit.new()
-	addr.text = PC_URLS[pc_tab]
+	tabs.add_child(UI.label("+", 16, CHROME_TEXT))
+	# address bar: a pill with a lock, like any modern browser
+	var addr_wrap := _flat(Color.WHITE, 0, 10)
+	var ar := UI.hbox(10)
+	addr_wrap.add_child(ar)
+	for g in ["←", "→", "↻"]:
+		ar.add_child(UI.label(g, 15, Color(0.5, 0.52, 0.58)))
+	var pill := _flat(Color(0.93, 0.94, 0.96), 15, 10)
+	pill.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var ph := UI.hbox(6)
+	pill.add_child(ph)
+	ph.add_child(_web_img("lock", 12, Color(0.3, 0.55, 0.38)))
+	var url: String = PC_URLS[pc_tab]
 	if pc_tab == "auction":
-		addr.text = "https://www." + Game.auction(auction_house).url
+		url = "https://www." + Game.auction(auction_house).url
 	elif pc_tab == "reviews":
-		addr.text = "https://www.yolp.ca/biz/%s-tewport-beach" % Game.dealer_name.to_lower().validate_filename().replace(" ", "-")
-	addr.editable = false
-	addr.add_theme_font_size_override("font_size", 14)
-	addr_wrap.add_child(addr)
+		url = "https://www.yolp.ca/biz/%s-tewport-beach" % Game.dealer_name.to_lower().validate_filename().replace(" ", "-")
+	ph.add_child(UI.label(url, 13, Color(0.25, 0.27, 0.32)))
+	ar.add_child(pill)
+	ar.add_child(UI.label("☆", 15, Color(0.5, 0.52, 0.58)))
+	ar.add_child(UI.label("⋮", 15, Color(0.5, 0.52, 0.58)))
 	v.add_child(addr_wrap)
 	var body := MarginContainer.new()
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	for side in ["left", "right", "top", "bottom"]:
-		body.add_theme_constant_override("margin_" + side, 10)
 	v.add_child(body)
-	var inner := UI.vbox(8)
+	var inner := UI.vbox(0)
 	body.add_child(inner)
 	match pc_tab:
 		"auction": _tab_auction(inner)
@@ -841,72 +870,234 @@ func _screen_pc() -> void:
 
 const INK := Color(0.12, 0.12, 0.16)
 const GREY := Color(0.4, 0.4, 0.45)
+const WEB_LINE := Color(0.85, 0.86, 0.9)   # card borders on light pages
+const WEB_GOOD := Color("1e7e34")
+const WEB_BAD := Color("c0392b")
+const WEB_LINK := Color("1f6fb2")
 
 
+## Flat coloured panel for web pages. (UI.panel turns dark colours into smoked glass; the sites keep their own.)
+func _flat(bg: Color, radius := 0, pad := 12, border := Color.TRANSPARENT, border_w := 0) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", UI.box(bg, border, radius, border_w, pad))
+	return p
+
+
+## White card on a light page.
 func _web_box() -> PanelContainer:
-	return UI.panel(Color.WHITE, Color(0.8, 0.8, 0.85), 10)
+	return _flat(Color.WHITE, 8, 12, WEB_LINE, 1)
 
 
-func _site_head(inner: Control, name: String, col: Color, sub: String) -> void:
-	var head := UI.hbox(12)
-	head.add_child(UI.label(name, 26, col, true))
-	head.add_child(UI.label(sub, 14, GREY))
-	head.add_child(UI.spacer())
-	head.add_child(UI.label("Balance " + Game.money_str(Game.money), 14, Color("1e7e34")))
-	inner.add_child(head)
+## Brand art: logos, favicons and white line pictograms in assets/web (falls back to assets/icons).
+static func web_tex(name: String) -> Texture2D:
+	for dir in ["web", "icons"]:
+		var p := "res://assets/%s/%s.svg" % [dir, name]
+		if ResourceLoader.exists(p):
+			return load(p)
+	return null
 
+
+func _web_img(name: String, h: float, tint := Color.WHITE) -> TextureRect:
+	var t := TextureRect.new()
+	var tex := web_tex(name)
+	t.texture = tex
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.custom_minimum_size = Vector2(h * tex.get_width() / tex.get_height() if tex else h, h)
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	t.modulate = tint
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
+## A website: brand header bar over a page body. Returns {"bar": HBox in the header, "col": the page column, "body": VBox for content}.
+func _site(inner: Control, bg: Color, bar_c: Color, logo: String, pad := 12) -> Dictionary:
+	var page := _flat(bg, 0, 0)
+	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inner.add_child(page)
+	var col := UI.vbox(0)
+	page.add_child(col)
+	var head := _flat(bar_c, 0, 14)
+	col.add_child(head)
+	var bar := UI.hbox(14)
+	head.add_child(bar)
+	if logo != "":
+		bar.add_child(_web_img(logo + "_logo", 30))
+	var body_m := MarginContainer.new()
+	body_m.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	for side in ["left", "right", "top", "bottom"]:
+		body_m.add_theme_constant_override("margin_" + side, pad)
+	col.add_child(body_m)
+	var body := UI.vbox(8)
+	body_m.add_child(body)
+	return {"bar": bar, "col": col, "body": body}
+
+
+## Full-width strip between a site's header and its body (nav rows, sale banners, lane bands).
+func _site_strip(site: Dictionary, bg: Color, pad := 12) -> HBoxContainer:
+	var strip := _flat(bg, 0, pad)
+	site.col.add_child(strip)
+	site.col.move_child(strip, site.col.get_child_count() - 2)
+	var h := UI.hbox(10)
+	strip.add_child(h)
+	return h
+
+
+## Decorative search box, the way every site has one: a light field and a coloured button, nothing to click.
+func _fake_search(placeholder: String, btn: String, col: Color, ink := Color.WHITE, w := 300) -> Control:
+	var h := UI.hbox(0)
+	var field := _flat(Color.WHITE, 6, 10, Color(0, 0, 0, 0.12), 1)
+	var fsb: StyleBoxFlat = field.get_theme_stylebox("panel")
+	fsb.corner_radius_top_right = 0
+	fsb.corner_radius_bottom_right = 0
+	field.custom_minimum_size.x = w
+	var fh := UI.hbox(6)
+	field.add_child(fh)
+	fh.add_child(_web_img("search", 14, Color(0.55, 0.57, 0.62)))
+	fh.add_child(UI.label(placeholder, 12, Color(0.5, 0.52, 0.58)))
+	h.add_child(field)
+	var b := _flat(col, 6, 12)
+	var bsb: StyleBoxFlat = b.get_theme_stylebox("panel")
+	bsb.corner_radius_top_left = 0
+	bsb.corner_radius_bottom_left = 0
+	b.add_child(UI.label(btn, 12, ink, true))
+	h.add_child(b)
+	return h
+
+
+## Small rounded label: status, category, badge.
+func _pill(text: String, bg: Color, fg: Color, size := 12) -> PanelContainer:
+	var p := _flat(bg, 10, 7)
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	p.add_child(UI.label(text, size, fg, true))
+	return p
+
+
+## Brand-coloured web button. outline = white with a coloured border and coloured text.
+func _web_btn(text: String, cb: Callable, col: Color, min_w := 0, min_h := 34, outline := false, ink := Color.WHITE, radius := 6) -> Button:
+	var b := UI.button(text, cb, min_w, min_h)
+	b.add_theme_font_size_override("font_size", 14)
+	var bw := 1 if outline else 0
+	b.add_theme_stylebox_override("normal", UI.box(Color.WHITE if outline else col, col, radius, bw, 12))
+	b.add_theme_stylebox_override("hover", UI.box(Color(col, 0.1) if outline else col.lightened(0.12), col, radius, bw, 12))
+	b.add_theme_stylebox_override("pressed", UI.box(col.darkened(0.2), col, radius, bw, 12))
+	b.add_theme_stylebox_override("disabled", UI.box(Color(0.88, 0.89, 0.92), Color.TRANSPARENT, radius, 0, 12))
+	for c in ["font_color", "font_hover_color", "font_focus_color"]:
+		b.add_theme_color_override(c, col if outline else ink)
+	b.add_theme_color_override("font_pressed_color", Color.WHITE)
+	b.add_theme_color_override("font_disabled_color", Color(0.55, 0.56, 0.6))
+	return b
+
+
+## Disabled look for buttons on a dark page.
+func _dark_btn(b: Button) -> void:
+	b.add_theme_stylebox_override("disabled", UI.box(Color(1, 1, 1, 0.07), Color(1, 1, 1, 0.12), 6, 1, 12))
+	b.add_theme_color_override("font_disabled_color", Color(0.55, 0.62, 0.65))
+
+
+# ---------- AutoBidz (and the lanes inside it) ----------
 
 func _tab_auction(inner: Control) -> void:
 	var house := Game.auction(auction_house)
-	# auction-house switcher
-	var bar := UI.hbox(6)
-	for a in Game.AUCTIONS:
-		var on: bool = a.id == auction_house
-		var member: bool = a.id in Game.memberships
-		var b := UI.button(a.name + ("" if member else "  (locked)"), func():
-			auction_house = a.id
-			show_screen("pc"), 0, 30)
-		b.add_theme_font_size_override("font_size", 13)
-		var c := Color(a.color)
-		b.add_theme_stylebox_override("normal", UI.box(c if on else Color(0.85, 0.86, 0.9), Color.TRANSPARENT, 4, 0, 10))
-		b.add_theme_stylebox_override("hover", UI.box(c.lightened(0.15), Color.TRANSPARENT, 4, 0, 10))
-		b.add_theme_color_override("font_color", Color.WHITE if on else INK)
-		bar.add_child(b)
-	inner.add_child(bar)
-	_site_head(inner, house.name, Color(house.color), "%s · %s · Lot space %d/%d" % [house.desc, Game.date_str(), Game.cars.size(), Game.lot_capacity()])
+	var lane: Dictionary = LANES.get(auction_house, LANES.autobidz)
+	var site := _auction_site(inner, house, lane)
+	var body: VBoxContainer = site.body
 	if not auction_house in Game.memberships:
-		inner.add_child(_auction_join_card(house))
+		body.add_child(_auction_join_card(house, lane))
 		return
+	var n := 0
+	for l in Game.listings:
+		if l.get("house", "autobidz") == auction_house:
+			n += 1
+	var tools := UI.hbox(10)
+	tools.add_child(UI.label("%d vehicles in today's lane" % n, 13, INK, true))
+	tools.add_child(UI.label("Sort: Ending soonest  ·  View: Grid", 12, GREY))
+	tools.add_child(UI.spacer())
+	tools.add_child(UI.label("Buy It Now prices are firm unless you make an offer.", 12, GREY))
+	body.add_child(tools)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	inner.add_child(UI.scroll(grid))
+	body.add_child(UI.scroll(grid))
 	for l in Game.listings:
 		if l.get("house", "autobidz") == auction_house:
-			grid.add_child(_listing_card(l))
-	if grid.get_child_count() == 0:
-		inner.add_child(UI.label("New lanes open tomorrow morning.", 15, GREY))
+			grid.add_child(_listing_card(l, lane))
+	if n == 0:
+		body.add_child(UI.label("New lanes open tomorrow morning.", 15, GREY))
 
 
-func _auction_join_card(a: Dictionary) -> Control:
+## AutoBidz chrome: a header bar with search, the lane tabs (every auction house is a lane), then a band in the lane's colours.
+func _auction_site(inner: Control, house: Dictionary, lane: Dictionary, with_lanes := true) -> Dictionary:
+	var site := _site(inner, Color("f3f3f5"), lane.bar, lane.logo, 10)
+	var bar: HBoxContainer = site.bar
+	bar.add_child(_fake_search("Search %s vehicles" % _num(2400 + Game.listings.size() * 7), "Search", lane.btn, lane.btn_ink, 250))
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, lane.bar_ink, true))
+	bar.add_child(UI.label("My bids  ·  Watchlist  ·  Help", 12, Color(lane.bar_ink, 0.75)))
+	var band := _site_strip(site, lane.band, 12)
+	band.add_child(_pill(lane.badge, Color(lane.ink, 0.18), lane.ink))
+	band.add_child(UI.label(house.name, 17, lane.ink, true))
+	band.add_child(UI.label(house.desc, 13, Color(lane.ink, 0.85)))
+	if not with_lanes:
+		band.add_child(UI.spacer())
+		band.add_child(UI.label("%s  ·  Lot space %d/%d" % [Game.date_str(), Game.cars.size(), Game.lot_capacity()], 12, Color(lane.ink, 0.85)))
+		return site
+	var lanes := _site_strip(site, Color.WHITE, 8)
+	site.col.move_child(lanes.get_parent(), 1)
+	lanes.add_theme_constant_override("separation", 4)
+	for a in Game.AUCTIONS:
+		var on: bool = a.id == auction_house
+		var member: bool = a.id in Game.memberships
+		var lp: Dictionary = LANES.get(a.id, LANES.autobidz)
+		var b := UI.button(a.name, func():
+			auction_house = a.id
+			show_screen("pc"), 0, 30)
+		b.add_theme_font_size_override("font_size", 13)
+		for st in ["normal", "hover", "pressed"]:
+			var sb := UI.box(lp.band if on else (Color(0.95, 0.95, 0.97) if st == "normal" else Color(0.9, 0.9, 0.93)), lp.band, 6, 0, 10)
+			sb.border_width_bottom = 3
+			b.add_theme_stylebox_override(st, sb)
+		for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+			b.add_theme_color_override(c, lp.ink if on else INK)
+		b.icon = web_tex(lp.logo + "_icon") if member else web_tex("lock")
+		b.add_theme_constant_override("icon_max_width", 16)
+		b.add_theme_constant_override("h_separation", 6)
+		if not member:
+			for c in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
+				b.add_theme_color_override(c, lp.ink if on else GREY)
+		lanes.add_child(b)
+	lanes.add_child(UI.spacer())
+	lanes.add_child(UI.label("%s  ·  Lot space %d/%d" % [Game.date_str(), Game.cars.size(), Game.lot_capacity()], 12, GREY))
+	return site
+
+
+func _auction_join_card(a: Dictionary, lane: Dictionary) -> Control:
 	var box := _web_box()
-	var v := UI.vbox(8)
-	box.add_child(v)
-	v.add_child(UI.label("Members only", 22, Color(a.color), true))
+	var h := UI.hbox(16)
+	box.add_child(h)
+	h.add_child(_web_img(lane.logo + "_mark", 48))
+	var v := UI.vbox(6)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	var top := UI.hbox(10)
+	top.add_child(UI.label("Members only", 20, INK, true))
+	top.add_child(_pill(lane.badge, lane.band, lane.ink))
+	v.add_child(top)
 	var perks := {
 		"salvage": "Wrecks and floods from 10 to 20 cents on the dollar. Expect extra faults, so a strong mechanic pays for himself.",
 		"dealer": "Dealer-only lanes with clean history reports, fewer faults and fewer rival bidders. Buy-now prices around 75% of value.",
 		"exotic": "Porshas, Ferranos and Lamborgos from Coast Highway collectors. Big money in, bigger money out.",
 	}
-	v.add_child(UI.label(perks.get(a.id, a.desc), 15, INK))
+	v.add_child(UI.para(perks.get(a.id, a.desc), 14, INK))
 	var ok_lvl: bool = Game.level >= a.level
 	var ok_rep: bool = Game.reputation >= a.rep
-	v.add_child(UI.label("%s  Dealer level %d (you are %d)" % ["✓" if ok_lvl else "✗", a.level, Game.level], 15, Color("1e7e34") if ok_lvl else Color("c0392b")))
+	v.add_child(UI.label("%s  Dealer level %d (you are %d)" % ["✓" if ok_lvl else "✗", a.level, Game.level], 14, WEB_GOOD if ok_lvl else WEB_BAD))
 	if a.rep > 0:
-		v.add_child(UI.label("%s  Yolp rating %.1f★ (you have %.1f★)" % ["✓" if ok_rep else "✗", a.rep, Game.reputation], 15, Color("1e7e34") if ok_rep else Color("c0392b")))
-	v.add_child(UI.label("Membership fee: %s, one time" % Game.money_str(a.fee), 15, INK, true))
-	var join := UI.gold_button("Join " + a.name, func():
+		v.add_child(UI.label("%s  Yolp rating %.1f★ (you have %.1f★)" % ["✓" if ok_rep else "✗", a.rep, Game.reputation], 14, WEB_GOOD if ok_rep else WEB_BAD))
+	v.add_child(UI.label("Membership fee: %s, one time" % Game.money_str(a.fee), 14, INK, true))
+	var join := _web_btn("Join " + a.name, func():
 		if not Game.auction_unlocked(a):
 			toast("They won't take you yet.")
 			return
@@ -924,30 +1115,58 @@ func _auction_join_card(a: Dictionary) -> Control:
 		Game.listings = used + fresh
 		Game.save_game()
 		toast("Welcome to %s." % a.name)
-		show_screen("pc"))
+		show_screen("pc"), lane.btn, 240, 38, false, lane.btn_ink)
 	join.disabled = not Game.auction_unlocked(a)
 	v.add_child(join)
 	return box
 
 
-func _listing_card(l: Dictionary) -> Control:
+## Listing card: photo with the lot number and a time-left badge, title, bid line and the lane-coloured button.
+func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	var car: Dictionary = l.car
-	var p := _web_box()
+	var p := _flat(Color.WHITE, 8, 0, WEB_LINE, 1)
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var v := UI.vbox(3)
+	var v := UI.vbox(0)
 	p.add_child(v)
-	v.add_child(_car_art(car, Vector2(0, 62)))
-	v.add_child(UI.label("%d %s" % [car.year, car.model], 17, INK, true))
-	v.add_child(UI.label("%s mi · Grade %s" % [_num(car.miles), _grade(Game.condition(car))], 13, GREY))
-	var status := ""
-	var col := Color("c0392b")
+	var photo := _flat(Color(0.94, 0.95, 0.97), 8, 8)
+	var psb: StyleBoxFlat = photo.get_theme_stylebox("panel")
+	psb.corner_radius_bottom_left = 0
+	psb.corner_radius_bottom_right = 0
+	var pv := UI.vbox(0)
+	photo.add_child(pv)
+	var tags := UI.hbox(6)
+	tags.add_child(UI.label("Lot %05d" % (int(car.get("id", 0)) % 100000), 12, GREY))
+	tags.add_child(UI.spacer())
+	var live: bool = auction == l
 	if l.sold:
-		status = "SOLD to you" if l.winner == "you" else "Sold to %s" % l.winner
-		col = Color("1e7e34") if l.winner == "you" else GREY
+		tags.add_child(_pill("WON" if l.winner == "you" else "SOLD", WEB_GOOD if l.winner == "you" else GREY, Color.WHITE))
 	else:
-		status = "Bid %s" % Game.money_str(l.current) + ("  ·  Buy now %s" % Game.money_str(l.buy_now) if l.buy_now > 0 else "")
-	v.add_child(UI.label(status, 14, col))
-	v.add_child(UI.button("View listing", _open_listing.bind(l), 0, 34))
+		tags.add_child(_pill("LIVE · %ds" % ceil(auction_timer) if live else "Ends today", WEB_BAD if live else Color(0.2, 0.2, 0.25), Color.WHITE))
+	pv.add_child(tags)
+	pv.add_child(_car_art(car, Vector2(0, 56)))
+	v.add_child(photo)
+	var m := MarginContainer.new()
+	for side in ["left", "right"]:
+		m.add_theme_constant_override("margin_" + side, 10)
+	m.add_theme_constant_override("margin_top", 6)
+	m.add_theme_constant_override("margin_bottom", 10)
+	v.add_child(m)
+	var tv := UI.vbox(2)
+	m.add_child(tv)
+	tv.add_child(UI.label("%d %s" % [car.year, car.model], 15, INK, true))
+	tv.add_child(UI.label("%s mi · Grade %s · %s" % [_num(car.miles), _grade(Game.condition(car)), _class_name(car.cls).trim_suffix("s")], 12, GREY))
+	if l.sold:
+		tv.add_child(UI.label(("Won by you · " if l.winner == "you" else "Sold to %s · " % l.winner) + Game.money_str(l.current), 14, WEB_GOOD if l.winner == "you" else GREY, true))
+	else:
+		var price := UI.hbox(6)
+		price.add_child(UI.label(Game.money_str(l.current), 18, INK, true))
+		price.add_child(UI.label("current bid" if l.leader != "" else "opening bid", 12, GREY))
+		tv.add_child(price)
+		tv.add_child(UI.label("Buy It Now " + Game.money_str(l.buy_now) if l.buy_now > 0 else "Auction only · no reserve", 12, WEB_LINK if l.buy_now > 0 else GREY))
+	var gap := Control.new()
+	gap.custom_minimum_size.y = 4
+	tv.add_child(gap)
+	tv.add_child(_web_btn("View listing" if l.sold else "Bid now", _open_listing.bind(l), lane.btn, 0, 32, l.sold, lane.btn_ink))
 	return p
 
 
@@ -979,64 +1198,81 @@ func _screen_pc_frame_then(fill: Callable) -> void:
 	fill.call(inner)
 
 
+## Listing page: the lane's chrome, the car's report on the left and an eBay-style bid box on the right.
 func _listing_detail(inner: Control, l: Dictionary) -> void:
 	auction_view = {}
 	var car: Dictionary = l.car
+	var house := Game.auction(auction_house)
+	var lane: Dictionary = LANES.get(auction_house, LANES.autobidz)
+	var site := _auction_site(inner, house, lane, false)
+	var body: VBoxContainer = site.body
 	var top := UI.hbox(10)
-	top.add_child(UI.button("← All listings", func(): show_screen("pc"), 0, 34))
-	top.add_child(UI.label("%d %s" % [car.year, car.model], 24, INK, true))
-	inner.add_child(top)
+	top.add_child(_web_btn("‹ Back to lane", func(): show_screen("pc"), INK, 0, 30, true))
+	top.add_child(UI.label("%d %s" % [car.year, car.model], 20, INK, true))
+	top.add_child(UI.label("Lot %05d" % (int(car.get("id", 0)) % 100000), 13, GREY))
+	top.add_child(UI.spacer())
+	top.add_child(UI.label(lane.seller, 12, GREY))
+	body.add_child(top)
 	var cols := UI.hbox(12)
-	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inner.add_child(cols)
+	body.add_child(UI.scroll(cols))
 	var left := _web_box()
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(left)
-	var lv := UI.vbox(4)
+	var lv := UI.vbox(3)
 	left.add_child(lv)
-	var top_row := UI.hbox(10)
-	top_row.add_child(_car_art(car, Vector2(220, 88)))
+	var top_row := UI.hbox(12)
+	var photo := _flat(Color(0.94, 0.95, 0.97), 6, 6)
+	photo.add_child(_car_art(car, Vector2(200, 76)))
+	top_row.add_child(photo)
 	var facts := UI.vbox(2)
-	facts.add_child(UI.label("%s mi" % _num(car.miles), 15, GREY))
-	facts.add_child(UI.label(_class_name(car.cls).trim_suffix("s"), 15, GREY))
-	facts.add_child(UI.label("Seller grade %s" % _grade(Game.condition(car)), 15, GREY))
+	facts.add_child(UI.label("%s mi" % _num(car.miles), 14, GREY))
+	facts.add_child(UI.label(_class_name(car.cls).trim_suffix("s"), 14, GREY))
+	facts.add_child(UI.label("Seller grade %s" % _grade(Game.condition(car)), 14, GREY))
 	facts.add_child(UI.label("Est. retail %s" % Game.money_str(Game.value(car)), 15, INK, true))
 	top_row.add_child(facts)
 	lv.add_child(top_row)
+	lv.add_child(UI.label("CONDITION REPORT", 12, GREY, true))
 	for part in Game.PARTS:
 		var row := UI.hbox(8)
-		var name_l := UI.label(Game.PART_NAMES[part], 14, INK)
+		var name_l := UI.label(Game.PART_NAMES[part], 13, INK)
 		name_l.custom_minimum_size = Vector2(130, 0)
 		row.add_child(name_l)
-		row.add_child(UI.bar(car.parts[part], 100, UI.cond_color(car.parts[part]), 9))
-		row.add_child(UI.label(str(car.parts[part]), 14, INK))
+		row.add_child(UI.bar(car.parts[part], 100, UI.cond_color(car.parts[part]), 8))
+		row.add_child(UI.label(str(car.parts[part]), 13, INK))
 		lv.add_child(row)
 	var hist := UI.vbox(4)
 	lv.add_child(hist)
 	_fill_history(hist, car)
 	var right := _web_box()
-	right.custom_minimum_size = Vector2(300, 0)
+	right.custom_minimum_size = Vector2(290, 0)
 	cols.add_child(right)
 	var rv := UI.vbox(6)
 	right.add_child(rv)
 	if l.sold:
 		rv.add_child(UI.label("Auction closed", 20, INK, true))
-		rv.add_child(UI.para("Won by %s for %s" % ["you" if l.winner == "you" else l.winner, Game.money_str(l.current)], 15, GREY))
+		rv.add_child(UI.para("Won by %s for %s" % ["you" if l.winner == "you" else l.winner, Game.money_str(l.current)], 14, GREY))
 		return
-	var cur := UI.label("", 26, Color("c0392b"), true)
-	var lead := UI.label("", 15, GREY)
-	var time_l := UI.label("", 15, INK)
-	var feed := UI.label("", 13, GREY)
-	rv.add_child(UI.label("Current bid", 14, GREY))
+	var cur := UI.label("", 26, INK, true)
+	var lead := UI.label("", 14, GREY)
+	var time_l := UI.label("", 14, WEB_BAD)
+	var feed := UI.label("", 12, GREY)
+	var cur_row := UI.hbox(8)
+	cur_row.add_child(UI.label("Current bid", 13, GREY))
+	cur_row.add_child(UI.spacer())
+	cur_row.add_child(_pill("LIVE" if auction == l else "OPEN", WEB_BAD if auction == l else GREY, Color.WHITE))
+	rv.add_child(cur_row)
 	rv.add_child(cur)
 	rv.add_child(lead)
 	rv.add_child(time_l)
-	var bid_btn := UI.gold_button("", _place_bid.bind(l), 0, 46)
+	var bid_btn := _web_btn("", _place_bid.bind(l), lane.btn, 0, 42, false, lane.btn_ink, 21)
+	bid_btn.add_theme_font_size_override("font_size", 16)
 	rv.add_child(bid_btn)
 	if l.buy_now > 0:
-		rv.add_child(UI.button("Buy It Now: %s" % Game.money_str(l.buy_now), _buy_now.bind(l), 0, 40))
+		rv.add_child(_web_btn("Buy It Now  %s" % Game.money_str(l.buy_now), _buy_now.bind(l), WEB_LINK, 0, 38, true, Color.WHITE, 19))
 		if not l.haggled:
-			rv.add_child(UI.button("Haggle with seller", _haggle.bind(l), 0, 40))
+			rv.add_child(_web_btn("Make an offer", _haggle.bind(l), GREY, 0, 34, true, Color.WHITE, 17))
+	rv.add_child(UI.rule(WEB_LINE))
+	rv.add_child(UI.label("BID HISTORY", 12, GREY, true))
 	rv.add_child(feed)
 	auction_view = {"listing": l, "cur": cur, "lead": lead, "time": time_l, "bid": bid_btn, "feed": feed}
 	_refresh_auction_view()
@@ -1045,20 +1281,22 @@ func _listing_detail(inner: Control, l: Dictionary) -> void:
 func _fill_history(hist: VBoxContainer, car: Dictionary) -> void:
 	UI.clear(hist)
 	if car.history_known:
-		var col := Color("1e7e34") if car.history == "Clean" else Color("c0392b")
-		hist.add_child(UI.label("History report: %s" % car.history, 15, col, true))
+		var col := WEB_GOOD if car.history == "Clean" else WEB_BAD
+		hist.add_child(UI.label("History report: %s" % car.history, 14, col, true))
 		if car.has("faults_found"):
 			var f: Array = car.faults_found
-			hist.add_child(UI.para("Inspection: " + ("no hidden problems." if f.is_empty() else "hidden problems in " + ", ".join(f) + "."), 14, INK))
+			hist.add_child(UI.para("Inspection: " + ("no hidden problems." if f.is_empty() else "hidden problems in " + ", ".join(f) + "."), 13, INK))
 	else:
-		hist.add_child(UI.button("Buy history + inspection report ($150)", func():
+		var b := _web_btn("Buy history + inspection report ($150)", func():
 			if Game.spend(150, "repairs"):
 				car.history_known = true
 				car.faults_found = Game.reveal_faults(car)
 				Game.save_game()
 				_fill_history(hist, car)
 			else:
-				toast("Not enough money."), 0, 36))
+				toast("Not enough money."), WEB_LINK, 0, 32, true)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		hist.add_child(b)
 
 
 func bid_increment(l: Dictionary) -> int:
@@ -1175,19 +1413,43 @@ func _haggle(l: Dictionary) -> void:
 
 # ---------- shops ----------
 
-func _shop_row(inner: Control, title: String, desc: String, right: Control, art: Control = null) -> void:
-	var p := _web_box()
-	var h := UI.hbox(10)
-	p.add_child(h)
-	if art:
-		h.add_child(art)
-	var v := UI.vbox(1)
-	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	v.add_child(UI.label(title, 16, INK, true))
-	v.add_child(UI.para(desc, 13, GREY))
-	h.add_child(v)
-	h.add_child(right)
-	inner.add_child(p)
+## Product card for the shops: a pictogram "photo" with an optional badge, name, blurb, price and the action button.
+## pal: card, line, photo, pict, ink, muted, price colours.
+func _product_card(name: String, desc: String, pict: String, pal: Dictionary, price: String, btn: Button, badge := "") -> Control:
+	var p := _flat(pal.card, 8, 0, pal.line, 1)
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var v := UI.vbox(0)
+	p.add_child(v)
+	var photo := _flat(pal.photo, 8, 8)
+	var sb: StyleBoxFlat = photo.get_theme_stylebox("panel")
+	sb.corner_radius_bottom_left = 0
+	sb.corner_radius_bottom_right = 0
+	var pv := UI.vbox(0)
+	photo.add_child(pv)
+	var tags := UI.hbox(0)
+	tags.custom_minimum_size.y = 22
+	tags.add_child(UI.spacer())
+	if badge != "":
+		tags.add_child(_pill(badge, pal.price, Color.WHITE))
+	pv.add_child(tags)
+	var centre := CenterContainer.new()
+	centre.add_child(_web_img(pict, 40, pal.pict))
+	pv.add_child(centre)
+	v.add_child(photo)
+	var m := MarginContainer.new()
+	for side in ["left", "right"]:
+		m.add_theme_constant_override("margin_" + side, 10)
+	m.add_theme_constant_override("margin_top", 6)
+	m.add_theme_constant_override("margin_bottom", 10)
+	v.add_child(m)
+	var tv := UI.vbox(2)
+	m.add_child(tv)
+	tv.add_child(UI.label(name, 14, pal.ink, true))
+	tv.add_child(UI.para(desc, 12, pal.muted))
+	tv.add_child(UI.label(price, 16, pal.price, true))
+	btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	tv.add_child(btn)
+	return p
 
 
 func _small_btn(text: String, cb: Callable, gold := false) -> Button:
@@ -1196,38 +1458,77 @@ func _small_btn(text: String, cb: Callable, gold := false) -> Button:
 	return b
 
 
+const DEPOT_RED := Color("cc0000")
+const DEPOT_YELLOW := Color("ffd200")
+const DEPOT_PAL := {"card": Color.WHITE, "line": Color(0.85, 0.86, 0.9), "photo": Color(0.955, 0.955, 0.965), "pict": Color(0.33, 0.35, 0.4), "ink": Color(0.12, 0.12, 0.16), "muted": Color(0.4, 0.4, 0.45), "price": Color("cc0000")}
+const DESK_PICTS := {"desk": "desk", "chair": "chair", "monitor": "monitor", "plant": "plant", "mug": "mug", "modelcar": "car_side", "trophy": "trophy", "neon": "neon", "aquarium": "fish"}
+
+
 func _tab_desk(inner: Control) -> void:
-	_site_head(inner, "DeskDepot", Color("1f6fb2"), "Make the office yours. Changes show on your desk right away.")
-	var list := UI.vbox(6)
-	inner.add_child(UI.scroll(list))
+	var site := _site(inner, Color("f4f4f4"), DEPOT_RED, "deskdepot", 10)
+	var bar: HBoxContainer = site.bar
+	bar.add_child(_fake_search("Search desks, chairs, monitors…", "Search", DEPOT_YELLOW, INK, 270))
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("Deliver to: " + Game.dealer_name, 12, Color(1, 1, 1, 0.85)))
+	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, Color.WHITE, true))
+	var cart := UI.hbox(4)
+	cart.add_child(_web_img("cart", 18))
+	cart.add_child(UI.label("Cart (0)", 12, Color.WHITE))
+	bar.add_child(cart)
+	var nav := _site_strip(site, Color.WHITE, 10)
+	nav.add_theme_constant_override("separation", 16)
+	for n in ["Desks", "Chairs", "Monitors", "Decor", "Weekly Ad", "Services"]:
+		nav.add_child(UI.label(n, 13, INK))
+	nav.add_child(UI.label("Deals", 13, DEPOT_RED, true))
+	nav.add_child(UI.spacer())
+	nav.add_child(UI.label("Free next-day delivery to Tewport Beach", 12, GREY))
+	var sale := _site_strip(site, DEPOT_YELLOW, 10)
+	sale.add_child(UI.label("BACK TO BUSINESS SALE", 13, INK, true))
+	sale.add_child(UI.label("Make the office yours. Changes show on your desk right away, and bigger monitors show more auction listings.", 12, Color(0.3, 0.24, 0.05)))
+	var list := UI.vbox(8)
+	site.body.add_child(UI.scroll(list))
 	var slots := {"desk": "Desks", "chair": "Chairs", "monitor": "Monitors", "decor": "Decor"}
 	for slot in slots:
-		list.add_child(UI.label(slots[slot], 17, Color("1f6fb2"), true))
+		var hd := UI.hbox(10)
+		hd.add_child(UI.label(slots[slot], 16, INK, true))
+		hd.add_child(UI.label("Shop all ›", 12, WEB_LINK))
+		list.add_child(hd)
+		var grid := GridContainer.new()
+		grid.columns = 4
+		grid.add_theme_constant_override("h_separation", 8)
+		grid.add_theme_constant_override("v_separation", 8)
+		grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		list.add_child(grid)
 		for it in Game.DESK_ITEMS:
 			if it.slot != slot:
 				continue
 			var owned: bool = it.id in Game.owned
 			var btn: Button
+			var badge := ""
 			if not owned:
-				btn = _small_btn("Buy " + Game.money_str(it.price), _buy_desk_item.bind(it), true)
+				btn = _web_btn("Add to cart", _buy_desk_item.bind(it), DEPOT_RED, 0, 32)
 			elif slot == "decor":
 				var on: bool = it.id in Game.decor_on
-				btn = _small_btn("Hide" if on else "Show", func():
+				badge = "ON DESK" if on else "OWNED"
+				btn = _web_btn("Hide" if on else "Show", func():
 					if on:
 						Game.decor_on.erase(it.id)
 					else:
 						Game.decor_on.append(it.id)
 					Game.save_game()
-					show_screen("pc"))
+					show_screen("pc"), INK, 0, 32, true)
 			elif Game.equipped[slot] == it.id:
-				btn = _small_btn("In use", func(): pass)
+				badge = "IN USE"
+				btn = _web_btn("In use", func(): pass, INK, 0, 32, true)
 				btn.disabled = true
 			else:
-				btn = _small_btn("Use", func():
+				badge = "OWNED"
+				btn = _web_btn("Use", func():
 					Game.equipped[slot] = it.id
 					Game.save_game()
-					show_screen("pc"))
-			_shop_row(list, it.name, it.desc, btn)
+					show_screen("pc"), INK, 0, 32, true)
+			var price: String = "Owned" if owned else (Game.money_str(it.price) if it.price > 0 else "Included")
+			grid.add_child(_product_card(it.name, it.desc, DESK_PICTS.get(it.id, DESK_PICTS.get(it.slot, "desk")), DEPOT_PAL, price, btn, badge))
 
 
 func _buy_desk_item(it: Dictionary) -> void:
@@ -1245,41 +1546,82 @@ func _buy_desk_item(it: Dictionary) -> void:
 	show_screen("pc")
 
 
+## ShowroomPro: a dark teal B2B catalogue.
+const SP_BG := Color("0e1b21")
+const SP_BAR := Color("09141a")
+const SP_CARD := Color("142830")
+const SP_TEAL := Color("22c1b0")
+const SP_TEXT := Color("e6f1f3")
+const SP_MUTED := Color("8aa3ab")
+const SP_PAL := {"card": Color("142830"), "line": Color(1, 1, 1, 0.08), "photo": Color("1b3a44"), "pict": Color("22c1b0"), "ink": Color("e6f1f3"), "muted": Color("8aa3ab"), "price": Color("22c1b0")}
+const SP_PICTS := {"coffee": "coffee", "lights": "spotlight", "lounge": "lounge", "turntable": "turntable", "expand1": "lot", "expand2": "lot"}
+
+
 func _tab_showroom_shop(inner: Control) -> void:
-	_site_head(inner, "ShowroomPro", Color("8e44ad"), "Grow your dealership, then fit it out.")
-	var list := UI.vbox(6)
-	inner.add_child(UI.scroll(list))
-	list.add_child(UI.label("YOUR DEALERSHIP", 14, Color("8e44ad"), true))
-	list.add_child(_dealership_card(true))
-	list.add_child(UI.label("UPGRADES", 14, Color("8e44ad"), true))
+	var site := _site(inner, SP_BG, SP_BAR, "showroompro", 12)
+	var bar: HBoxContainer = site.bar
+	for n in ["Catalogue", "Installations", "Financing", "Support"]:
+		bar.add_child(UI.label(n, 13, SP_TEAL if n == "Catalogue" else SP_MUTED))
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("Account: " + Game.dealer_name, 12, SP_MUTED))
+	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, SP_TEXT, true))
+	bar.add_child(_pill("B2B · NET 30", Color(SP_TEAL, 0.15), SP_TEAL))
+	var hero := _site_strip(site, Color("112229"), 12)
+	hero.add_child(UI.label("Dealership fit-outs, installed overnight.", 15, SP_TEXT, true))
+	hero.add_child(UI.label("Grow your dealership, then fit it out. Crews from Tewport Beach to the harbour.", 12, SP_MUTED))
+	var cols := UI.hbox(12)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	site.body.add_child(cols)
+	var left := UI.vbox(6)
+	var left_scroll := UI.scroll(left)
+	left_scroll.custom_minimum_size.x = 280
+	left_scroll.size_flags_horizontal = Control.SIZE_FILL
+	cols.add_child(left_scroll)
+	left.add_child(UI.label("YOUR DEALERSHIP", 12, SP_TEAL, true))
+	left.add_child(_dealership_card(true))
+	var right := UI.vbox(6)
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	var hd := UI.hbox(10)
+	hd.add_child(UI.label("CATALOGUE", 12, SP_TEAL, true))
+	hd.add_child(UI.label("%d products · showroom and lot" % Game.SHOWROOM_UPGRADES.size(), 12, SP_MUTED))
+	right.add_child(hd)
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	right.add_child(UI.scroll(grid))
 	for it in Game.SHOWROOM_UPGRADES:
 		var btn: Button
+		var badge := ""
 		if Game.has_upgrade(it.id):
-			btn = _small_btn("Installed", func(): pass)
+			badge = "INSTALLED"
+			btn = _web_btn("Installed", func(): pass, SP_TEAL, 0, 32)
 			btn.disabled = true
 		elif Game.dealership < it.get("tier", 1):
-			btn = _small_btn("Needs %s" % Game.dealership_info(it.tier).name, func(): pass)
+			btn = _web_btn("Needs %s" % Game.dealership_info(it.tier).name, func(): pass, SP_TEAL, 0, 32)
 			btn.disabled = true
 		elif it.has("needs") and not Game.has_upgrade(it.needs):
-			btn = _small_btn("Needs first", func(): pass)
+			btn = _web_btn("Needs first", func(): pass, SP_TEAL, 0, 32)
 			btn.disabled = true
 		else:
-			btn = _small_btn("Buy " + Game.money_str(it.price), func():
+			btn = _web_btn("Request install", func():
 				if Game.spend(it.price, "shop"):
 					Game.upgrades.append(it.id)
 					Game.save_game()
 					toast("%s installed." % it.name)
 					show_screen("pc")
 				else:
-					toast("Not enough money."), true)
-		_shop_row(list, it.name, it.desc, btn)
+					toast("Not enough money."), SP_TEAL, 0, 32, false, Color("06201e"))
+		_dark_btn(btn)
+		grid.add_child(_product_card(it.name, it.desc, SP_PICTS.get(it.id, "lot"), SP_PAL, Game.money_str(it.price), btn, badge))
 
 
-## Current dealership and the next one to buy. web = styled for the PC's light web pages.
+## Current dealership and the next one to buy. web = styled for ShowroomPro's dark page.
 func _dealership_card(web: bool) -> Control:
-	var ink: Color = INK if web else UI.TEXT
-	var sub: Color = GREY if web else UI.MUTED
-	var box := _web_box() if web else UI.panel(Color(0.03, 0.05, 0.1, 0.85), UI.GOLD_DIM, 12)
+	var ink: Color = SP_TEXT if web else UI.TEXT
+	var sub: Color = SP_MUTED if web else UI.MUTED
+	var box := _flat(SP_CARD, 8, 12, Color(SP_TEAL, 0.35), 1) if web else UI.panel(Color(0.03, 0.05, 0.1, 0.85), UI.GOLD_DIM, 12)
 	var v := UI.vbox(4)
 	box.add_child(v)
 	var cur := Game.dealership_info()
@@ -1288,60 +1630,161 @@ func _dealership_card(web: bool) -> Control:
 		steps += ("■ " if i < Game.dealership else "□ ")
 	var top := UI.hbox(8)
 	top.add_child(UI.label(cur.name, 19, ink, true))
-	top.add_child(UI.label(steps.strip_edges(), 15, Color("d4a017")))
+	top.add_child(UI.label(steps.strip_edges(), 15, SP_TEAL if web else Color("d4a017")))
 	v.add_child(top)
 	var extra: int = Game.lot_capacity() - cur.cars
 	v.add_child(UI.label("%d car spots%s · rent %s a month" % [Game.lot_capacity(), " (%d + %d expansion)" % [cur.cars, extra] if extra > 0 else "", Game.money_str(cur.rent)], 13, sub))
 	if Game.dealership >= Game.DEALERSHIPS.size():
-		v.add_child(UI.label("You own the flagship on the harbour.", 14, Color("1e7e34") if web else UI.GOOD, true))
+		v.add_child(UI.label("You own the flagship on the harbour.", 14, SP_TEAL if web else UI.GOOD, true))
 		return box
 	var nxt := Game.dealership_info(Game.dealership + 1)
-	v.add_child(UI.rule(Color(0, 0, 0, 0.12) if web else UI.GOLD_DIM))
-	v.add_child(UI.label("NEXT: " + nxt.name.to_upper(), 14, Color("8e44ad") if web else UI.GOLD, true))
+	v.add_child(UI.rule(Color(1, 1, 1, 0.1) if web else UI.GOLD_DIM))
+	v.add_child(UI.label("NEXT: " + nxt.name.to_upper(), 14, SP_TEAL if web else UI.GOLD, true))
 	var d := UI.para(nxt.desc, 13, sub)
 	v.add_child(d)
 	v.add_child(UI.label("%d car spots · rent %s a month · needs level %d" % [nxt.cars + extra, Game.money_str(nxt.rent), nxt.level], 13, sub))
 	var why := Game.dealership_blocker()
-	var b := _small_btn("Move up · %s" % Game.money_str(nxt.price), func():
+	var move := func():
 		if Game.upgrade_dealership():
 			toast("Welcome to the %s!" % nxt.name)
 			show_screen(current)
 		else:
-			toast(Game.dealership_blocker()), true)
+			toast(Game.dealership_blocker())
+	var b: Button
+	if web:
+		b = _web_btn("Move up · %s" % Game.money_str(nxt.price), move, SP_TEAL, 0, 34, false, Color("06201e"))
+		_dark_btn(b)
+	else:
+		b = _small_btn("Move up · %s" % Game.money_str(nxt.price), move, true)
 	b.disabled = why != ""
 	var row := UI.hbox(8)
 	row.add_child(b)
 	if why != "":
-		row.add_child(UI.label(why, 13, Color("c0392b") if web else UI.BAD))
+		row.add_child(UI.label(why, 13, Color("ff8a7a") if web else UI.BAD))
 	v.add_child(row)
 	return box
 
 
+## AdSpace: an ad-platform dashboard with a sidebar, KPI tiles and campaign cards.
+const ADS_BLUE := Color("1a73e8")
+const ADS_BG := Color("f1f3f4")
+const ADS_INK := Color("202124")
+const ADS_GREY := Color("5f6368")
+const ADS_GREEN := Color("1e8e3e")
+const ADS_PICTS := {"flyers": "flyer", "insta": "camera", "radio": "radio", "billboard": "billboard"}
+
+
 func _tab_ads(inner: Control) -> void:
-	_site_head(inner, "AdSpace", Color("d35400"), "Advertising brings more walk-ins. Billed monthly on the 1st.")
-	inner.add_child(UI.label("Walk-ins expected today: %d" % Game.walkins_today(), 15, INK))
+	var site := _site(inner, ADS_BG, Color.WHITE, "adspace", 0)
+	var bar: HBoxContainer = site.bar
+	bar.add_child(UI.label("Campaigns", 14, ADS_INK))
+	bar.add_child(UI.spacer())
+	bar.add_child(_pill("+ New campaign", ADS_BLUE, Color.WHITE))
+	bar.add_child(UI.label("%s · ID 418-227-9031" % Game.dealer_name, 12, ADS_GREY))
+	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, ADS_INK, true))
+	var cols := UI.hbox(0)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	site.body.add_child(cols)
+	var side := _flat(Color.WHITE, 0, 8)
+	side.custom_minimum_size.x = 150
+	cols.add_child(side)
+	var sv := UI.vbox(2)
+	side.add_child(sv)
+	for item in [["home", "Overview"], ["bars", "Campaigns"], ["person", "Audiences"], ["card", "Billing"], ["clock", "Reports"]]:
+		var on: bool = item[1] == "Campaigns"
+		var row := _flat(Color("e8f0fe") if on else Color.TRANSPARENT, 16, 10)
+		var rh := UI.hbox(8)
+		row.add_child(rh)
+		rh.add_child(_web_img(item[0], 16, ADS_BLUE if on else ADS_GREY))
+		rh.add_child(UI.label(item[1], 13, ADS_BLUE if on else ADS_INK))
+		sv.add_child(row)
+	var main := MarginContainer.new()
+	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for s in ["left", "right", "top", "bottom"]:
+		main.add_theme_constant_override("margin_" + s, 12)
+	cols.add_child(main)
+	var mv := UI.vbox(8)
+	main.add_child(mv)
+	var spend := 0
+	for a in Game.ADS:
+		if a.id in Game.ads_active:
+			spend += a.monthly
+	var kpis := UI.hbox(8)
+	for k in [["Walk-ins expected today", str(Game.walkins_today()), ADS_BLUE], ["Active campaigns", str(Game.ads_active.size()), ADS_GREEN], ["Monthly ad spend", Game.money_str(spend), ADS_INK], ["Next billing", Game.next_bill_date(), ADS_GREY]]:
+		var tile := _flat(Color.WHITE, 8, 12, Color(0.86, 0.87, 0.89), 1)
+		tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var tv := UI.vbox(0)
+		tile.add_child(tv)
+		tv.add_child(UI.label(k[0], 12, ADS_GREY))
+		tv.add_child(UI.label(k[1], 20, k[2], true))
+		kpis.add_child(tile)
+	mv.add_child(kpis)
+	var hd := UI.hbox(10)
+	hd.add_child(UI.label("All campaigns", 15, ADS_INK, true))
+	hd.add_child(UI.label("Billed monthly on the 1st · the first charge is prorated for the rest of this month", 12, ADS_GREY))
+	mv.add_child(hd)
 	var list := UI.vbox(6)
-	inner.add_child(UI.scroll(list))
+	mv.add_child(UI.scroll(list))
 	for a in Game.ADS:
 		var on: bool = a.id in Game.ads_active
 		var btn: Button
 		if on:
-			btn = _small_btn("Cancel", func():
+			btn = _web_btn("Pause", func():
 				Game.ads_active.erase(a.id)
 				Game.save_game()
-				show_screen("pc"))
+				show_screen("pc"), ADS_GREY, 120, 32, true, Color.WHITE, 16)
 		else:
 			var left: int = Game.days_in_month() - Game.date_dict().day + 1
 			var now_cost := int(round(a.monthly * left / float(Game.days_in_month()) / 10.0)) * 10
-			btn = _small_btn("Start %s" % Game.money_str(now_cost), func():
+			btn = _web_btn("Enable · %s" % Game.money_str(now_cost), func():
 				if Game.spend(now_cost, "ads"):
 					Game.ads_active.append(a.id)
 					Game.save_game()
 					toast("%s is live. More customers from tomorrow." % a.name)
 					show_screen("pc")
 				else:
-					toast("Not enough money."), true)
-		_shop_row(list, "%s · %s/month" % [a.name, Game.money_str(a.monthly)], a.desc + (" Running." if on else " First charge is prorated for the rest of this month."), btn)
+					toast("Not enough money."), ADS_BLUE, 120, 32, false, Color.WHITE, 16)
+		list.add_child(_campaign_card(a, on, btn))
+
+
+func _campaign_card(a: Dictionary, on: bool, btn: Button) -> Control:
+	var card := _flat(Color.WHITE, 8, 12, Color(0.86, 0.87, 0.89), 1)
+	var h := UI.hbox(12)
+	card.add_child(h)
+	var ic := _flat(Color("e8f0fe") if on else Color(0.94, 0.95, 0.96), 8, 8)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	ic.add_child(_web_img(ADS_PICTS.get(a.id, "flyer"), 26, ADS_BLUE if on else ADS_GREY))
+	h.add_child(ic)
+	var v := UI.vbox(2)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.add_child(v)
+	var top := UI.hbox(8)
+	top.add_child(UI.label(a.name, 14, ADS_INK, true))
+	top.add_child(_pill("● Active" if on else "○ Paused", Color("e6f4ea") if on else Color(0.93, 0.93, 0.94), ADS_GREEN if on else ADS_GREY))
+	v.add_child(top)
+	v.add_child(UI.label(a.desc + ("  Running." if on else ""), 12, ADS_GREY))
+	var reach := UI.hbox(6)
+	reach.add_child(UI.label("Reach", 12, ADS_GREY))
+	var bar := UI.bar(a.walkins, 5, ADS_BLUE if on else Color(0.7, 0.72, 0.76), 8)
+	bar.size_flags_horizontal = Control.SIZE_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.custom_minimum_size.x = 160
+	bar.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.91, 0.93), Color.TRANSPARENT, 4, 0, 0))
+	reach.add_child(bar)
+	reach.add_child(UI.label("+%d walk-ins / day" % a.walkins, 12, ADS_INK))
+	v.add_child(reach)
+	var cost := UI.vbox(0)
+	cost.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var cl := UI.label(Game.money_str(a.monthly), 16, ADS_INK, true)
+	cl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cost.add_child(cl)
+	var pm := UI.label("per month", 12, ADS_GREY)
+	pm.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	cost.add_child(pm)
+	h.add_child(cost)
+	btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(btn)
+	return card
 
 
 func _staff_art(s: Dictionary, sz := Vector2(56, 64)) -> PersonArt:
@@ -1356,25 +1799,65 @@ func _stars(n: int) -> String:
 	return "★".repeat(n) + "☆".repeat(5 - n)
 
 
+## StaffHire: a job board. Candidates are the existing portrait cards, framed as listings.
+const SH_BLUE := Color("2557a7")
+const SH_BG := Color("f3f2f1")
+
+
 func _tab_staff(inner: Control) -> void:
-	_site_head(inner, "StaffHire", Color("16a085"), "Salespeople take walk-ins when you're busy. Better people cost more. Salaries are monthly.")
+	var site := _site(inner, SH_BG, SH_BLUE, "staffhire", 10)
+	var bar: HBoxContainer = site.bar
+	for n in ["Find candidates", "Company reviews", "Salaries"]:
+		bar.add_child(UI.label(n, 13, Color.WHITE if n == "Find candidates" else Color(1, 1, 1, 0.75)))
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("Employer: " + Game.dealer_name, 12, Color(1, 1, 1, 0.8)))
+	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, Color.WHITE, true))
+	bar.add_child(_pill("Post a job", Color.WHITE, SH_BLUE))
+	var search := _site_strip(site, Color.WHITE, 10)
+	for f in [["What", "Salesperson"], ["Where", "Tewport Beach, CA"]]:
+		var field := _flat(Color(0.96, 0.96, 0.97), 6, 10, Color(0, 0, 0, 0.15), 1)
+		field.custom_minimum_size.x = 210
+		var fh := UI.hbox(6)
+		field.add_child(fh)
+		fh.add_child(UI.label(f[0], 12, GREY))
+		fh.add_child(UI.label(f[1], 13, INK))
+		search.add_child(field)
+	var go := _flat(SH_BLUE, 6, 14)
+	go.add_child(UI.label("Find candidates", 13, Color.WHITE, true))
+	search.add_child(go)
+	search.add_child(UI.spacer())
+	search.add_child(UI.label("%d salespeople hired on StaffHire this month" % (37 + Game.day % 20), 12, GREY))
+	var filters := _site_strip(site, Color.WHITE, 8)
+	filters.add_theme_constant_override("separation", 6)
+	for f in ["Full-time", "Sales floor", "Available now", "4★ and up", "Commission", "Within 10 mi"]:
+		filters.add_child(_pill(f, Color(0.93, 0.94, 0.96), INK))
+	filters.add_child(UI.spacer())
+	filters.add_child(UI.label("Sorted by: rating", 12, GREY))
 	var col := UI.vbox(8)
 	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	inner.add_child(UI.scroll(col))
-	col.add_child(UI.label("Applicants this week", 17, Color("16a085"), true))
+	site.body.add_child(UI.scroll(col))
+	var h2 := UI.hbox(10)
+	h2.add_child(UI.label("Applicants this week", 16, INK, true))
+	h2.add_child(UI.label("%d candidates" % Game.candidates.size(), 12, GREY))
+	h2.add_child(UI.spacer())
+	h2.add_child(UI.label("Salespeople take walk-ins when you're busy. Better people cost more. Salaries are monthly.", 12, GREY))
+	col.add_child(h2)
 	var g2 := _card_grid()
 	col.add_child(g2)
 	for c in Game.candidates:
 		g2.add_child(_staff_card(c, true))
 	if Game.candidates.is_empty():
-		col.add_child(UI.label("No new applicants until Monday.", 14, GREY))
-	col.add_child(UI.label("Your team  (%d/5)" % Game.staff.size(), 17, Color("16a085"), true))
+		col.add_child(UI.label("No new applicants until Monday.", 13, GREY))
+	var h1 := UI.hbox(10)
+	h1.add_child(UI.label("Your team", 16, INK, true))
+	h1.add_child(UI.label("%d/5 on the sales floor" % Game.staff.size(), 12, GREY))
+	col.add_child(h1)
 	var g1 := _card_grid()
 	col.add_child(g1)
 	for s in Game.staff:
 		g1.add_child(_staff_card(s, false))
 	if Game.level < 3 and Game.reputation < 3.8:
-		col.add_child(UI.label("Top-tier closers only apply to dealerships at level 3 or with a 3.8★ Yolp rating.", 13, GREY))
+		col.add_child(UI.label("Top-tier closers only apply to dealerships at level 3 or with a 3.8★ Yolp rating.", 12, GREY))
 
 
 func _card_grid() -> GridContainer:
@@ -1439,9 +1922,10 @@ class GlowBack extends Control:
 		draw_rect(Rect2(0, size.y * 0.7, size.x, size.y * 0.3), Color(0, 0, 0, 0.18))
 
 
+## Skill row on a StaffHire card (light page).
 func _skill_bar(parent: Control, name: String, val: int, col: Color) -> void:
 	var row := UI.hbox(4)
-	var nm := UI.label(name, 12, CARD_MUTED)
+	var nm := UI.label(name, 12, GREY)
 	nm.custom_minimum_size.x = 78
 	row.add_child(nm)
 	var bar := ProgressBar.new()
@@ -1451,40 +1935,39 @@ func _skill_bar(parent: Control, name: String, val: int, col: Color) -> void:
 	bar.custom_minimum_size = Vector2(0, 7)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	bar.add_theme_stylebox_override("background", UI.box(Color(0, 0, 0, 0.55), Color.TRANSPARENT, 3, 0, 0))
-	var fill := UI.box(col, Color.TRANSPARENT, 3, 0, 0)
-	fill.shadow_color = Color(col, 0.5)
-	fill.shadow_size = 3
-	bar.add_theme_stylebox_override("fill", fill)
+	bar.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.91, 0.93), Color.TRANSPARENT, 3, 0, 0))
+	bar.add_theme_stylebox_override("fill", UI.box(col, Color.TRANSPARENT, 3, 0, 0))
 	row.add_child(bar)
-	var vl := UI.label(str(val), 12, CARD_TEXT, true)
+	var vl := UI.label(str(val), 12, INK, true)
 	vl.custom_minimum_size.x = 24
 	vl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(vl)
 	parent.add_child(row)
 
 
+## Candidate card on StaffHire: the rendered portrait over a white job-board listing.
 func _staff_card(s: Dictionary, applicant: bool) -> Control:
 	var accent: Color = UI.GOLD if s.stars >= 4.5 else (CARD_CYAN if not applicant else Color("e04fa0"))
-	var box := UI.panel(CARD_BG, Color(accent, 0.55), 10)
+	var box := _flat(Color.WHITE, 8, 10, WEB_LINE, 1)
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v := UI.vbox(4)
 	box.add_child(v)
 	v.add_child(_portrait_frame(Game.staff_pid(s), 0.6, accent, 132))
 	var nm := UI.hbox(6)
-	nm.add_child(UI.label(s.name, 18, CARD_TEXT, true))
+	nm.add_child(UI.label(s.name, 16, INK, true))
 	nm.add_child(UI.spacer())
-	nm.add_child(UI.label(_stars(s.stars), 14, UI.GOLD))
+	nm.add_child(UI.label(_stars(s.stars), 13, Color("e39b1c")))
 	v.add_child(nm)
-	v.add_child(UI.label(s.trait.to_upper(), 11, accent, true))
-	v.add_child(UI.label(Game.TRAIT_DESC.get(s.trait, ""), 11, CARD_MUTED))
+	v.add_child(UI.label("Salesperson · Tewport Beach, CA", 12, GREY))
+	v.add_child(_pill(s.trait.to_upper(), Color(accent, 0.15), accent.darkened(0.25)))
+	v.add_child(UI.label(Game.TRAIT_DESC.get(s.trait, ""), 12, GREY))
 	for k in Game.SKILLS:
-		_skill_bar(v, Game.SKILL_NAMES[k], Game.skill(s, k), CARD_CYAN.lerp(Color("e04fa0"), Game.SKILLS.find(k) / 3.0))
-	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, CARD_TEXT))
-	v.add_child(UI.label("%s / month" % Game.money_str(s.salary), 15, UI.GOOD, true))
+		_skill_bar(v, Game.SKILL_NAMES[k], Game.skill(s, k), SH_BLUE.lerp(Color("e04fa0"), Game.SKILLS.find(k) / 3.0))
+	v.add_child(UI.label("Closes ~%d%% of walk-ins" % int(Game.staff_close_chance(s) * 100), 12, INK))
+	v.add_child(UI.label("%s / month" % Game.money_str(s.salary), 15, WEB_GOOD, true))
 	if applicant:
-		v.add_child(UI.label("Signing fee %s" % Game.money_str(s.get("hire_fee", 0)), 12, CARD_MUTED))
-		v.add_child(_small_btn("Hire", func():
+		v.add_child(UI.label("Signing fee %s" % Game.money_str(s.get("hire_fee", 0)), 12, GREY))
+		v.add_child(_web_btn("Hire now", func():
 			if Game.staff.size() >= 5:
 				toast("Your sales floor is full (5 people).")
 				return
@@ -1497,70 +1980,143 @@ func _staff_card(s: Dictionary, applicant: bool) -> Control:
 			Game.candidates.erase(s)
 			Game.save_game()
 			toast("%s joins the team. First salary on the 1st." % s.name)
-			show_screen("pc"), true))
+			show_screen("pc"), SH_BLUE, 0, 34))
 	elif s.fixed:
-		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, CARD_MUTED))
-		var b := _small_btn("Marco says no", func(): pass)
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		var b := _web_btn("Marco says no", func(): pass, GREY, 0, 34, true)
 		b.disabled = true
 		v.add_child(b)
 	else:
-		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, CARD_MUTED))
-		v.add_child(_small_btn("Let go", func():
+		v.add_child(UI.label("%d cars sold" % s.get("sales", 0), 12, GREY))
+		v.add_child(_web_btn("Let go", func():
 			Game.staff.erase(s)
 			Game.save_game()
 			toast("%s has left the dealership." % s.name)
-			show_screen("pc")))
+			show_screen("pc"), WEB_BAD, 0, 34, true))
 	return box
 
 
 # ---------- Yolp ----------
 
+const YOLP_RED := Color("d32323")
+
+
 func _tab_reviews(inner: Control) -> void:
-	var red := Color("d32323")
-	_site_head(inner, "Yolp", red, Game.dealer_name + " · Used Car Dealer · Tewport Beach")
+	var red := YOLP_RED
+	var site := _site(inner, Color("f7f7f7"), red, "yolp", 10)
+	var bar: HBoxContainer = site.bar
+	var find := UI.hbox(0)
+	for f in [["Find", "used car dealers"], ["Near", "Tewport Beach, CA"]]:
+		var field := _flat(Color.WHITE, 6, 10, Color(0, 0, 0, 0.12), 1)
+		field.custom_minimum_size.x = 170
+		var fsb: StyleBoxFlat = field.get_theme_stylebox("panel")
+		fsb.corner_radius_top_right = 0
+		fsb.corner_radius_bottom_right = 0
+		if f[0] == "Near":
+			fsb.corner_radius_top_left = 0
+			fsb.corner_radius_bottom_left = 0
+		var fh := UI.hbox(6)
+		field.add_child(fh)
+		fh.add_child(UI.label(f[0], 12, GREY))
+		fh.add_child(UI.label(f[1], 12, INK))
+		find.add_child(field)
+	var go := _flat(Color("b11b1b"), 6, 10)
+	var gsb: StyleBoxFlat = go.get_theme_stylebox("panel")
+	gsb.corner_radius_top_left = 0
+	gsb.corner_radius_bottom_left = 0
+	go.add_child(_web_img("search", 16))
+	find.add_child(go)
+	bar.add_child(find)
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("For Businesses", 12, Color(1, 1, 1, 0.85)))
+	bar.add_child(_pill("Write a Review", Color.WHITE, red))
+	bar.add_child(UI.label("Log In", 12, Color.WHITE))
+	var nav := _site_strip(site, Color.WHITE, 8)
+	nav.add_theme_constant_override("separation", 18)
+	for n in ["Restaurants", "Home Services", "Auto Services", "More ▾"]:
+		nav.add_child(UI.label(n, 13, red if n == "Auto Services" else INK))
+	var body: VBoxContainer = site.body
+	var avg := Game.reputation
+	var bh := UI.hbox(12)
+	var bv := UI.vbox(2)
+	bv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bv.add_child(UI.label(Game.dealer_name, 24, INK, true))
+	var rating := UI.hbox(8)
+	rating.add_child(UI.label(_stars(int(round(avg))), 20, red))
+	rating.add_child(UI.label("%.1f (%d reviews)" % [avg, Game.reviews.size()], 14, INK, true))
+	bv.add_child(rating)
+	var meta := UI.hbox(6)
+	meta.add_child(UI.label("✓ Claimed", 12, WEB_GOOD))
+	meta.add_child(UI.label("· $$ · Used Car Dealers, Auto Loan Providers · Tewport Beach", 12, GREY))
+	bv.add_child(meta)
+	bh.add_child(bv)
+	var acts := UI.hbox(6)
+	acts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	acts.add_child(_pill("★ Write a review", red, Color.WHITE, 13))
+	for a in ["Add photo", "Share", "Save"]:
+		acts.add_child(_pill(a, Color.WHITE, INK, 13))
+		var p: PanelContainer = acts.get_child(acts.get_child_count() - 1)
+		p.add_theme_stylebox_override("panel", UI.box(Color.WHITE, Color(0, 0, 0, 0.2), 10, 1, 7))
+	bh.add_child(acts)
+	body.add_child(bh)
+	body.add_child(UI.rule(WEB_LINE))
 	var cols := UI.hbox(12)
 	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inner.add_child(cols)
+	body.add_child(cols)
+	var list := UI.vbox(8)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(UI.scroll(list))
+	list.add_child(UI.label("Recommended Reviews", 15, INK, true))
+	var shown := Game.reviews.duplicate()
+	shown.reverse()
+	for r in shown.slice(0, 40):
+		list.add_child(_review_card(r, red))
+	# business info sidebar
 	var side := _web_box()
-	side.custom_minimum_size.x = 230
+	side.custom_minimum_size.x = 250
 	cols.add_child(side)
 	var sv := UI.vbox(4)
-	side.add_child(sv)
-	var avg := Game.reputation
-	sv.add_child(UI.label("%.1f" % avg, 44, INK, true))
-	sv.add_child(UI.label(_stars(int(round(avg))), 22, red))
-	sv.add_child(UI.label("%d reviews" % Game.reviews.size(), 14, GREY))
+	side.add_child(UI.scroll(sv))
+	sv.add_child(UI.label("Location & Hours", 14, INK, true))
+	var addr := UI.hbox(6)
+	addr.add_child(_web_img("pin", 14, red))
+	addr.add_child(UI.label("1 Harbour Blvd\nTewport Beach, CA 92661", 12, INK))
+	sv.add_child(addr)
+	sv.add_child(UI.label("Get directions  ·  (949) 555-0142", 12, WEB_LINK))
+	var hrs := "%d:00 AM – %d:00 PM" % [Game.OPEN_MIN / 60, Game.CLOSE_MIN / 60 - 12]
+	for d in [["Mon – Fri", hrs], ["Sat", hrs], ["Sun", "Closed"]]:
+		var row := UI.hbox()
+		row.add_child(UI.label(d[0], 12, GREY))
+		row.add_child(UI.spacer())
+		row.add_child(UI.label(d[1], 12, INK))
+		sv.add_child(row)
+	sv.add_child(UI.rule(WEB_LINE))
+	sv.add_child(UI.label("Overall rating", 14, INK, true))
 	var counts := [0, 0, 0, 0, 0]
 	for r in Game.reviews:
 		counts[r.stars - 1] += 1
 	for st in [5, 4, 3, 2, 1]:
 		var row := UI.hbox(4)
 		row.add_child(UI.label("%d★" % st, 12, GREY))
-		var bar := ProgressBar.new()
-		bar.max_value = max(1, Game.reviews.size())
-		bar.value = counts[st - 1]
-		bar.show_percentage = false
-		bar.custom_minimum_size = Vector2(150, 9)
-		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		bar.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.9, 0.92), Color.TRANSPARENT, 3, 0, 0))
-		bar.add_theme_stylebox_override("fill", UI.box(red, Color.TRANSPARENT, 3, 0, 0))
-		row.add_child(bar)
+		var bar2 := ProgressBar.new()
+		bar2.max_value = max(1, Game.reviews.size())
+		bar2.value = counts[st - 1]
+		bar2.show_percentage = false
+		bar2.custom_minimum_size = Vector2(0, 9)
+		bar2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar2.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		bar2.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.9, 0.92), Color.TRANSPARENT, 3, 0, 0))
+		bar2.add_theme_stylebox_override("fill", UI.box(red, Color.TRANSPARENT, 3, 0, 0))
+		row.add_child(bar2)
 		row.add_child(UI.label(str(counts[st - 1]), 12, GREY))
 		sv.add_child(row)
-	sv.add_child(UI.rule(Color(0.85, 0.85, 0.88)))
+	sv.add_child(UI.rule(WEB_LINE))
 	var help := UI.label("Your rating sets how many people walk in (4★ and up brings one more), whether Cash Whales show up (3.5★), and which auctions will have you. 5★ customers send friends the next day.", 12, GREY)
 	help.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	help.custom_minimum_size.x = 220
+	help.custom_minimum_size.x = 210
 	sv.add_child(help)
 	if Game.referrals > 0:
-		sv.add_child(UI.label("%d referral(s) coming in tomorrow" % Game.referrals, 13, Color("1e7e34"), true))
-	var list := UI.vbox(8)
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	cols.add_child(UI.scroll(list))
-	var shown := Game.reviews.duplicate()
-	shown.reverse()
-	for r in shown.slice(0, 40):
-		list.add_child(_review_card(r, red))
+		sv.add_child(UI.label("%d referral(s) coming in tomorrow" % Game.referrals, 13, WEB_GOOD, true))
 
 
 func _review_card(r: Dictionary, red: Color) -> Control:
@@ -1568,27 +2124,35 @@ func _review_card(r: Dictionary, red: Color) -> Control:
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var h := UI.hbox(10)
 	box.add_child(h)
+	var av := _flat(Color(0.93, 0.94, 0.96), 22, 0)
+	av.custom_minimum_size = Vector2(44, 44)
+	av.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	av.clip_contents = true
 	var face := PersonArt.new()
-	face.custom_minimum_size = Vector2(52, 52)
+	face.custom_minimum_size = Vector2(44, 44)
 	face.pid = r.get("pid", "p00")
 	face.mood = (r.stars - 3) * 0.5
-	h.add_child(face)
+	av.add_child(face)
+	h.add_child(av)
 	var v := UI.vbox(2)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
 	var top := UI.hbox(8)
-	top.add_child(UI.label(r.name, 15, INK, true))
-	top.add_child(UI.label(_stars(r.stars), 15, red))
-	top.add_child(UI.spacer())
-	top.add_child(UI.label("Day %d" % r.day if r.day > 0 else "Before you took over", 12, GREY))
+	top.add_child(UI.label(r.name, 14, INK, true))
+	top.add_child(UI.label("Tewport Beach, CA · %d friends · %d reviews" % [r.name.length() * 3 % 40 + 2, r.name.length() % 9 + 1], 12, GREY))
 	v.add_child(top)
-	var t := UI.label(r.text, 14, INK)
+	var sr := UI.hbox(8)
+	sr.add_child(UI.label(_stars(r.stars), 14, red))
+	sr.add_child(UI.label("Day %d" % r.day if r.day > 0 else "Before you took over", 12, GREY))
+	v.add_child(sr)
+	var t := UI.label(r.text, 13, INK)
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(t)
+	v.add_child(UI.label("Useful  ·  Funny  ·  Cool", 12, GREY))
 	if r.get("fixed", false):
-		v.add_child(UI.label("Updated: the owner reached out and made it right.", 12, Color("1e7e34")))
+		v.add_child(UI.label("Owner response: we reached out and made it right.", 12, WEB_GOOD))
 	elif r.stars <= 2 and r.day > 0:
-		v.add_child(_small_btn("Make it right ($250 gift card)", func():
+		var b := _web_btn("Make it right ($250 gift card)", func():
 			if Game.money < 250:
 				toast("Not enough money.")
 				return
@@ -1598,39 +2162,96 @@ func _review_card(r: Dictionary, red: Color) -> Control:
 			Game._recompute_rep()
 			Game.save_game()
 			toast("%s bumped their review to %d★." % [r.name, r.stars])
-			show_screen("pc")))
+			show_screen("pc"), red, 0, 32, true)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		v.add_child(b)
 	return box
 
 
+# ---------- TewportBank ----------
+
+const BANK_NAVY := Color("0b2a4a")
+const BANK_BG := Color("eef2f6")
+const BANK_GOLD := Color("c9a227")
+
+
 func _tab_bank(inner: Control) -> void:
-	_site_head(inner, "TewportBank", Color("1e7e34"), "Business banking for " + Game.dealer_name)
+	var site := _site(inner, BANK_BG, BANK_NAVY, "tewportbank", 12)
+	var bar: HBoxContainer = site.bar
+	for n in ["Accounts", "Payments", "Credit", "Help"]:
+		bar.add_child(UI.label(n, 13, Color.WHITE if n == "Accounts" else Color(1, 1, 1, 0.7)))
+	bar.add_child(UI.spacer())
+	bar.add_child(UI.label("Welcome, " + Game.dealer_name, 12, Color(1, 1, 1, 0.85)))
+	bar.add_child(UI.label("Last login " + Game.date_str(), 12, Color(1, 1, 1, 0.55)))
+	bar.add_child(_pill("Sign out", Color(1, 1, 1, 0.12), Color.WHITE))
 	var b := Game.monthly_bills()
-	var box := _web_box()
-	inner.add_child(box)
-	var v := UI.vbox(6)
-	box.add_child(v)
-	v.add_child(UI.label("Available balance: %s" % Game.money_str(Game.money), 22, INK, true))
-	v.add_child(UI.label("Next bills due %s" % Game.next_bill_date(), 16, Color("c0392b")))
+	var cols := UI.hbox(12)
+	cols.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	site.body.add_child(cols)
+	var left := UI.vbox(10)
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+	# account balance card
+	var acct := _flat(BANK_NAVY, 10, 14)
+	var av := UI.vbox(2)
+	acct.add_child(av)
+	var at := UI.hbox(8)
+	at.add_child(UI.label("BUSINESS CHEQUING", 12, Color(1, 1, 1, 0.7), true))
+	at.add_child(UI.label("···· 4421", 12, Color(1, 1, 1, 0.6)))
+	at.add_child(UI.spacer())
+	at.add_child(_web_img("shield", 18, BANK_GOLD))
+	av.add_child(at)
+	av.add_child(UI.label(Game.money_str(Game.money), 30, Color.WHITE, true))
+	var al := UI.hbox(10)
+	al.add_child(UI.label("Available balance", 12, Color(1, 1, 1, 0.7)))
+	al.add_child(UI.label("Next bills %s · %s" % [Game.next_bill_date(), Game.money_str(b.total)], 12, BANK_GOLD.lightened(0.25), true))
+	av.add_child(al)
+	left.add_child(acct)
+	# upcoming payments
+	var bills := _web_box()
+	var bv := UI.vbox(3)
+	bills.add_child(bv)
+	var bt := UI.hbox(8)
+	bt.add_child(UI.label("UPCOMING PAYMENTS", 12, BANK_NAVY, true))
+	bt.add_child(UI.spacer())
+	bt.add_child(UI.label("Due " + Game.next_bill_date(), 12, WEB_BAD))
+	bv.add_child(bt)
 	for row in [["Rent (%s lot)" % Game.dealer_name, b.rent], ["Staff salaries (%d people)" % Game.staff.size(), b.salaries], ["Advertising", b.ads], ["Loan interest", b.interest]]:
 		var h := UI.hbox()
-		h.add_child(UI.label(row[0], 16, INK))
+		h.add_child(UI.label(row[0], 13, INK))
 		h.add_child(UI.spacer())
-		h.add_child(UI.label(Game.money_str(row[1]), 16, INK))
-		v.add_child(h)
+		h.add_child(UI.label(Game.money_str(row[1]), 13, INK))
+		bv.add_child(h)
+	bv.add_child(UI.rule(WEB_LINE))
 	var tot := UI.hbox()
-	tot.add_child(UI.label("Total each month", 17, INK, true))
+	tot.add_child(UI.label("Total each month", 14, INK, true))
 	tot.add_child(UI.spacer())
-	tot.add_child(UI.label(Game.money_str(b.total), 17, INK, true))
-	v.add_child(tot)
-	v.add_child(UI.label("Cars sold: %d · Total profit: %s · Customers who walked out: %d" % [Game.stats.sold, Game.money_str(Game.stats.profit), Game.stats.get("walked", 0)], 15, GREY))
+	tot.add_child(UI.label(Game.money_str(b.total), 14, INK, true))
+	bv.add_child(tot)
+	bv.add_child(UI.label("Cars sold: %d · Total profit: %s · Customers who walked out: %d" % [Game.stats.sold, Game.money_str(Game.stats.profit), Game.stats.get("walked", 0)], 12, GREY))
+	left.add_child(bills)
+	# line of credit
+	var right := UI.vbox(10)
+	right.custom_minimum_size.x = 330
+	cols.add_child(right)
 	var lb := _web_box()
-	inner.add_child(lb)
+	right.add_child(lb)
 	var lv := UI.vbox(6)
 	lb.add_child(lv)
-	lv.add_child(UI.label("Business line of credit", 20, INK, true))
-	lv.add_child(UI.label("Owed %s of %s · %d%% interest a month, billed on the 1st" % [Game.money_str(Game.loan), Game.money_str(Game.loan_limit()), int(Game.LOAN_RATE * 100)], 15, Color("c0392b") if Game.loan > 0 else GREY))
-	var lr := UI.hbox(8)
+	var lt := UI.hbox(8)
+	lt.add_child(UI.label("BUSINESS LINE OF CREDIT", 12, BANK_NAVY, true))
+	lt.add_child(UI.spacer())
+	lt.add_child(_pill("%d%% / month" % int(Game.LOAN_RATE * 100), Color(0.93, 0.94, 0.96), GREY))
+	lv.add_child(lt)
+	var owe := UI.hbox(6)
+	owe.add_child(UI.label(Game.money_str(Game.loan), 24, WEB_BAD if Game.loan > 0 else INK, true))
+	owe.add_child(UI.label("owed of %s" % Game.money_str(Game.loan_limit()), 13, GREY))
+	lv.add_child(owe)
+	var meter := UI.bar(Game.loan, max(1, Game.loan_limit()), BANK_GOLD, 10)
+	meter.add_theme_stylebox_override("background", UI.box(Color(0.9, 0.91, 0.93), Color.TRANSPARENT, 5, 0, 0))
+	lv.add_child(meter)
 	var room := Game.loan_limit() - Game.loan
+	lv.add_child(UI.label("%s available · interest billed on the 1st" % Game.money_str(room), 12, GREY))
 	var borrow := func(amt: int):
 		if Game.borrow(amt):
 			toast("%s deposited. Spend it on cars that sell." % Game.money_str(amt))
@@ -1639,19 +2260,30 @@ func _tab_bank(inner: Control) -> void:
 		if Game.repay(amt):
 			toast("Payment sent.")
 		show_screen("pc")
-	var b1 := _small_btn("Borrow $5,000", borrow.bind(5000), true)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 6)
+	grid.add_theme_constant_override("v_separation", 6)
+	var b1 := _web_btn("Borrow $5,000", borrow.bind(5000), BANK_NAVY, 0, 34)
 	b1.disabled = room < 5000
-	lr.add_child(b1)
-	var b2 := _small_btn("Borrow %s" % Game.money_str(room), borrow.bind(room), true)
+	var b2 := _web_btn("Borrow %s" % Game.money_str(room), borrow.bind(room), BANK_NAVY, 0, 34)
 	b2.disabled = room <= 0
-	lr.add_child(b2)
-	var r1 := _small_btn("Repay $5,000", repay.bind(5000))
+	var r1 := _web_btn("Repay $5,000", repay.bind(5000), BANK_NAVY, 0, 34, true)
 	r1.disabled = Game.loan <= 0 or Game.money < min(5000, Game.loan)
-	lr.add_child(r1)
-	var r2 := _small_btn("Repay all", repay.bind(Game.loan))
+	var r2 := _web_btn("Repay all", repay.bind(Game.loan), BANK_NAVY, 0, 34, true)
 	r2.disabled = Game.loan <= 0 or Game.money < Game.loan
-	lr.add_child(r2)
-	lv.add_child(lr)
+	for btn in [b1, b2, r1, r2]:
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(btn)
+	lv.add_child(grid)
+	# security footer
+	var foot := _flat(Color.WHITE, 0, 12)
+	site.col.add_child(foot)
+	var fh := UI.hbox(8)
+	foot.add_child(fh)
+	fh.add_child(_web_img("lock", 14, WEB_GOOD))
+	fh.add_child(UI.label("Secured with 256-bit encryption", 12, INK))
+	fh.add_child(UI.label("·  Member TDIC  ·  Equal Credit Lender  ·  © TewportBank Financial Group, Tewport Beach", 12, GREY))
 
 
 # =====================================================================
