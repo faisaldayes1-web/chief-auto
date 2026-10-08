@@ -1,9 +1,16 @@
 # Car model credits
 
 The side and three-quarter car sprites for these cars are rendered (tools/car_sprites_real.py) from the following
-models, all licensed CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). Changes: repainted grey for in-game
-tinting, badges painted over, number plates blanked, rescaled, re-lit and rendered to 2D sprites.
-The models themselves are not shipped with the game.
+models, all licensed CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/). The same restyled models, cut down and
+re-textured, are the garage models in assets/cars3d (tools/car_glb_real.py).
+
+Changes: every car is restyled into our own parody design by tools/car_restyle.py before rendering. All maker logos,
+badges, lettering and badge textures are removed and number plates blanked; each car gets a new grille, new headlight
+and tail-light graphics (light bars, covers, new lamp shapes), its own simple-shape emblem, new procedurally built
+wheels and tyres (a different rim design per car), small proportion changes (nose, tail, width, roof and rake by a
+few per cent) and changed aero and trim (for example a wing on stands instead of the 911 whale tail, painted hood vents
+and stripes on the Mustank, a new wing on the Aventa, no spare wheel on the G-Wagon). The body is then repainted grey
+for in-game tinting, rescaled, re-lit and rendered to 2D sprites. The original models themselves are not shipped.
 
 | In game | Model | Author | Source |
 |---|---|---|---|
@@ -20,8 +27,8 @@ The models themselves are not shipped with the game.
 | Mercedez G-Wagon | Mercedes-Benz BRABUS G900 | DAS AUTO | https://sketchfab.com/3d-models/mercedes-benz-brabus-g900-aad90805a0a84381bbee50f569e45d50 |
 | Chevro Tahoma (stand-in: a boxy full-size SUV, rescaled to Tahoe length) | toyota prado 2025 | sultan | https://sketchfab.com/3d-models/toyota-prado-2025-d314ebc5f7b94f4fb1ee98a207b0ce34 |
 
-The Toyoda Camri, Dodgy Charjer, Teslo Model 3, Subaro Outbuck and Jeap Wrangle sprites, and every one of the six
-garage models for those cars and the Chevro Tahoma, are built procedurally by tools/car3d.py (no third-party model).
+The Toyoda Camri, Dodgy Charjer, Teslo Model 3, Subaro Outbuck and Jeap Wrangle sprites and garage models are built
+procedurally by tools/car3d.py (no third-party model).
 
 Before a commercial release: confirm each Sketchfab page still shows CC-BY, and get trademark advice on real car
 shapes and any badge detail left in textures (grilles, wheel centres).

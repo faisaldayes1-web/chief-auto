@@ -29,8 +29,11 @@ import bmesh  # noqa: E402
 import numpy as np  # noqa: E402
 from mathutils import Matrix, Vector  # noqa: E402
 
+import car_restyle  # noqa: E402
 import car_sprites_real as R  # noqa: E402
 import cars_svg  # noqa: E402
+
+RESTYLE = os.environ.get("RESTYLE", "1") != "0"
 
 # Per car: glass / light / tyre materials (regex), drop: materials removed outright,
 # keep: least fraction of a paint panel's triangles to keep (dense parts fold when decimated hard),
@@ -51,7 +54,7 @@ CFG = {
     "ramm_1500": dict(drop=r"^0-", glass=r"^Glass$", light=r"^(hl_lamps|plexiglass|taillight_red_pl|hl_blinkers)$",
                       tyre=r"^Tires$"),
     "forde_rangler": dict(glass=r"^material_2[23]$", light=r"^material_(15|16|17|2|5|6)$", tyre=r"^material_20$"),
-    "rang_rovah": dict(weld=1e-6, drop=r"^None$", budget=dict(core=8000, wheel=6000, paint=15000), keep=0.03, glass=r"^Windows$", light=r"(?i)taillight|front_led|drl|clear_glass|brake_light|hamna|"
+    "rang_rovah": dict(weld=1e-6, drop=r"^None$", budget=dict(core=6500, wheel=6000, paint=13000), keep=0.03, glass=r"^Windows$", light=r"(?i)taillight|front_led|drl|clear_glass|brake_light|hamna|"
                        r"^Material\.0(04|07|08|09|10|15|16)$", tyre=r"^Tire"),
     "mercedez_g_wagon": dict(budget=dict(core=11000), tex=128, glass=r"^(IntWindows|ExtWindowsGlass_0)$", light=r"^(ExtWindowsGlass|ExtWindowsGlass_1|"
                              r"leather02_weave_18)$", tyre=r"^plastic5_16$"),
@@ -326,6 +329,9 @@ def load(slug):
     c3 = CFG[slug]
     bpy.ops.wm.read_factory_settings(use_empty=True)
     meshes, dims = R.load_car(cfg)
+    if RESTYLE:
+        # our own design on top of the model (tools/car_restyle.py), the same as the sprites
+        meshes, dims = car_restyle.restyle(meshes, slug, dims, cfg)
     for o in meshes:
         if o.data.users > 1:
             o.data = o.data.copy()
@@ -389,9 +395,9 @@ def category(names, paint_re, c3):
     for n in names:
         if paint_re.search(n) and not (c3.get("drop") and re.search(c3["drop"], n)):
             cat.append("paint")
-        elif re.search(c3.get("light", LIGHT), n):
+        elif n.startswith("rs_lamp") or re.search(c3.get("light", LIGHT), n):
             cat.append("light")
-        elif re.search(c3.get("glass", GLASS), n):
+        elif n == "rs_glass" or re.search(c3.get("glass", GLASS), n):
             cat.append("glass")
         else:
             cat.append("other")
@@ -399,7 +405,9 @@ def category(names, paint_re, c3):
 
 
 def build(slug, out, test=False):
-    c3 = CFG[slug]
+    c3 = dict(CFG[slug])
+    if RESTYLE and slug in car_restyle.RECIPES:
+        c3["tyre"] = r"^rs_rubber$"
     car, dims, paint_re = load(slug)
     s = spec(slug, dims)
     L = dims.x

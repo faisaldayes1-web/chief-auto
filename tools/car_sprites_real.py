@@ -14,11 +14,22 @@ import os
 import re
 import sys
 
-import bpy  # noqa: I001
-from mathutils import Matrix, Vector
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.dont_write_bytecode = True
+
+import bpy  # noqa: E402,I001
+from mathutils import Matrix, Vector  # noqa: E402
+
+import car_restyle  # noqa: E402
 
 SRC = os.environ.get("CARSRC", "/root/carsrc")
-SAMPLES = int(os.environ.get("SAMPLES", 48))
+SAMPLES = int(os.environ.get("SAMPLES", 96))
+SKY = float(os.environ.get("SKY", 0.3))
+HORIZON = float(os.environ.get("HORIZON", 0.22))   # environment brightness below the horizon (1 = plain sky)
+SUN = float(os.environ.get("SUN", 14.0))   # no sun disc in the sky: the lamp carries all of it
+PAINT = float(os.environ.get("PAINT", 0.75))
+GROUND = float(os.environ.get("GROUND", 0.12))     # floor colour for the light it bounces under the car
+EXPOSURE = float(os.environ.get("EXPOSURE", 0.6))
 
 # slug: source file, real length in metres, paint materials (regex), badge/plate materials (regex),
 # drop_mat: objects using these materials are removed (shadow planes), front: which way the car faces along its long axis after import (+1 / -1)
@@ -48,16 +59,27 @@ CARS = {
 
 
 def setup():
+    """Daylight studio: sky + sun for the light and the contact shadow, plus soft reflector cards that only show up
+    in reflections, so clear-coat paint, glass and rims get real highlights."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     sc = bpy.context.scene
     sc.render.engine = "CYCLES"
     sc.cycles.device = "CPU"
     sc.cycles.samples = SAMPLES
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.adaptive_threshold = 0.02
     sc.cycles.use_denoising = True
+    sc.cycles.denoiser = "OPENIMAGEDENOISE"
+    sc.cycles.max_bounces = 6
+    sc.cycles.glossy_bounces = 3
+    sc.cycles.transmission_bounces = 4
     sc.cycles.transparent_max_bounces = 32
+    sc.cycles.sample_clamp_indirect = 8.0
+    sc.cycles.blur_glossy = 0.5
     sc.render.film_transparent = True
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Punchy"
+    sc.view_settings.exposure = EXPOSURE
     w = bpy.data.worlds.new("sky")
     sc.world = w
     w.use_nodes = True
@@ -65,25 +87,108 @@ def setup():
     sky.sky_type = "MULTIPLE_SCATTERING"
     sky.sun_elevation = math.radians(50)
     sky.sun_rotation = math.radians(-140)
-    w.node_tree.links.new(sky.outputs[0], w.node_tree.nodes["Background"].inputs[0])
-    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.35
+    # the sun lamp does the sun; a sun disc in the sky texture as well turns every rough black part (tyres, trim)
+    # into a grey reflection of it
+    sky.sun_disc = False
+    # environment gradient: full sky overhead, darker towards the horizon and dark below it, so the paint's
+    # reflections and the ambient light give a bright roof and shoulders over darker sills (a studio "horizon")
+    nt = w.node_tree
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Generated"], sep.inputs[0])
+    mr = nt.nodes.new("ShaderNodeMapRange")
+    mr.interpolation_type = "SMOOTHSTEP"
+    mr.inputs["From Min"].default_value = -0.12
+    mr.inputs["From Max"].default_value = 0.55
+    mr.inputs["To Min"].default_value = HORIZON
+    mr.inputs["To Max"].default_value = 1.0
+    nt.links.new(sep.outputs["Z"], mr.inputs["Value"])
+    mul = nt.nodes.new("ShaderNodeMix")
+    mul.data_type = "RGBA"
+    mul.blend_type = "MULTIPLY"
+    mul.inputs["Factor"].default_value = 1.0
+    nt.links.new(sky.outputs[0], mul.inputs["A"])
+    nt.links.new(mr.outputs["Result"], mul.inputs["B"])
+    nt.links.new(mul.outputs["Result"], nt.nodes["Background"].inputs[0])
+    nt.nodes["Background"].inputs["Strength"].default_value = SKY
     sun = bpy.data.lights.new("sun", "SUN")
-    sun.energy = 2.6
-    sun.angle = math.radians(10)
+    sun.energy = SUN
+    sun.angle = math.radians(6)
     so = bpy.data.objects.new("sun", sun)
     el, az = math.radians(50), math.radians(-140)
     d = Vector((math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el)))
     so.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
     sc.collection.objects.link(so)
+    # reflector cards (seen only in reflections): an overhead softbox, a long strip low on the camera side that
+    # draws a highlight along the flanks, and a card off the front corner for the three-quarter view
+    for name, loc, size, strength in (("card_top", (0, 0, 5.0), (7.0, 3.2), 2.2),
+                                      ("card_side", (0.5, -6.5, 1.3), (9.0, 1.1), 1.6),
+                                      ("card_front", (6.5, -3.0, 2.2), (2.6, 2.6), 1.6),
+                                      ("card_rear", (-6.0, 2.5, 2.5), (3.0, 2.0), 1.0)):
+        card(sc, name, Vector(loc), size, strength)
+    # the road the paint reflects: a darker floor seen only in reflections, so the lower body picks up the usual
+    # dark-below / light-above horizon line (the shadow catcher itself is hidden in the paint pass)
+    bpy.ops.mesh.primitive_plane_add(size=60, location=(0, 0, -0.003))
+    floor = bpy.context.object
+    floor.name = "refl_floor"
+    floor.data.materials.append(simple_mat("refl_floor", (0.05, 0.05, 0.052), rough=0.9))
+    floor.visible_camera = False
+    floor.visible_diffuse = False
+    floor.visible_shadow = False
+    floor.visible_transmission = False
     bpy.ops.mesh.primitive_plane_add(size=40, location=(0, 0, 0))
     ground = bpy.context.object
     ground.name = "ground"
     ground.is_shadow_catcher = True
+    # asphalt-coloured for the light it bounces up under the car (the default white floor greys out tyres and
+    # black trim from below)
+    ground.data.materials.append(simple_mat("ground", (GROUND, GROUND, GROUND), rough=0.9))
     cam = bpy.data.cameras.new("cam")
     co = bpy.data.objects.new("cam", cam)
     sc.collection.objects.link(co)
     sc.camera = co
     return co, ground
+
+
+def card(sc, name, loc, size, strength):
+    me = bpy.data.meshes.new(name)
+    a, b = size[0] / 2, size[1] / 2
+    me.from_pydata([(-a, -b, 0), (a, -b, 0), (a, b, 0), (-a, b, 0)], [], [(0, 1, 2, 3)])
+    ob = bpy.data.objects.new(name, me)
+    ob.location = loc
+    # face the car (the plane's normal is +Z)
+    ob.rotation_euler = (Vector((0, 0, 0.6)) - loc).to_track_quat("Z", "Y").to_euler()
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    for n in list(nt.nodes):
+        nt.nodes.remove(n)
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs["Strength"].default_value = strength
+    # soft edges: brightest in the middle of the card
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    gr = nt.nodes.new("ShaderNodeTexGradient")
+    gr.gradient_type = "QUADRATIC_SPHERE"
+    mp = nt.nodes.new("ShaderNodeMapping")
+    mp.inputs["Scale"].default_value = (1.0 / a * 1.05, 1.0 / b * 1.05, 1)
+    nt.links.new(tc.outputs["Object"], mp.inputs["Vector"])
+    nt.links.new(mp.outputs["Vector"], gr.inputs["Vector"])
+    ramp = nt.nodes.new("ShaderNodeValToRGB")
+    ramp.color_ramp.elements[0].position = 0.0
+    ramp.color_ramp.elements[0].color = (0, 0, 0, 1)
+    ramp.color_ramp.elements[1].position = 0.35
+    ramp.color_ramp.elements[1].color = (1, 1, 1, 1)
+    nt.links.new(gr.outputs["Fac"], ramp.inputs["Fac"])
+    nt.links.new(ramp.outputs["Color"], em.inputs["Color"])
+    nt.links.new(em.outputs[0], out.inputs["Surface"])
+    me.materials.append(m)
+    ob.visible_camera = False
+    ob.visible_diffuse = False
+    ob.visible_shadow = False
+    ob.visible_volume_scatter = False
+    sc.collection.objects.link(ob)
+    return ob
 
 
 def simple_mat(name, color, rough=0.5, metal=0.0, coat=0.0):
@@ -222,22 +327,69 @@ def quarter_cam(cam, dims):
 
 
 def shrink(src, dst, size):
-    im = bpy.data.images.load(src)
-    im.scale(*size)
-    im.filepath_raw = dst
-    im.file_format = "PNG"
-    im.save()
-    bpy.data.images.remove(im)
+    """Downscale a supersampled render (premultiplied, Lanczos) and save it as an optimised PNG."""
+    import numpy as np
+    from PIL import Image
+    im = Image.open(src).convert("RGBA")
+    a = np.asarray(im).astype(np.float32) / 255.0
+    rgb = a[..., :3] * a[..., 3:4]
+    chans = [Image.fromarray(rgb[..., k]).resize(size, Image.LANCZOS) for k in range(3)]
+    alpha = Image.fromarray(a[..., 3]).resize(size, Image.LANCZOS)
+    al = np.clip(np.asarray(alpha), 0, 1)
+    out = np.stack([np.asarray(c) for c in chans], -1)
+    out = np.where(al[..., None] > 1e-4, out / np.maximum(al[..., None], 1e-4), 0)
+    res = np.concatenate([np.clip(out, 0, 1), al[..., None]], -1)
+    res[al < 1.5 / 255] = 0
+    Image.fromarray((res * 255 + 0.5).astype(np.uint8), "RGBA").save(dst, optimize=True)
     os.remove(src)
+
+
+def paint_material():
+    """Light grey clear-coat paint for the tint layer: a satin base under a glossy coat, so the reflector cards
+    and the sky leave real highlights in the layer the game tints."""
+    m = simple_mat("paint_grey", (PAINT, PAINT, PAINT), rough=0.32, metal=0.25, coat=1.0)
+    b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Coat Roughness"].default_value = 0.025
+    b.inputs["Coat IOR"].default_value = 1.5
+    return m
+
+
+def glass_material(transmission=0.3, spec=0.55):
+    """Tinted, slightly see-through window glass with a strong reflection."""
+    m = bpy.data.materials.get("rs_glass")
+    if m:
+        return m
+    m = simple_mat("rs_glass", (0.006, 0.008, 0.011), rough=0.02, metal=0.0, coat=0.0)
+    m.name = "rs_glass"
+    b = m.node_tree.nodes["Principled BSDF"]
+    b.inputs["Transmission Weight"].default_value = transmission
+    b.inputs["IOR"].default_value = 1.52
+    b.inputs["Specular IOR Level"].default_value = spec
+    return m
+
+
+def polish(meshes, glass_rx, transmission=0.3, spec=0.55):
+    """Swaps the model's window materials for our tinted glass."""
+    if not glass_rx:
+        return
+    g = glass_material(transmission, spec)
+    for o in meshes:
+        for sl in o.material_slots:
+            if sl.material and re.search(glass_rx, sl.material.name):
+                sl.material = g
 
 
 def do_car(slug, out, test):
     cfg = CARS[slug]
     cam, ground = setup()
     meshes, dims = load_car(cfg)
+    if os.environ.get("RESTYLE", "1") != "0":
+        meshes, dims = car_restyle.restyle(meshes, slug, dims, cfg)
+    rc = car_restyle.RECIPES.get(slug, {})
+    polish(meshes, rc.get("glass"), rc.get("glass_transmission", 0.3), rc.get("glass_spec", 0.55))
     slots = classify(meshes, cfg)
     originals = {o: [sl.material for sl in o.material_slots] for o in meshes}
-    grey = simple_mat("paint_grey", (0.75, 0.75, 0.75), rough=0.22, metal=0.45, coat=0.6)
+    grey = paint_material()
     hold = holdout_mat()
     sc = bpy.context.scene
     if test:
@@ -250,18 +402,22 @@ def do_car(slug, out, test):
         quarter_cam(cam, dims)
         render(os.path.join(out, slug + "_test_q.png"), (640, 360))
         return
-    side_cam(cam)
-    for mode in ("paint", "detail"):
-        set_pass(meshes, slots, originals, mode, grey, hold)
-        ground.hide_render = mode == "paint"
-        tmp = os.path.join(out, "_tmp_%s.png" % mode)
-        render(tmp, (1200, 480))
-        shrink(tmp, os.path.join(out, "%s_%s.png" % (slug, mode)), (600, 240))
-    quarter_cam(cam, dims)
-    for mode in ("paint", "detail"):
-        set_pass(meshes, slots, originals, mode, grey, hold)
-        ground.hide_render = mode == "paint"
-        render(os.path.join(out, "%s_q_%s.png" % (slug, mode)), (640, 360))
+    render_layers(out, slug, cam, ground, dims, lambda mode: set_pass(meshes, slots, originals, mode, grey, hold))
+
+
+def render_layers(out, slug, cam, ground, dims, set_mode):
+    """The four sprites, each rendered at twice the size and scaled down: side 600x240, three-quarter 640x360."""
+    for view, size, prefix in (("side", (600, 240), ""), ("q", (640, 360), "_q")):
+        if view == "side":
+            side_cam(cam)
+        else:
+            quarter_cam(cam, dims)
+        for mode in ("paint", "detail"):
+            set_mode(mode)
+            ground.hide_render = mode == "paint"
+            tmp = os.path.join(out, "_tmp_%s_%s.png" % (slug, mode))
+            render(tmp, (size[0] * 2, size[1] * 2))
+            shrink(tmp, os.path.join(out, "%s%s_%s.png" % (slug, prefix, mode)), size)
 
 
 def main():

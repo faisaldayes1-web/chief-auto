@@ -1507,11 +1507,12 @@ def wheel2(car, mats, center, side, sp):
     bm = bmesh.new()
     conc = sp.get("rim_concave", 0.035)
 
-    def spoke(a, w0, w1, r0, r1, depth=0.022, mid_bulge=0.0):
-        ca, sa = math.cos(a), math.sin(a)
-        px, pz = -sa, ca
+    def spoke(a, w0, w1, r0, r1, depth=0.022, mid_bulge=0.0, twist=0.0):
         def pt(rad, w, k):
-            return (ca * rad + px * w / 2 * k, sa * rad + pz * w / 2 * k)
+            # twist: the outer end of the spoke turns by this many radians (curved / turbine spokes)
+            aa = a + twist * (rad - r0) / max(0.01, r1 - r0)
+            ca, sa = math.cos(aa), math.sin(aa)
+            return (ca * rad - sa * w / 2 * k, sa * rad + ca * w / 2 * k)
         top = []
         bot = []
         for rad, w in ((r0, w0), (r1, w1)):
@@ -1552,6 +1553,38 @@ def wheel2(car, mats, center, side, sp):
                 spoke(a + d * 0.16, 0.03, 0.026, rr * 0.5, rr)
     elif style == "aero":
         pass
+    # styles used by the restyled third-party cars (tools/car_restyle.py)
+    elif style == "mesh":
+        # cross-laced mesh: two sets of thin spokes leaning opposite ways
+        for i in range(10):
+            a = 2 * math.pi * i / 10
+            for tw in (-0.55, 0.55):
+                spoke(a, 0.022, 0.016, hub_r * 0.9, rr, depth=0.016, twist=tw)
+    elif style == "star7":
+        for i in range(7):
+            spoke(2 * math.pi * i / 7, 0.07, 0.03, hub_r * 0.8, rr, depth=0.026)
+    elif style == "twin6":
+        for i in range(6):
+            a = 2 * math.pi * i / 6
+            for d in (-1, 1):
+                spoke(a + d * 0.09, 0.032, 0.03, hub_r * 0.8, rr)
+    elif style == "turbine":
+        for i in range(12):
+            spoke(2 * math.pi * i / 12, 0.045, 0.03, hub_r * 0.9, rr, depth=0.02, twist=0.5)
+    elif style == "dish8":
+        # deep dish: short spokes on a small centre, wide flat lip around them
+        for i in range(8):
+            spoke(2 * math.pi * i / 8, 0.05, 0.045, hub_r * 0.8, rr * 0.72, depth=0.03)
+    elif style == "blade4":
+        # four wide paddle spokes
+        for i in range(4):
+            spoke(2 * math.pi * i / 4 + 0.4, 0.07, 0.13, hub_r * 0.8, rr, depth=0.028)
+    elif style == "steel":
+        # plain steel wheel: a flat face with eight round-ish vent holes left between short webs
+        for i in range(8):
+            a = 2 * math.pi * i / 8
+            spoke(a, 0.07, 0.11, hub_r * 0.9, rr * 0.62, depth=0.012)
+            spoke(a + math.pi / 8, 0.12, 0.13, rr * 0.6, rr, depth=0.012)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     spokes = new_obj("spokes", bm, mats["rim"], smooth_shade=False)
     for ob in (lip,):
@@ -1570,6 +1603,12 @@ def wheel2(car, mats, center, side, sp):
             bm.faces.new(pts)
         bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
         parts.append(new_obj("slots", bm, mats["rim_dark"], smooth_shade=False))
+    if style in ("dish8", "steel"):
+        # flat ring between the short spokes and the rim lip
+        r_in = rr * (0.7 if style == "dish8" else 0.58)
+        ring = lathe("dish", [(rr + 0.004, face - sg * conc * 0.2), (r_in, face - sg * conc * 0.35),
+                              (r_in - 0.006, face - sg * conc * 0.45)], seg, mats["rim"])
+        parts.append(orient(ring, lambda c: Vector((0, sg, 0))))
     if sp.get("tread") == "at":
         # all-terrain tread: staggered blocks standing proud of the tyre
         bm = bmesh.new()
@@ -1992,13 +2031,13 @@ def v2_render(name, out, mode):
     sys.path.insert(0, HERE)
     import car_sprites_real as R
     cam, ground = R.setup()
+    studio_objs = set(bpy.context.scene.objects)   # ground, reflector cards, reflection floor
     mats = materials()
     car = build_car2(name, mats)
     s = car["shape"]
     sc = bpy.context.scene
-    meshes = [o for o in sc.objects if o.type == "MESH" and o is not ground]
+    meshes = [o for o in sc.objects if o.type == "MESH" and o not in studio_objs]
     paint = [o for o in meshes if is_paint(o)]
-    grey = R.simple_mat("paint_grey", (0.75, 0.75, 0.75), rough=0.22, metal=0.45, coat=0.6)
     sl = slug(name)
     dims = (s.L, s.W, s.H)
     if mode == "test":
@@ -2017,27 +2056,18 @@ def v2_render(name, out, mode):
         cam.rotation_euler = (Vector((0, 0, s.H * 0.42)) - cam.location).to_track_quat("-Z", "Y").to_euler()
         R.render(os.path.join(out, sl + "_v2_rear.png"), (1280, 720))
         return
+    grey = R.paint_material()
     for o in paint:
         for i in range(len(o.material_slots)):
             o.material_slots[i].link = "OBJECT"
             o.material_slots[i].material = grey
 
-    def passes(prefix, res, shrink_to=None):
-        for layer in ("paint", "detail"):
-            for o in meshes:
-                o.is_holdout = (o not in paint) if layer == "paint" else (o in paint)
-            ground.hide_render = layer == "paint"
-            dst = os.path.join(out, "%s%s_%s.png" % (sl, prefix, layer))
-            if shrink_to:
-                tmp = os.path.join(out, "_tmp_%s.png" % layer)
-                R.render(tmp, res)
-                R.shrink(tmp, dst, shrink_to)
-            else:
-                R.render(dst, res)
-    R.side_cam(cam)
-    passes("", (1200, 480), (600, 240))
-    R.quarter_cam(cam, dims)
-    passes("_q", (640, 360))
+    def set_mode(layer):
+        for o in meshes:
+            o.is_holdout = (o not in paint) if layer == "paint" else (o in paint)
+
+    # same studio, 2x supersampling and sizes as the realistic cars
+    R.render_layers(out, sl, cam, ground, dims, set_mode)
 
 
 # ------------------------------------------------------------------ scene / render

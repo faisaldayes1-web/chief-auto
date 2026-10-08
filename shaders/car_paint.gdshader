@@ -81,8 +81,13 @@ void fragment() {
 	vec3 wob = vec3(noise(p * 9.0) - 0.5, noise(p * 9.0 + 17.0) - 0.5, noise(p * 9.0 + 31.0) - 0.5);
 	NORMAL = normalize(NORMAL + wob * dz * 1.6);
 
+	float clean = (1.0 - rm) * (1.0 - sc) * (1.0 - g);
+
 	ALBEDO = mix(col, highlight.rgb, highlight.a * 0.35);
 	EMISSION = highlight.rgb * highlight.a * 0.35;
 	METALLIC = m;
 	ROUGHNESS = r;
+	// glossy clear coat over the paint: gone where it has rusted or been scratched through, dulled by grime
+	CLEARCOAT = 0.85 * clean;
+	CLEARCOAT_ROUGHNESS = mix(0.04, 0.5, max(dirt * low, dent * 0.3));
 }
