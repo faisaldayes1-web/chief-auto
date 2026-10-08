@@ -16,24 +16,26 @@ const PART_NAMES := {
 }
 
 # Parody models: [name, class, base price new]
+## [name, class, new price, resale strength]. New prices track the real counterparts (2026 MSRP); resale strength
+## is how well the model holds value on the used market (Civics and Wranglers hold, EVs and luxury SUVs drop).
 const MODELS := [
-	["Hondo Civix", "economy", 24000],
-	["Toyoda Camri", "economy", 28000],
-	["Teslo Model 3", "economy", 42000],
-	["Mazdo Miota", "sport", 32000],
-	["Subaro Outbuck", "suv", 34000],
-	["Forde Rangler", "truck", 36000],
-	["Jeap Wrangle", "suv", 42000],
-	["Dodgy Charjer", "sport", 45000],
-	["Forde Mustank", "sport", 48000],
-	["Chevro Tahoma", "suv", 52000],
-	["Ramm 1500", "truck", 55000],
-	["BMV M4", "sport", 78000],
-	["Rang Rovah", "suv", 98000],
-	["Porsha 911", "sport", 115000],
-	["Mercedez G-Wagon", "suv", 150000],
-	["Ferrano 488", "exotic", 250000],
-	["Lamborgo Aventa", "exotic", 380000],
+	["Hondo Civix", "economy", 26000, 1.10],
+	["Toyoda Camri", "economy", 29000, 1.05],
+	["Mazdo Miota", "sport", 30000, 1.05],
+	["Subaro Outbuck", "suv", 32000, 1.00],
+	["Forde Rangler", "truck", 34000, 1.10],
+	["Jeap Wrangle", "suv", 36000, 1.15],
+	["Dodgy Charjer", "sport", 38000, 0.90],
+	["Teslo Model 3", "economy", 42000, 0.80],
+	["Forde Mustank", "sport", 48000, 0.95],
+	["Ramm 1500", "truck", 48000, 1.00],
+	["Chevro Tahoma", "suv", 58000, 1.00],
+	["BMV M4", "sport", 80000, 0.85],
+	["Rang Rovah", "suv", 90000, 0.75],
+	["Porsha 911", "sport", 125000, 1.10],
+	["Mercedez G-Wagon", "suv", 150000, 1.05],
+	["Ferrano 488", "exotic", 300000, 0.95],
+	["Lamborgo Aventa", "exotic", 450000, 0.95],
 ]
 
 const MECHANICS := [
@@ -220,7 +222,7 @@ const TRAIT_DESC := {"Closer": "+6% close rate", "Smooth talker": "Buyers leave 
 
 # ---------- state ----------
 
-var money: int = 40000
+var money: int = 15000
 var xp: int = 0
 var level: int = 1
 var reputation: float = 3.0
@@ -293,7 +295,7 @@ func new_game() -> void:
 	run_id = randi()
 	peak_worth = 0
 	bankrupt = {}
-	money = 40000
+	money = 15000
 	xp = 0
 	level = 1
 	reputation = 3.0
@@ -584,7 +586,7 @@ const LOAN_RATE := 0.02   # per month
 
 
 func loan_limit() -> int:
-	return 25000 * dealership
+	return 15000 * dealership
 
 
 func loan_interest() -> int:
@@ -826,7 +828,12 @@ func make_car(max_base: int, house := "autobidz") -> Dictionary:
 	if house == "exotic":
 		pool = MODELS.filter(func(m): return m[1] in ["sport", "exotic"] and m[2] >= 45000)
 	var m: Array = pool.pick_random()
-	var age := randi_range(2, 14)
+	# early on the lanes are full of old high-mileage cars; newer, cleaner stock shows up as you level
+	var age_lo: int = max(1, 12 - level)
+	var age_hi: int = max(age_lo + 3, 24 - level * 2)
+	var age := randi_range(age_lo, age_hi)
+	if house in ["dealer", "exotic"]:
+		age = max(1, age - 4)
 	var car := {
 		"id": next_id, "model": m[0], "cls": m[1], "base": m[2],
 		"year": CURRENT_YEAR - age,
@@ -837,8 +844,8 @@ func make_car(max_base: int, house := "autobidz") -> Dictionary:
 		"history_known": false, "paid": 0, "spent": 0, "day_bought": 0,
 	}
 	next_id += 1
-	var lo: int = {"salvage": 10, "dealer": 50, "exotic": 55}.get(house, 25)
-	var hi: int = {"salvage": 55, "dealer": 92, "exotic": 95}.get(house, 90)
+	var lo: int = {"salvage": 10, "dealer": 50, "exotic": 55}.get(house, min(45, 15 + level * 3))
+	var hi: int = {"salvage": 55, "dealer": 92, "exotic": 95}.get(house, min(92, 62 + level * 3))
 	for p in PARTS:
 		car.parts[p] = randi_range(lo, hi)
 	var faults := randi_range(0, 2)
@@ -867,14 +874,36 @@ func condition(car: Dictionary, true_value := false) -> int:
 	return int(round(total / PARTS.size()))
 
 
+static func model_info(name: String) -> Array:
+	for m in MODELS:
+		if m[0] == name:
+			return m
+	return ["", "economy", 25000, 1.0]
+
+
+## Used-car depreciation like the real market: a big first-year drop, about 10% a year while the car is young,
+## slower once it is old, and a floor so a runner is never worth nothing. Resale strength shifts the whole curve.
+static func depreciation(age: int, cls: String, hold: float) -> float:
+	var f := 0.93
+	for a in range(1, age + 1):
+		f *= 0.80 if a == 1 else (0.90 if a <= 5 else (0.93 if a <= 12 else 0.96))
+	var floor_f: float = {"exotic": 0.30, "sport": 0.14}.get(cls, 0.10)
+	return clamp(f * hold, floor_f, 0.95)
+
+
 func value(car: Dictionary, true_value := false) -> int:
-	var age_factor: float = max(0.35, 1.0 - (CURRENT_YEAR - car.year) * 0.045)
-	var miles_factor: float = clamp(1.0 - car.miles / 300000.0, 0.5, 1.0)
+	var age: int = max(0, CURRENT_YEAR - car.year)
+	var m := model_info(car.model)
+	var dep := depreciation(age, car.cls, m[3])
+	# miles against what a car that age would normally have
+	var expected: float = max(6000.0, age * 12000.0)
+	var miles_factor: float = clamp(1.0 - (car.miles - expected) / 400000.0, 0.75, 1.1)
 	var hist := 1.0
 	if car.history_known or true_value:
 		hist = {"Clean": 1.0, "Minor accident": 0.92, "Major accident": 0.8, "Flood": 0.65}[car.history]
 	var cond := condition(car, true_value)
-	var v: float = car.base * age_factor * miles_factor * hist * (0.35 + 0.65 * cond / 100.0)
+	var cond_factor: float = 0.45 + 0.55 * pow(cond / 100.0, 0.8)
+	var v: float = car.base * dep * miles_factor * hist * cond_factor
 	return int(round(v / 50.0) * 50)
 
 
@@ -906,7 +935,8 @@ func reveal_faults(car: Dictionary) -> Array:
 ## Priciest new-car price that shows up at auction: grows with your level, capped by what your building can sell.
 func max_auction_base() -> int:
 	var cap: int = dealership_info().max_car
-	return 60000 + level * 20000 if cap == 0 else min(cap, 60000 + level * 20000)
+	var by_level := int(40000 * pow(1.25, level - 1))
+	return by_level if cap == 0 else min(cap, by_level)
 
 
 func listing_count() -> int:
@@ -1059,7 +1089,7 @@ const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars"
 
 func save_game() -> void:
 	update_leaderboard("Closed down" if not bankrupt.is_empty() else "Open")
-	var data := {"version": 4}
+	var data := {"version": 5}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -1074,7 +1104,7 @@ func load_game() -> bool:
 	if f == null:
 		return false
 	var data = JSON.parse_string(f.get_as_text())
-	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 4:
+	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 5:   # the economy changed in 5; older saves start over
 		return false
 	new_game()
 	tutorial = TUTORIAL.size()   # saves from before the tutorial existed skip it
