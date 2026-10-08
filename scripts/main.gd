@@ -202,12 +202,19 @@ func _build_nav() -> Control:
 	nav = UI.hbox(8)
 	nav.alignment = BoxContainer.ALIGNMENT_CENTER
 	p.add_child(nav)
-	for item in [["Lot", "lot"], ["Office PC", "pc"], ["Garage", "garage"], ["Showroom", "showroom"], ["Marco", "marco"], ["Home", "home"]]:
-		var b := UI.button(item[0], show_screen.bind(item[1]), 140, 52)
+	for item in [["Lot", "lot"], ["Office PC", "pc"], ["Garage", "garage"], ["Showroom", "showroom"], ["Marco", "marco"], ["Staff", "staff"], ["Home", "home"]]:
+		var b := UI.button(item[0], show_screen.bind(item[1]), 120, 52)
 		b.set_meta("screen", item[1])
+		b.icon = icon_tex(item[1])
+		b.expand_icon = false
+		b.add_theme_constant_override("icon_max_width", 22)
+		b.add_theme_constant_override("h_separation", 6)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nav.add_child(b)
-	var end := UI.gold_button("Close & sleep", _close_for_night, 170, 52)
+	var end := UI.gold_button("Close & sleep", _close_for_night, 160, 52)
+	end.icon = icon_tex("sleep")
+	end.add_theme_constant_override("icon_max_width", 22)
+	end.add_theme_constant_override("h_separation", 6)
 	end.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav.add_child(end)
 	return p
@@ -251,6 +258,7 @@ func show_screen(name: String) -> void:
 		"garage": _screen_garage()
 		"showroom": _screen_showroom()
 		"marco": _screen_marco()
+		"staff": _screen_staff()
 		"home": _screen_home()
 	_refresh_clock()
 	if Game.seen_intro or name == "title":
@@ -456,12 +464,15 @@ func _screen_lot() -> void:
 	_park_cars(yard)
 
 
-## The cars you own, parked on the lot render with yellow windshield price stickers (click one to price it).
+## The cars you own, parked nose-out in the stalls painted on the lot render, with yellow price stickers on the
+## windshields (click one to price it). Stall positions come from the render's camera (see _lot_stalls).
 func _park_cars(yard: Control) -> void:
-	var shown: Array = Game.cars.slice(0, 10)
-	var per_row: int = max(4, ceili(shown.size() / 2.0))
+	var lot := _lot_stalls()
+	var stalls: Array = lot.stalls
+	var ref: Dictionary = lot.ref_car
 	var items := []
-	for car in shown:
+	for i in min(Game.cars.size(), stalls.size()):
+		var car: Dictionary = Game.cars[i]
 		var b := Button.new()
 		b.flat = true
 		b.focus_mode = Control.FOCUS_NONE
@@ -473,35 +484,77 @@ func _park_cars(yard: Control) -> void:
 		var art := CarArt.new()
 		art.quarter = true
 		art.set_car(car)
-		art.set_anchors_preset(Control.PRESET_FULL_RECT)
 		b.add_child(art)
 		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color(0.08, 0.08, 0.08), true)
-		tag.add_theme_stylebox_override("normal", UI.box(Color("f5d90a"), Color(0.2, 0.2, 0.1), 3, 1, 6))
+		tag.add_theme_stylebox_override("normal", UI.box(Color("f5d90a"), Color(0.2, 0.2, 0.1), 3, 1, 5))
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(tag)
-		items.append([b, tag])
-	# back row first so the front row draws over it
-	var order := []
-	for i in items.size():
-		order.append(i)
-	order.sort_custom(func(a, b): return (a >= per_row) and not (b >= per_row))
-	for i in order:
-		yard.add_child(items[i][0])
+		# a longer car keeps its tail at the wheel stop, a taller one is centred higher (the sprites are framed on
+		# each car's own length and on 0.42 of its height)
+		var dims: Array = lot.cars.get(CarArt.slug(car.get("model", "")), [ref.length, ref.width, ref.height])
+		var st: Dictionary = stalls[i]
+		var target: Vector2 = _v2(st.target) + _v2(st.fwd) * (dims[0] - ref.length) / 2.0 + _v2(st.up) * 0.42 * (dims[2] - ref.height)
+		var frame_w: float = st.ppm * Vector2(1.7 * dims[0], 1.15).length() * 36.0 / 50.0
+		items.append({"button": b, "art": art, "tag": tag, "target": target, "frame_w": frame_w, "order": int(st.get("order", i))})
+	# back to front: back row first, and in a row each car's nose overlaps its right-hand neighbour
+	var drawn := items.duplicate()
+	drawn.sort_custom(func(a, b): return a.order < b.order)
+	for it in drawn:
+		yard.add_child(it.button)
 	var place := func():
-		var w := yard.size.x
-		var hgt := yard.size.y
-		for i in items.size():
-			var back := i >= per_row
-			var k: int = i % per_row
-			var sc: float = 4.0 / per_row
-			var cw: float = w * (0.27 if back else 0.36) * sc
-			var x: float = w * (0.06 + k * (0.21 if back else 0.25) * sc) - (0.0 if back else w * 0.04)
-			var y: float = hgt * (0.58 if back else 0.98) - cw * 0.5625
-			items[i][0].position = Vector2(x, y)
-			items[i][0].size = Vector2(cw, cw * 0.5625)
-			items[i][1].position = Vector2(cw * 0.36, cw * 0.14)
+		var cover := _bg_cover_rect()
+		if cover.size == Vector2.ZERO:
+			return
+		var origin := cover.position - yard.global_position
+		for it in items:
+			var w: float = it.frame_w * cover.size.x
+			var frame := Rect2(origin + it.target * cover.size - Vector2(w, w * 0.5625) / 2.0, Vector2(w, w * 0.5625))
+			# the button covers the car body, not the sprite's empty margins, so clicks go to the car you point at
+			var body := Rect2(frame.position + frame.size * Vector2(0.15, 0.22), frame.size * Vector2(0.77, 0.58))
+			it.button.position = body.position
+			it.button.size = body.size
+			it.art.position = frame.position - body.position
+			it.art.size = frame.size
+			var tag: Label = it.tag
+			tag.add_theme_font_size_override("font_size", clampi(roundi(w * 0.05), 11, 20))
+			tag.reset_size()
+			tag.position = frame.position - body.position + frame.size * Vector2(0.52, 0.32) - tag.get_combined_minimum_size() / 2.0
 	yard.resized.connect(place)
 	place.call_deferred()
+
+
+static func _v2(a: Array) -> Vector2:
+	return Vector2(a[0], a[1])
+
+
+## Where the background render is drawn, in global coordinates (bg covers the window, centred and cropped).
+func _bg_cover_rect() -> Rect2:
+	if bg.texture == null:
+		return Rect2()
+	var ts := bg.texture.get_size()
+	var sc: float = max(bg.size.x / ts.x, bg.size.y / ts.y)
+	return Rect2(bg.global_position + (bg.size - ts * sc) / 2.0, ts * sc)
+
+
+var _stall_cache := {}
+
+
+## The stalls of this tier's lot render (assets/world/stalls_lot*.json, written by tools/dealership3d.py with the
+## render): per stall, in fill order, the sprite frame centre and size for a reference car as fractions of the image.
+func _lot_stalls() -> Dictionary:
+	var key := "lot" + Game.world_suffix()
+	if not _stall_cache.has(key):
+		var path := "res://assets/world/stalls_%s.json" % key
+		var res = load(path) if ResourceLoader.exists(path) else null
+		var data = res.data if res is JSON else null
+		if not (data is Dictionary and data.has("stalls")):
+			push_warning("No stall layout at %s, parking cars in a plain row" % path)
+			data = {"stalls": [], "cars": {}, "ref_car": {"length": 4.7, "width": 1.85, "height": 1.45}}
+			for i in 10:
+				data.stalls.append({"target": [0.47 + (i % 5) * 0.11, 0.8 - floori(i / 5.0) * 0.12], "fwd": [0, 0], "up": [0, 0],
+					"ppm": 0.034 - floori(i / 5.0) * 0.008, "order": 9 - i})
+		_stall_cache[key] = data
+	return _stall_cache[key]
 
 
 func _car_art(car: Dictionary, sz: Vector2) -> CarArt:
@@ -541,6 +594,7 @@ func _class_name(c: String) -> String:
 # Office PC: a desk with a computer. Browser tabs: auctions and shops.
 # =====================================================================
 
+const PC_TAB_ICONS := {"auction": "gavel", "desk": "pc", "showroom": "showroom", "ads": "megaphone", "staff": "staff", "reviews": "star", "bank": "bank"}
 const PC_TABS := [["auction", "AutoBidz"], ["desk", "DeskDepot"], ["showroom", "ShowroomPro"], ["ads", "AdSpace"], ["staff", "StaffHire"], ["reviews", "Yolp"], ["bank", "TewportBank"]]
 const PC_URLS := {
 	"auction": "https://www.autobidz.ca/live?region=orange-county",
@@ -580,6 +634,10 @@ func _screen_pc() -> void:
 		b.add_theme_stylebox_override("normal", UI.box(bg_c, Color.TRANSPARENT, 6, 0, 10))
 		b.add_theme_stylebox_override("hover", UI.box(bg_c.lightened(0.2), Color.TRANSPARENT, 6, 0, 10))
 		b.add_theme_color_override("font_color", Color(0.15, 0.15, 0.2) if active else Color(0.3, 0.3, 0.35))
+		_with_icon(b, PC_TAB_ICONS.get(t[0], "pc"), 16)
+		b.add_theme_color_override("icon_normal_color", Color(0.2, 0.22, 0.3))
+		b.add_theme_color_override("icon_hover_color", Color(0.2, 0.22, 0.3))
+		b.add_theme_color_override("icon_pressed_color", Color(0.2, 0.22, 0.3))
 		tabs.add_child(b)
 	var addr_wrap := UI.panel(Color(0.93, 0.94, 0.96), Color.TRANSPARENT, 6)
 	var addr := LineEdit.new()
@@ -1168,7 +1226,7 @@ const CARD_CYAN := Color("2fd4e8")
 ## Portrait window like the team cards: the rendered face over a glowing gradient, framed in the accent colour.
 func _portrait_frame(pid: String, mood: float, accent: Color, h := 120.0) -> PanelContainer:
 	var frame := PanelContainer.new()
-	var sb := UI.box(Color(0.1, 0.2, 0.26), Color(accent, 0.8), 10, 2, 0)
+	var sb := UI.box(Color(0.1, 0.2, 0.26), Color(accent, 0.8), 10, 2, 2)
 	sb.shadow_color = Color(accent, 0.35)
 	sb.shadow_size = 8
 	frame.add_theme_stylebox_override("panel", sb)
@@ -1177,10 +1235,19 @@ func _portrait_frame(pid: String, mood: float, accent: Color, h := 120.0) -> Pan
 	var glow := GlowBack.new()
 	glow.accent = accent
 	frame.add_child(glow)
-	var art := PersonArt.new()
-	art.pid = pid
-	art.mood = mood
-	frame.add_child(art)
+	var tex := _person_tex(pid)
+	if tex:
+		var pic := TextureRect.new()
+		pic.texture = tex
+		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(pic)
+	else:
+		var art := PersonArt.new()
+		art.pid = pid
+		art.mood = mood
+		frame.add_child(art)
 	return frame
 
 
@@ -3040,35 +3107,322 @@ func _unlock_text() -> String:
 # =====================================================================
 
 func _screen_marco() -> void:
-	set_bg("office", 0.0)
+	set_bg("", 0.0)
+	bg.visible = true
+	bg.texture = load("res://assets/people/marco_office.jpg")
+	bg.modulate = Game.sky_tint()
+	dim.color = Color(0, 0, 0, 0.12)
 	var h := UI.hbox(16)
 	content.add_child(h)
+	# ----- left: the team, Marco highlighted -----
+	var lp := _glass_panel()
+	lp.custom_minimum_size = Vector2(330, 0)
+	lp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	h.add_child(lp)
+	var lv := UI.vbox(7)
+	lp.add_child(lv)
+	lv.add_child(UI.label("MARCO · CEO ADVISOR", 26, UI.TEXT, true))
+	lv.add_child(UI.rule(Color(UI.GOLD, 0.35)))
+	lv.add_child(_team_row("marco", "Marco", "CEO & Financial Advisor", true, func(): play_dialogue(_marco_tips(), func(): pass)))
+	for s in Game.staff:
+		lv.add_child(_team_row(Game.staff_pid(s), s.name, "%s · %s" % [_staff_role(s), _stars(s.stars)], false, show_screen.bind("staff")))
+	if Game.staff.size() < 5:
+		lv.add_child(_team_row("", "Open position", "Hire on StaffHire", false, func():
+			pc_tab = "staff"
+			show_screen("pc")))
+	lv.add_child(UI.spacer())
+	lv.add_child(_mini_goals())
 	h.add_child(UI.spacer())
-	var p := UI.panel()
-	p.custom_minimum_size = Vector2(470, 0)
-	h.add_child(p)
-	var v := UI.vbox(9)
-	p.add_child(v)
-	v.add_child(UI.label("MARCO · CEO ADVISOR", 26, UI.TEXT, true))
-	v.add_child(UI.label("Status & Stats", 19, UI.GOLD, true))
+	# ----- right: stats and perks -----
+	var rcol := UI.vbox(12)
+	rcol.custom_minimum_size = Vector2(350, 0)
+	h.add_child(rcol)
+	var sp := _glass_panel()
+	rcol.add_child(sp)
+	var sv := UI.vbox(8)
+	sp.add_child(sv)
+	sv.add_child(UI.label("STATUS & STATS", 20, UI.TEXT, true))
 	var s: Dictionary = Game.stats
 	var conv: float = 0.0 if s.buyers == 0 else 100.0 * s.sold / s.buyers
 	var avg_days: float = 0.0 if s.sold == 0 else float(s.days_held) / s.sold
 	var eff: float = clamp(50.0 + s.profit / 500.0, 0.0, 100.0)
-	_stat_row(v, "Dealership efficiency", "%d%%" % int(eff), eff)
-	_stat_row(v, "Sales conversion rate", "%d%%" % int(conv), conv)
-	_stat_row(v, "Inventory duration", "%.1f days" % avg_days, clamp(100 - avg_days * 15, 0, 100))
-	_stat_row(v, "Client satisfaction", "%.1f / 5" % Game.reputation, Game.reputation * 20)
-	v.add_child(UI.label("Monthly bills: %s, due %s" % [Game.money_str(Game.monthly_bills().total), Game.next_bill_date()], 15, UI.BLUE))
-	v.add_child(UI.label("Advisor Perks", 19, UI.GOLD, true))
+	_icon_stat(sv, "efficiency", "Dealership efficiency", "%d%%" % int(eff), eff)
+	_icon_stat(sv, "conversion", "Sales conversion rate", "%d%%" % int(conv), conv)
+	_icon_stat(sv, "calendar", "Inventory duration", "%.1f days" % avg_days, clamp(100 - avg_days * 15, 0, 100))
+	_icon_stat(sv, "smile", "Client satisfaction", "%.1f/5" % Game.reputation, Game.reputation * 20)
+	var pp := _glass_panel()
+	rcol.add_child(pp)
+	var pv := UI.vbox(8)
+	pp.add_child(pv)
+	pv.add_child(UI.label("ADVISOR PERKS", 20, UI.TEXT, true))
+	var perk_icons := {"sourcing": "globe", "vip": "handshake", "insights": "insights"}
 	for perk in Game.PERKS:
 		var on: bool = Game.level >= perk.level
-		v.add_child(UI.label(("✓ " if on else "Lvl %d · " % perk.level) + perk.name, 16, UI.TEXT if on else UI.MUTED, true))
-		v.add_child(UI.para(perk.desc, 13, UI.MUTED))
-	v.add_child(UI.gold_button("Ask Marco for advice", func(): play_dialogue(_marco_tips(), func(): pass)))
-	var board := _goals_board()
-	h.add_child(board)
-	h.move_child(board, 0)
+		var r := UI.hbox(10)
+		r.add_child(_icon_box(perk_icons.get(perk.id, "star"), on))
+		var t := UI.vbox(0)
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		t.add_child(UI.label(perk.name.to_upper(), 15, UI.TEXT if on else UI.MUTED, true))
+		t.add_child(UI.label(perk.desc if on else "Unlocks at level %d. %s" % [perk.level, perk.desc], 12, UI.GOLD if on else UI.MUTED, false, true))
+		r.add_child(t)
+		pv.add_child(r)
+	rcol.add_child(UI.spacer())
+	var acts := UI.hbox(8)
+	rcol.add_child(acts)
+	var ask := UI.gold_button("Ask Marco", func(): play_dialogue(_marco_tips(), func(): pass), 0, 46)
+	_with_icon(ask, "chat")
+	ask.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	acts.add_child(ask)
+	var team := UI.button("Team", show_screen.bind("staff"), 0, 46)
+	_with_icon(team, "staff")
+	team.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	acts.add_child(team)
+
+
+func _with_icon(b: Button, name: String, px := 24) -> void:
+	b.icon = icon_tex(name)
+	b.add_theme_constant_override("icon_max_width", px)
+	b.add_theme_constant_override("h_separation", 8)
+
+
+## White line icons in assets/icons, tinted by the node that shows them.
+static func icon_tex(name: String) -> Texture2D:
+	var p := "res://assets/icons/%s.svg" % name
+	return load(p) if ResourceLoader.exists(p) else null
+
+
+func _icon(name: String, px := 24, tint := UI.GOLD) -> TextureRect:
+	var t := TextureRect.new()
+	t.texture = icon_tex(name)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.custom_minimum_size = Vector2(px, px)
+	t.modulate = tint
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return t
+
+
+## Gold-edged square holding an icon, as in the advisor screens.
+func _icon_box(name: String, lit := true, px := 44) -> PanelContainer:
+	var b := PanelContainer.new()
+	var sb := UI.box(Color(0, 0, 0, 0.35), Color(UI.GOLD if lit else UI.MUTED, 0.6), 6, 1, 6)
+	b.add_theme_stylebox_override("panel", sb)
+	b.custom_minimum_size = Vector2(px, px)
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	b.add_child(_icon(name, px - 16, UI.GOLD if lit else UI.MUTED))
+	return b
+
+
+## Smoked glass panel with a warm rim.
+func _glass_panel() -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := UI.box(Color(0.05, 0.06, 0.08, 0.72), Color(1, 0.85, 0.6, 0.35), 12, 1, 16)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 10
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
+
+func _icon_stat(parent: Control, icon: String, name: String, val: String, pct: float) -> void:
+	var r := UI.hbox(10)
+	r.add_child(_icon_box(icon))
+	var v := UI.vbox(4)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var top := UI.hbox(6)
+	top.add_child(UI.label(name.to_upper(), 14, UI.TEXT, true))
+	top.add_child(UI.spacer())
+	top.add_child(UI.label(val, 15, UI.GOLD, true))
+	v.add_child(top)
+	v.add_child(UI.bar(pct, 100, UI.GOLD, 7))
+	r.add_child(v)
+	parent.add_child(r)
+
+
+## One row of the team list: portrait thumbnail, name, role.
+func _team_row(pid: String, name: String, role: String, selected: bool, cb: Callable) -> Control:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 58)
+	b.focus_mode = Control.FOCUS_NONE
+	var base := UI.box(Color(0.12, 0.13, 0.16, 0.75), Color(1, 1, 1, 0.12), 6, 1, 4)
+	var hot := UI.box(Color(0.2, 0.2, 0.22, 0.85), Color(UI.GOLD, 0.6), 6, 1, 4)
+	var sel := UI.box(Color(0.55, 0.42, 0.18, 0.9), UI.GOLD, 6, 2, 4)
+	sel.shadow_color = Color(UI.GOLD, 0.45)
+	sel.shadow_size = 8
+	b.add_theme_stylebox_override("normal", sel if selected else base)
+	b.add_theme_stylebox_override("hover", sel if selected else hot)
+	b.add_theme_stylebox_override("pressed", sel)
+	b.pressed.connect(cb)
+	var r := UI.hbox(10)
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	r.offset_left = 6
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(r)
+	var th := TextureRect.new()
+	th.custom_minimum_size = Vector2(48, 48)
+	th.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	th.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	th.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if pid != "":
+		th.texture = _person_tex(pid, true)
+	else:
+		th.texture = icon_tex("staff")
+		th.modulate = UI.MUTED
+		th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.add_child(th)
+	var t := UI.vbox(0)
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	t.add_child(UI.label(name.to_upper(), 17, Color.WHITE if selected else UI.TEXT, true))
+	t.add_child(UI.label(role, 12, Color(1, 0.93, 0.8) if selected else UI.MUTED))
+	r.add_child(t)
+	return b
+
+
+## Portrait for a person: the painted card art for Marco and Maruchan, otherwise the top of the rendered body.
+## thumb = head and shoulders only.
+func _person_tex(pid: String, thumb := false) -> Texture2D:
+	var card := "res://assets/people/%s_card.png" % pid
+	if ResourceLoader.exists(card):
+		var ct: Texture2D = load(card)
+		if not thumb:
+			return ct
+		var ca := AtlasTexture.new()
+		ca.atlas = ct
+		ca.region = Rect2(ct.get_width() * 0.2, 0, ct.get_width() * 0.6, ct.get_width() * 0.6)
+		return ca
+	var body := "res://assets/people/%s_body.png" % pid
+	if ResourceLoader.exists(body):
+		var bt: Texture2D = load(body)
+		var w := float(bt.get_width())
+		var a := AtlasTexture.new()
+		a.atlas = bt
+		a.region = Rect2(w * 0.12, 0, w * 0.76, w * 0.76) if thumb else Rect2(0, 0, w, w * 1.15)
+		return a
+	var face := "res://assets/people/%s_face_neutral.png" % pid
+	return load(face) if ResourceLoader.exists(face) else null
+
+
+func _staff_role(s: Dictionary) -> String:
+	match s.get("look", ""):
+		"jeff": return "Sales Associate"
+		"maruchan": return "Leasing & VIP Relations"
+		"amna": return "Finance & Insurance"
+	return "Salesperson"
+
+
+## Goals in a compact list under the team.
+func _mini_goals() -> Control:
+	var v := UI.vbox(3)
+	var hd := UI.hbox(6)
+	hd.add_child(_icon("goals", 18))
+	hd.add_child(UI.label("GOALS · " + Game.dealership_info().name.to_upper(), 13, UI.GOLD, true))
+	v.add_child(hd)
+	for g in Game.goals():
+		var done: bool = g[1]
+		v.add_child(UI.label(("✓ " if done else "○ ") + g[0], 13, UI.GOOD if done else UI.TEXT))
+	var today: bool = Game.stats.goal_sold_today >= 1
+	v.add_child(UI.label(("✓ " if today else "○ ") + "Today: sell a car (+$500, +25 XP)", 13, UI.GOOD if today else UI.MUTED))
+	return v
+
+
+# =====================================================================
+# Staff: the team as tall cards
+# =====================================================================
+
+const MARCO_CARD := {"name": "Marco", "role": "CEO Advisor", "stats": [["handshake", "Negotiation", 95], ["bank", "Finance", 98], ["insights", "Market insight", 92]]}
+const SKILL_ICONS := {"closing": "handshake", "rapport": "smile", "finance": "bank", "upsell": "conversion"}
+
+
+func _screen_staff() -> void:
+	set_bg("showroom", 0.55)
+	var v := UI.vbox(12)
+	content.add_child(v)
+	var head := UI.hbox(10)
+	v.add_child(head)
+	head.add_child(_icon("staff", 30))
+	head.add_child(UI.label("YOUR TEAM", 30, UI.TEXT, true))
+	head.add_child(UI.label("%d of 5 salespeople" % Game.staff.size(), 16, UI.MUTED))
+	head.add_child(UI.spacer())
+	var hire := UI.gold_button("Hire on StaffHire", func():
+		pc_tab = "staff"
+		show_screen("pc"), 0, 44)
+	_with_icon(hire, "staff")
+	head.add_child(hire)
+	var row := UI.hbox(12)
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	var sc := UI.scroll(row)
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	v.add_child(sc)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var stats := []
+	for st in MARCO_CARD.stats:
+		stats.append(st)
+	row.add_child(_tall_card("marco", MARCO_CARD.name, MARCO_CARD.role, stats, UI.GOLD, "Runs the books. Not for hire, not for firing.", null))
+	for s in Game.staff:
+		var ss := []
+		for k in Game.SKILLS:
+			ss.append([SKILL_ICONS[k], Game.SKILL_NAMES[k], Game.skill(s, k)])
+		var accent: Color = UI.GOLD if s.stars >= 4.5 else CARD_CYAN
+		var foot := "%s a month · %d sold · closes ~%d%%" % [Game.money_str(s.salary), s.get("sales", 0), int(Game.staff_close_chance(s) * 100)]
+		var act: Variant = null
+		if not s.fixed:
+			act = _small_btn("Let go", func():
+				Game.staff.erase(s)
+				Game.save_game()
+				toast("%s has left the dealership." % s.name)
+				show_screen("staff"))
+		row.add_child(_tall_card(Game.staff_pid(s), s.name, "%s · %s" % [_staff_role(s), s.trait], ss, accent, foot, act, s.stars))
+
+
+## A tall team card: big portrait over a glow, name, role, stat rows with icons, footer.
+func _tall_card(pid: String, name: String, role: String, stats: Array, accent: Color, foot: String, action: Variant, stars := -1.0) -> Control:
+	var card := PanelContainer.new()
+	var sb := UI.box(Color(0.04, 0.07, 0.11, 0.9), Color(accent, 0.85), 12, 2, 10)
+	sb.shadow_color = Color(accent, 0.45)
+	sb.shadow_size = 12
+	card.add_theme_stylebox_override("panel", sb)
+	card.custom_minimum_size = Vector2(196, 0)
+	var v := UI.vbox(5)
+	card.add_child(v)
+	var frame := PanelContainer.new()
+	frame.add_theme_stylebox_override("panel", UI.box(Color(0.08, 0.14, 0.2), Color(accent, 0.5), 8, 1, 2))
+	frame.custom_minimum_size = Vector2(176, 210)
+	frame.clip_contents = true
+	var glow := GlowBack.new()
+	glow.accent = accent
+	frame.add_child(glow)
+	var pic := TextureRect.new()
+	pic.texture = _person_tex(pid)
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(pic)
+	v.add_child(frame)
+	v.add_child(UI.label(name.to_upper(), 24, Color.WHITE, true))
+	v.add_child(UI.label(role, 12, accent, true, true))
+	if stars >= 0:
+		v.add_child(UI.label(_stars(stars), 14, UI.GOLD))
+	for st in stats:
+		var r := UI.hbox(6)
+		r.add_child(_icon(st[0], 16, accent))
+		var col := UI.vbox(1)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var top := UI.hbox(4)
+		top.add_child(UI.label(st[1], 11, CARD_MUTED))
+		top.add_child(UI.spacer())
+		top.add_child(UI.label("%d%%" % st[2], 11, CARD_TEXT, true))
+		col.add_child(top)
+		col.add_child(UI.bar(st[2], 100, accent, 5))
+		r.add_child(col)
+		v.add_child(r)
+	v.add_child(UI.spacer())
+	v.add_child(UI.label(foot, 11, CARD_MUTED, false, true))
+	if action != null:
+		v.add_child(action)
+	return card
 
 
 ## The whiteboard on the office wall: goals for the current dealership.

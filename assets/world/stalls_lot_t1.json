@@ -1,0 +1,351 @@
+{
+ "view": "lot_t1",
+ "image": [
+  1600,
+  900
+ ],
+ "about": "Stalls in fill order. Coordinates are fractions of the image (u right, v down). target is where the middle of a sprite frame goes for the reference car (its centre at 0.42 of its height); frame_w is that car's 640x360 sprite frame width as a fraction of the image width; ppm is image widths per metre there; fwd and up are image offsets per metre along the car's heading and straight up. For another car: move target by fwd * (L - ref L) / 2 (its tail stays at the wheel stop) and by up * 0.42 * (H - ref H), and use frame_w = ppm * hypot(1.7 L, 1.15) * 36 / 50. order is the draw order.",
+ "ref_car": {
+  "length": 4.7,
+  "width": 1.85,
+  "height": 1.45
+ },
+ "sprite": {
+  "lens": 50,
+  "dist_per_length": 1.7,
+  "rise": 1.15,
+  "target_height": 0.42,
+  "frame": [
+   640,
+   360
+  ],
+  "flip": false
+ },
+ "cars": {
+  "bmv_m4": [
+   4.79,
+   2.11,
+   1.41
+  ],
+  "chevro_tahoma": [
+   5.2,
+   2.21,
+   1.96
+  ],
+  "dodgy_charjer": [
+   5.05,
+   2.23,
+   1.52
+  ],
+  "ferrano_488": [
+   4.57,
+   2.28,
+   1.24
+  ],
+  "forde_mustank": [
+   4.81,
+   2.07,
+   1.39
+  ],
+  "forde_rangler": [
+   5.15,
+   2.03,
+   1.99
+  ],
+  "hondo_civix": [
+   4.6,
+   2.04,
+   1.4
+  ],
+  "jeap_wrangle": [
+   4.9,
+   2.04,
+   1.88
+  ],
+  "lamborgo_aventa": [
+   4.78,
+   2.27,
+   1.17
+  ],
+  "mazdo_miota": [
+   3.97,
+   1.85,
+   1.2
+  ],
+  "mercedez_g_wagon": [
+   4.82,
+   2.24,
+   2.04
+  ],
+  "porsha_911": [
+   4.52,
+   2.01,
+   1.73
+  ],
+  "ramm_1500": [
+   5.6,
+   2.25,
+   1.89
+  ],
+  "rang_rovah": [
+   4.89,
+   2.29,
+   1.84
+  ],
+  "subaro_outbuck": [
+   4.88,
+   2.18,
+   1.71
+  ],
+  "teslo_model_3": [
+   4.69,
+   2.13,
+   1.48
+  ],
+  "toyoda_camri": [
+   4.89,
+   2.16,
+   1.48
+  ]
+ },
+ "stalls": [
+  {
+   "row": 0,
+   "ground": [
+    0.53139,
+    0.83261
+   ],
+   "target": [
+    0.53144,
+    0.77911
+   ],
+   "nose": [
+    [
+     0.65554,
+     0.84741
+    ],
+    [
+     0.59993,
+     0.87622
+    ]
+   ],
+   "fwd": [
+    0.04007,
+    0.01063
+   ],
+   "up": [
+    8e-05,
+    -0.08821
+   ],
+   "ppm": 0.05001,
+   "px_per_m": 80.016,
+   "frame_w": 0.29066,
+   "depth": 27.772,
+   "order": 6
+  },
+  {
+   "row": 0,
+   "ground": [
+    0.703,
+    0.83504
+   ],
+   "target": [
+    0.70332,
+    0.78128
+   ],
+   "nose": [
+    [
+     0.83036,
+     0.85567
+    ],
+    [
+     0.77277,
+     0.88198
+    ]
+   ],
+   "fwd": [
+    0.04077,
+    0.01229
+   ],
+   "up": [
+    0.00051,
+    -0.08863
+   ],
+   "ppm": 0.05025,
+   "px_per_m": 80.4,
+   "frame_w": 0.29206,
+   "depth": 27.64,
+   "order": 5
+  },
+  {
+   "row": 0,
+   "ground": [
+    0.85995,
+    0.83665
+   ],
+   "target": [
+    0.8605,
+    0.78272
+   ],
+   "nose": [
+    [
+     0.99169,
+     0.86231
+    ],
+    [
+     0.93157,
+     0.88584
+    ]
+   ],
+   "fwd": [
+    0.04188,
+    0.0136
+   ],
+   "up": [
+    0.00092,
+    -0.0889
+   ],
+   "ppm": 0.05041,
+   "px_per_m": 80.656,
+   "frame_w": 0.29299,
+   "depth": 27.552,
+   "order": 4
+  },
+  {
+   "row": 1,
+   "ground": [
+    0.4939,
+    0.69306
+   ],
+   "target": [
+    0.49389,
+    0.65419
+   ],
+   "nose": [
+    [
+     0.58289,
+     0.70011
+    ],
+    [
+     0.54234,
+     0.71502
+    ]
+   ],
+   "fwd": [
+    0.02879,
+    0.00535
+   ],
+   "up": [
+    -1e-05,
+    -0.06401
+   ],
+   "ppm": 0.036188,
+   "px_per_m": 57.9,
+   "frame_w": 0.21033,
+   "depth": 38.38,
+   "order": 3
+  },
+  {
+   "row": 1,
+   "ground": [
+    0.62768,
+    0.69414
+   ],
+   "target": [
+    0.62783,
+    0.65516
+   ],
+   "nose": [
+    [
+     0.71783,
+     0.70353
+    ],
+    [
+     0.67655,
+     0.71745
+    ]
+   ],
+   "fwd": [
+    0.02903,
+    0.00602
+   ],
+   "up": [
+    0.00023,
+    -0.0642
+   ],
+   "ppm": 0.036294,
+   "px_per_m": 58.071,
+   "frame_w": 0.21094,
+   "depth": 38.268,
+   "order": 2
+  },
+  {
+   "row": 1,
+   "ground": [
+    0.75086,
+    0.69494
+   ],
+   "target": [
+    0.75114,
+    0.65587
+   ],
+   "nose": [
+    [
+     0.84275,
+     0.70641
+    ],
+    [
+     0.80046,
+     0.71927
+    ]
+   ],
+   "fwd": [
+    0.02948,
+    0.0066
+   ],
+   "up": [
+    0.00046,
+    -0.06433
+   ],
+   "ppm": 0.036374,
+   "px_per_m": 58.198,
+   "frame_w": 0.21141,
+   "depth": 38.184,
+   "order": 1
+  },
+  {
+   "row": 1,
+   "ground": [
+    0.86652,
+    0.69552
+   ],
+   "target": [
+    0.86693,
+    0.65639
+   ],
+   "nose": [
+    [
+     0.96061,
+     0.70883
+    ],
+    [
+     0.9171,
+     0.72059
+    ]
+   ],
+   "fwd": [
+    0.03007,
+    0.00707
+   ],
+   "up": [
+    0.00067,
+    -0.06444
+   ],
+   "ppm": 0.036431,
+   "px_per_m": 58.29,
+   "frame_w": 0.21174,
+   "depth": 38.124,
+   "order": 0
+  }
+ ]
+}

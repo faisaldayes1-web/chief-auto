@@ -7,7 +7,8 @@ the same room can be upgraded visually in the game; the showroom tiers work the 
 
 Usage (bpy venv):  python tools/dealership3d.py <out_dir> [view ...]
 Views: lot, showroom, office, garage, desk, dealdesk (add _t1 / _t2 for the starting and mid-size
-dealerships), apartment1, apartment2, apartment3.  SAMPLES env sets quality.
+dealerships), apartment1, apartment2, apartment3.  SAMPLES env sets quality, PREVIEW=1 renders 640x360.
+The lot views also write stalls_<view>.json next to the render: where the game parks each owned car (see LOT_ROWS).
 """
 import math
 import os
@@ -15,7 +16,7 @@ import random
 import sys
 
 import bpy  # noqa: I001
-from mathutils import Vector
+from mathutils import Matrix, Vector
 
 SAMPLES = int(os.environ.get("SAMPLES", 96))
 RES = (640, 360) if os.environ.get("PREVIEW") else (1600, 900)
@@ -282,14 +283,10 @@ def build_ground():
 
 
 def build_site3_front():
-    """The flagship's lot dressing: striped stalls, planters, palms, pylon sign and bunting."""
+    """The flagship's lot dressing: angled stalls, planters, palms, pylon sign and bunting."""
     concrete = noise_mat("concrete3", (0.55, 0.53, 0.5), (0.68, 0.66, 0.62), 8, 0.7, bump=0.05)  # noqa: F841
     paint = mat("stripe", (0.92, 0.92, 0.88), rough=0.6)
-    # parking stalls on the lot
-    for x in range(-24, 26, 3):
-        box("stall", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.012), paint)
-        box("stall", (x - 0.06, -27, 0), (x + 0.06, -21.5, 0.012), paint)
-    box("lane", (-24, -15.3, 0), (24, -15.15, 0.012), mat("yellow", (0.85, 0.65, 0.1), rough=0.6))
+    build_lot_stalls("lot", paint, concrete)
     # planters along the front with palms
     hedge = noise_mat("hedge", (0.06, 0.16, 0.04), (0.14, 0.3, 0.08), 30, 0.8, bump=0.6)
     for x in (-27, -9, 9, 27):
@@ -303,19 +300,11 @@ def build_site3_front():
     box("pylon_face", (-33.4, -40.1, 6.4), (-30.8, -39.3, 9.3), mat("pylon_lit", (0.05, 0.07, 0.12), rough=0.3))
     text("pylon_txt", "CHIEF\nAUTO", (-32.1, -40.15, 8.35), 0.95, mat("gold", (0.85, 0.62, 0.22)), extrude=0.03)
     text("pylon_sub", "PRE-OWNED · SERVICE", (-32.1, -40.15, 6.6), 0.2, mat("white_lit", (1, 1, 1), emit=2.0), extrude=0.01)
-    # bunting flags over the front row
-    flag_cols = [mat("flag_r", (0.8, 0.1, 0.1)), mat("flag_w", (0.95, 0.95, 0.95)), mat("flag_b", (0.1, 0.25, 0.7)),
-                 mat("flag_g", (0.9, 0.65, 0.15))]
-    for x in (-24, -8, 8, 24):
-        cyl("flagpole", (x, -18, 3.0), 0.07, 6.0, mat("rail", (0.75, 0.75, 0.76), rough=0.3, metal=1), verts=8)
-    for k in range(48):
-        x = -24 + k
-        sag = 5.6 - 0.35 * math.sin((k % 16) / 16 * math.pi)
-        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.28, depth=0.01, location=(x + 0.5, -18, sag - 0.25),
-                                        rotation=(math.pi / 2, 0, 0))
-        fl = bpy.context.object
-        fl.data.materials.append(flag_cols[k % 4])
-        _link(fl)
+    # bunting along the showroom front, under the fascia and behind the parked cars (the game draws the cars over
+    # the render, so nothing may stand between the lot camera and a stall)
+    for x in (-21.0, 13.5):
+        cyl("flagpole", (x, -4.4, 3.0), 0.07, 6.0, mat("rail", (0.75, 0.75, 0.76), rough=0.3, metal=1), verts=8)
+    bunting_line((-21.0, -4.4, 5.8), (13.5, -4.4, 5.8))
 
 
 def build_harbour():
@@ -520,19 +509,6 @@ def build_apartment_shell(white, dark, wood):
     box("balcony_rail", (AX0, AY1 + 3.38, AZ0 + 1.05), (AX1, AY1 + 3.48, AZ0 + 1.1), railm)
 
 
-def bunting(x0, x1, y, z, n_per_m=1.0):
-    cols = [mat("flag_r", (0.8, 0.1, 0.1)), mat("flag_w", (0.95, 0.95, 0.95)), mat("flag_b", (0.1, 0.25, 0.7)),
-            mat("flag_g", (0.9, 0.65, 0.15))]
-    n = int((x1 - x0) * n_per_m)
-    for k in range(n):
-        x = x0 + (k + 0.5) / n_per_m
-        sag = z - 0.4 * math.sin(k / max(1, n - 1) * math.pi)
-        bpy.ops.mesh.primitive_cone_add(vertices=3, radius1=0.26, depth=0.01, location=(x, y, sag - 0.25), rotation=(math.pi / 2, 0, 0))
-        fl = bpy.context.object
-        fl.data.materials.append(cols[k % 4])
-        _link(fl)
-
-
 def chain_fence(pts, h=1.8):
     post = mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9)
     wire = mat("chainlink", (0.55, 0.57, 0.58), rough=0.5, metal=0.6, alpha=0.28)
@@ -592,6 +568,189 @@ def bunting_line(a, b, n=None):
         _link(fl)
 
 
+# ---------------------------------------------------------------- lot stalls
+
+# The game parks the owned cars on the lot render as three-quarter sprites (tools/car_sprites_real.py and
+# car_sprites3d.py): 50 mm lens, camera 1.7 car lengths away and 1.15 m up, seen from the front-right with the camera
+# Q_TURN clockwise of the nose. Every stall is turned so that a car parked in it, nose-out, shows exactly that angle
+# to its view's camera, which fans the stalls a little along a row. The lot cameras use the same lens and look down
+# about as steeply as the sprites, so a sprite drawn over a stall matches the render.
+# Rows per lot view: (y of the wall the stall backs touch, x of the first stall's left edge, stalls, wall) where wall
+# is True for a low block wall behind the row, False when the row backs onto the building, or the (x0, x1) gaps
+# where the wall stops (the building or a planter is the wall there). The first row is the front one and the game
+# fills the stalls in this order. Nothing may stand between the camera and a stall: the cars are drawn on top.
+Q_TURN = math.atan2(0.78, 0.62)
+STALL_W = 2.7
+REF_CAR = (4.7, 1.85, 1.45)      # length, width, height of the car the stall positions are exported for
+LOT_ROWS = {
+    "lot_t1": ((-13.0, -15.0, 3, True), (-2.4, -16.0, 4, ((-12.6, -1.4),))),            # 7: front of the office
+    "lot_t2": ((-13.5, -12.0, 4, True), (-0.8, -10.5, 4, False)),                       # 8: against the showroom
+    "lot": ((-17.0, -19.0, 5, True), (-5.2, -17.5, 5, ((-11.4, -6.6),))),               # 10: by the planters
+}
+LOW_WALL = 0.55
+
+
+def lot_stalls(view):
+    """Stall layout for a lot view, from its camera position: one dict per stall, in the order the game fills them."""
+    cam = Vector(VIEWS[view][0])
+    length, width, _ = REF_CAR
+    turn = Matrix.Rotation(Q_TURN, 3, "Z")
+    out = []
+    for ri, (wall_y, x, n, wall) in enumerate(LOT_ROWS[view]):
+        for _ in range(n):
+            xc, fwd, d, pitch = x + 1.6, Vector((0, -1, 0)), 1.0, STALL_W
+            for _ in range(8):
+                centre = Vector((xc, wall_y, 0)) + fwd * (d + length / 2)
+                fwd = turn @ Vector((cam.x - centre.x, cam.y - centre.y, 0)).normalized()
+                phi = math.acos(max(-1.0, min(1.0, -fwd.y)))      # angle off straight out from the wall
+                pitch = STALL_W / math.cos(phi)
+                xc = x + pitch / 2
+                d = (0.3 + width / 2 * math.sin(phi)) / math.cos(phi)   # rear corners clear the wall by 30 cm
+            centre = Vector((xc, wall_y, 0)) + fwd * (d + length / 2)
+            out.append(dict(row=ri, x0=x, x1=x + pitch, wall_y=wall_y, wall=wall, fwd=fwd, d=d, centre=centre))
+            x += pitch
+    return out
+
+
+def strip(name, a, b, width, height, m):
+    """A flat bar on the ground from a to b (stall stripes, wheel stops)."""
+    a, b = Vector(a).to_2d(), Vector(b).to_2d()
+    d = b - a
+    mid = (a + b) / 2
+    bpy.ops.mesh.primitive_cube_add(size=1, location=(mid.x, mid.y, height / 2))
+    ob = bpy.context.object
+    ob.name = name
+    ob.scale = (d.length, width, height)
+    ob.rotation_euler.z = math.atan2(d.y, d.x)
+    bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    ob.data.materials.append(m)
+    _link(ob)
+    return ob
+
+
+def build_lot_stalls(view, paint, wall_mat):
+    """Painted stall stripes, wheel stops and the low walls for a lot view's rows (see LOT_ROWS)."""
+    stop = noise_mat("wheel_stop", (0.55, 0.54, 0.5), (0.68, 0.66, 0.62), 20, 0.8, bump=0.1)
+    cap = mat("wall_cap", (0.78, 0.76, 0.72), rough=0.7)
+    stalls = lot_stalls(view)
+    for ri in range(len(LOT_ROWS[view])):
+        row = [st for st in stalls if st["row"] == ri]
+        wall_y = row[0]["wall_y"]
+        # stripes on every stall edge, along the mean heading of the stalls either side
+        for k in range(len(row) + 1):
+            near = row[max(0, k - 1):k + 1]
+            fwd = sum((st["fwd"] for st in near), Vector()).normalized()
+            reach = sum(st["d"] for st in near) / len(near) + REF_CAR[0] + 0.5
+            a = Vector((row[k]["x0"] if k < len(row) else row[-1]["x1"], wall_y, 0))
+            strip("stall_line", a, a + fwd * reach, 0.12, 0.012, paint)
+        for st in row:
+            base = Vector(((st["x0"] + st["x1"]) / 2, wall_y, 0))
+            side = Vector((-st["fwd"].y, st["fwd"].x, 0))
+            c = base + st["fwd"] * (st["d"] + 0.35)
+            strip("wheel_stop", c - side * 0.85, c + side * 0.85, 0.16, 0.11, stop)
+        wall = row[0]["wall"]
+        if wall:
+            x0, x1 = row[0]["x0"] - 0.6, row[-1]["x1"] + 0.6
+            spans = [(x0, x1)]
+            for g0, g1 in (wall if wall is not True else ()):
+                spans = [p for a, b in spans for p in ((a, min(b, g0)), (max(a, g1), b)) if p[1] - p[0] > 0.3]
+            for a, b in spans:
+                box("low_wall", (a, wall_y, 0), (b, wall_y + 0.3, LOW_WALL - 0.06), wall_mat)
+                box("low_wall_cap", (a - 0.04, wall_y - 0.04, LOW_WALL - 0.06), (b + 0.04, wall_y + 0.34, LOW_WALL), cap)
+
+
+def export_stalls(view, cam, path):
+    """Screen positions of the view's stalls for the game (normalized image coordinates, 0..1 from the top left)."""
+    from bpy_extras.object_utils import world_to_camera_view
+    sc = bpy.context.scene
+    dims = car_dims()
+    sc.camera = cam
+    bpy.context.view_layer.update()
+    lens = cam.data.lens
+    length, width, height = REF_CAR
+
+    def uv(p):
+        q = world_to_camera_view(sc, cam, Vector(p))
+        return q, [round(q.x, 5), round(1.0 - q.y, 5)]
+
+    stalls = []
+    for i, st in enumerate(lot_stalls(view)):
+        g = st["centre"]
+        fwd = st["fwd"]
+        side = Vector((-fwd.y, fwd.x, 0))
+        t = g + Vector((0, 0, 0.42 * height))
+        tq, tuv = uv(t)
+        _, a = uv(t + fwd)
+        _, b = uv(t + Vector((0, 0, 1)))
+        ppm = (lens / 36.0) / tq.z          # image widths per metre at the car's depth
+        stalls.append({
+            "row": st["row"],
+            "ground": uv(g)[1],
+            "target": tuv,
+            "nose": [uv(g + fwd * length / 2 + side * width / 2)[1], uv(g + fwd * length / 2 - side * width / 2)[1]],
+            "fwd": [round(a[0] - tuv[0], 5), round(a[1] - tuv[1], 5)],
+            "up": [round(b[0] - tuv[0], 5), round(b[1] - tuv[1], 5)],
+            "ppm": round(ppm, 6),
+            "px_per_m": round(ppm * sc.render.resolution_x, 3),
+            "frame_w": round(ppm * sprite_frame_m(length), 5),
+            "depth": round(tq.z, 3),
+            "x": round(st["centre"].x, 3),
+        })
+    # back rows first, and in a row right to left: each car's nose overlaps its right-hand neighbour's flank
+    order = sorted(range(len(stalls)), key=lambda k: (-stalls[k]["row"], -stalls[k]["x"]))
+    for k in range(len(stalls)):
+        stalls[k]["order"] = order.index(k)
+        del stalls[k]["x"]
+    data = {
+        "view": view,
+        "image": [sc.render.resolution_x, sc.render.resolution_y],
+        "about": "Stalls in fill order. Coordinates are fractions of the image (u right, v down). target is where the "
+                 "middle of a sprite frame goes for the reference car (its centre at 0.42 of its height); frame_w is "
+                 "that car's 640x360 sprite frame width as a fraction of the image width; ppm is image widths per "
+                 "metre there; fwd and up are image offsets per metre along the car's heading and straight up. "
+                 "For another car: move target by fwd * (L - ref L) / 2 (its tail stays at the wheel stop) and by "
+                 "up * 0.42 * (H - ref H), and use frame_w = ppm * hypot(1.7 L, 1.15) * 36 / 50. order is the draw order.",
+        "ref_car": {"length": length, "width": width, "height": height},
+        "sprite": {"lens": 50, "dist_per_length": 1.7, "rise": 1.15, "target_height": 0.42, "frame": [640, 360], "flip": False},
+        "cars": dims,
+        "stalls": stalls,
+    }
+    import json
+    with open(path, "w") as f:
+        json.dump(data, f, indent=1)
+
+
+def sprite_frame_m(length):
+    """Width in metres that a car sprite's 640 px frame covers at the car (see car_sprites_real.quarter_cam)."""
+    return math.hypot(1.7 * length, 1.15) * 36.0 / 50.0
+
+
+_dims = {}
+
+
+def car_dims():
+    """Length, width and height of every car model in assets/cars3d, measured once (imports and removes each one)."""
+    if not _dims:
+        folder = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets", "cars3d")
+        for fn in sorted(os.listdir(folder)):
+            if not fn.endswith(".glb"):
+                continue
+            before = set(bpy.data.objects)
+            bpy.ops.import_scene.gltf(filepath=os.path.join(folder, fn))
+            new = [o for o in bpy.data.objects if o not in before]
+            lo, hi = Vector((1e9,) * 3), Vector((-1e9,) * 3)
+            for o in new:
+                if o.type == "MESH":
+                    for c in o.bound_box:
+                        p = o.matrix_world @ Vector(c)
+                        lo, hi = Vector(map(min, lo, p)), Vector(map(max, hi, p))
+            sz = hi - lo
+            _dims[fn[:-4]] = [round(max(sz.x, sz.y), 2), round(min(sz.x, sz.y), 2), round(sz.z, 2)]
+            for o in new:
+                bpy.data.objects.remove(o, do_unlink=True)
+    return _dims
+
+
 # Tier 1 sales office: a small stucco box at the back of the lot, front facing the street (-y)
 OX0, OX1, OY0, OY1, OH = -12.0, -2.0, -1.0, 7.0, 4.2
 TZ = 0.05   # floor height inside
@@ -602,9 +761,7 @@ def build_site1():
     global COL
     COL = tier_collection("s1")
     paint = mat("stripe_worn", (0.7, 0.7, 0.66), rough=0.7)
-    for x in range(-18, 20, 3):
-        box("stall1", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.01), paint)
-        box("stall1", (x - 0.06, -27, 0), (x + 0.06, -21.5, 0.01), paint)
+    build_lot_stalls("lot_t1", paint, noise_mat("block1", (0.5, 0.49, 0.46), (0.62, 0.6, 0.56), 14, 0.85, bump=0.1))
     chain_fence([(-22, -30), (-22, 6)])
     chain_fence([(22, -30), (22, 6)])
     chain_fence([(-22, 6), (22, 6)])
@@ -666,14 +823,18 @@ def build_site1():
     tube = mat("tube_lit", (1, 1, 1), emit=8, ecol=(0.95, 0.97, 1.0))
     for x in (-9.5, -4.5):
         box("o_light", (x - 0.6, 2.8, OH - 0.62), (x + 0.6, 3.4, OH - 0.6), tube)
-    # flags strung from the roof to poles at the street, a few palms and the utility line
+    # flags strung from the roof to poles behind the stall rows and at the street corners (kept out of the lot
+    # camera's way, since the game draws the parked cars over the render), a few palms and the utility line
     galv = mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9)
-    for x in (-18.0, -6.0, 6.0, 18.0):
-        cyl("flagpole1", (x, -28.0, 3.5), 0.06, 7.0, galv, verts=8)
-    for x0, x1 in ((-18.0, -6.0), (-6.0, 6.0), (6.0, 18.0)):
-        bunting_line((x0, -28.0, 6.9), (x1, -28.0, 6.9))
-    for x, roof_x in ((-18.0, OX0), (-6.0, OX0 + 4), (6.0, OX1), (18.0, OX1)):
-        bunting_line((x, -28.0, 6.9), (roof_x, OY0 - 0.3, OH + 0.3))
+    poles = ((-21.0, -3.0), (4.8, -1.2), (-21.5, -28.0), (21.5, -28.0))
+    for x, y in poles:
+        cyl("flagpole1", (x, y, 3.5), 0.06, 7.0, galv, verts=8)
+    top = [Vector((x, y, 6.9)) for x, y in poles]
+    bunting_line(top[0], (OX0, OY0 - 0.3, OH + 0.3))
+    bunting_line((OX1, OY0 - 0.3, OH + 0.3), top[1])
+    bunting_line(top[0], top[1])
+    bunting_line(top[2], top[0])
+    bunting_line(top[3], top[1])
     palm((-20.5, -1.0, 0), h=10.5, seed=91)
     palm((-16.0, 3.0, 0), h=12.0, seed=93)
     palm((19.5, -2.0, 0), h=11.0, seed=92)
@@ -702,8 +863,7 @@ def build_site2():
     white = mat("stucco", (0.86, 0.84, 0.8), rough=0.8)
     dark = mat("alu", (0.08, 0.08, 0.09))
     paint = mat("stripe", (0.92, 0.92, 0.88))
-    for x in range(-15, 17, 3):
-        box("stall2", (x - 0.06, -14, 0), (x + 0.06, -8.5, 0.012), paint)
+    build_lot_stalls("lot_t2", paint, mat("block", (0.62, 0.62, 0.6), rough=0.8))
     for x in (-14, 12):
         box("planter2", (x - 1.5, -4.5, 0), (x + 1.5, -3.2, 0.5), mat("planter_c", (0.6, 0.58, 0.55)))
         box("hedge2", (x - 1.3, -4.3, 0.45), (x + 1.3, -3.4, 0.85), mat("shrub", (0.1, 0.25, 0.07), rough=0.8))
@@ -713,10 +873,11 @@ def build_site2():
     box("pylon2", (-24, -28, 0), (-23.6, -27.6, 5.0), dark)
     box("pylon2_face", (-25.4, -28.1, 3.4), (-22.2, -27.5, 5.0), mat("pylon2_face", (0.95, 0.95, 0.93), rough=0.4))
     text("pylon2_txt", "CHIEF AUTO", (-23.8, -28.15, 4.05), 0.45, mat("sign_red", (0.75, 0.08, 0.06)), extrude=0.01)
-    bunting(-16, 16, -18.5, 4.2, 0.8)
     power_line(-110, 110, -57.0)
-    for x in (-16, 16):
-        cyl("flagpole2", (x, -18.5, 2.2), 0.06, 4.4, mat("rail", (0.75, 0.75, 0.76)), verts=8)
+    # bunting along the roofline, behind the parked cars
+    for x in (-12.2, 14.6):
+        cyl("flagpole2", (x, -1.6, 3.3), 0.06, 6.6, mat("rail", (0.75, 0.75, 0.76)), verts=8)
+    bunting_line((-12.2, -1.6, 6.5), (14.6, -1.6, 6.5))
     # building shell x -10..6, y 0..12, 5 m tall, flat roof with a parapet
     B0, B1, D0, D1, H = -10.0, 6.0, 0.0, 12.0, 5.0
     floor = noise_mat("polished_concrete", (0.55, 0.55, 0.54), (0.66, 0.65, 0.63), 3, 0.25)
@@ -961,20 +1122,21 @@ def setup_render():
 
 VIEWS = {
     # name: (camera position, look-at target, lens mm, exposure). Names ending in _t1/_t2 are the smaller dealerships.
-    "lot": ((-3.0, -34.0, 1.7), (2.0, 6.0, 4.6), 24, 0.0),
+    # lot cameras: 50 mm like the car sprites, high enough to look down on the stalls at the sprites' angle
+    "lot": ((-26.0, -56.0, 7.88), (-20.82, -36.68, 6.48), 50, 0.0),
     "showroom": ((0.0, 0.8, 1.65), (0.0, 16.0, 1.45), 18, -0.3),
     "office": ((-8.6, 9.6, 1.55), (-13.0, 15.5, 1.3), 18, -0.3),
     "garage": ((24.5, 0.9, 1.7), (24.5, 16.0, 1.6), 17, -0.2),
     "desk": ((11.5, 12.6, 1.25), (11.5, 16.0, 1.05), 24, -0.3),
     "dealdesk": ((-3.4, 4.3, 1.3), (1.5, 16.0, 0.9), 20, -0.3),
     "apartment": ((-12.5, 4.6, AZ0 + 1.6), (-3.0, 16.0, AZ0 + 1.2), 17, -0.2),
-    "lot_t1": ((-2.0, -24.0, 1.7), (-6.0, 0.0, 3.0), 22, 0.0),
+    "lot_t1": ((-10.5, -43.0, 5.68), (-10.5, -23.0, 4.28), 50, 0.0),
     "showroom_t1": ((-1.0, -26.0, 1.65), (-1.0, -10.0, 1.45), 18, 0.0),   # customers browse outside on the lot
     "office_t1": ((-3.5, 5.4, 1.6), (-9.0, -1.0, 1.3), 18, 0.0),
     "garage_t1": ((11.0, -12.0, 1.7), (11.0, 2.0, 1.6), 18, -0.5),
     "desk_t1": ((-7.9, 5.9, 1.35), (-7.9, -1.0, 1.2), 24, 0.0),
     "dealdesk_t1": ((-4.3, 5.6, 1.35), (-9.5, -1.0, 0.9), 20, 0.0),
-    "lot_t2": ((-3.0, -34.0, 1.7), (0.0, 4.0, 3.2), 24, 0.0),
+    "lot_t2": ((-14.5, -46.0, 6.46), (-10.34, -26.44, 5.06), 50, 0.0),
     "showroom_t2": ((-2.0, 0.6, 1.65), (-2.0, 12.0, 1.45), 18, -0.2),
     "office_t2": ((-6.0, 8.6, 1.55), (-9.8, 12.0, 1.3), 18, -0.2),
     "garage_t2": ((9.6, 0.9, 1.7), (9.6, 12.0, 1.6), 17, -0.2),
@@ -1000,6 +1162,8 @@ def render_view(cam, name, out):
     cam.rotation_euler = (Vector(tgt) - Vector(pos)).to_track_quat("-Z", "Y").to_euler()
     bpy.context.scene.view_settings.exposure = exp - 0.6   # daylight is bright; keep whites from blowing out
     bpy.context.scene.render.filepath = os.path.join(out, "bg_%s.jpg" % name)
+    if name in LOT_ROWS:
+        export_stalls(name, cam, os.path.join(out, "stalls_%s.json" % name))
     bpy.ops.render.render(write_still=True)
 
 
