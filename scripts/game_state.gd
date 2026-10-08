@@ -278,13 +278,13 @@ func _ready() -> void:
 		debug_broke = query.find("broke") >= 0
 		var dd := query.find("day=")
 		if dd >= 0:
-			debug_day = int(query.substr(dd + 4))
+			debug_day = int(query.substr(dd + 4).split("&")[0])
 		var sc := query.find("screen=")
 		if sc >= 0:
 			debug_screen = query.substr(sc + 7).split("&")[0]
 		var lv := query.find("level=")
 		if lv >= 0:
-			debug_level = int(query.substr(lv + 6))
+			debug_level = int(query.substr(lv + 6).split("&")[0])
 	if not load_game():
 		new_game()
 
