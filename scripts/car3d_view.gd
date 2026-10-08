@@ -24,7 +24,14 @@ var _pivot: Node3D
 var _model: Node3D
 var _meshes := {}       # part name -> MeshInstance3D
 var _paint_mats := {}   # part name -> ShaderMaterial
-var _bodies := {}       # StaticBody3D -> part name
+var _pickables := []    # [MeshInstance3D, mesh key] for every clickable mesh
+var _pick_cache := {}   # MeshInstance3D -> [faces: PackedVector3Array, chunk boxes: Array[AABB]]
+var _mat_cache := {}    # reused materials so hover/refresh never allocates or recompiles shaders
+var _hover_pos := Vector2.ZERO
+var _hover_dirty := false
+var _hover_next_ms := 0
+var _frames_seen := 0
+var _slow_frames := 0
 var _dragging := false
 var _drag_moved := 0.0
 var _smoke: CPUParticles3D
@@ -111,7 +118,9 @@ func set_car(c: Dictionary) -> void:
 		_model.queue_free()
 	_meshes.clear()
 	_paint_mats.clear()
-	_bodies.clear()
+	_pickables.clear()
+	_pick_cache.clear()
+	_mat_cache.clear()
 	var path := "res://assets/cars3d/%s.glb" % CarArt.slug(car.get("model", ""))
 	if not ResourceLoader.exists(path):
 		return
@@ -119,6 +128,10 @@ func set_car(c: Dictionary) -> void:
 	_model = scene.instantiate()
 	_pivot.add_child(_model)
 	_collect(_model)
+	# Read every clickable mesh's triangles now, before the car is drawn. get_faces() reads the vertex
+	# buffers back from the GPU; done later (on the first hover) each read stalls behind a rendered frame.
+	for pk in _pickables:
+		_pick_data(pk[0])
 	# center and size the floor shadow to the car
 	var aabb := AABB()
 	var first := true
@@ -140,10 +153,10 @@ func _collect(node: Node) -> void:
 			var key := nm.trim_prefix("part_")
 			_meshes[key] = ch
 			if key != "underbody" and key != "core" and not key.begins_with("liner") and not key.begins_with("mirror_stalk"):
-				ch.create_trimesh_collision()
-				for b in ch.get_children():
-					if b is StaticBody3D:
-						_bodies[b] = key
+				# No physics bodies: 40k-triangle trimesh shapes cost memory and load time, and the old
+				# physics query (on _vp.world_3d, which is null with own_world_3d) crashed release web
+				# builds on the first mouse move. _pick() tests triangles on the CPU instead.
+				_pickables.append([ch, key])
 		_collect(ch)
 
 
@@ -178,37 +191,41 @@ func refresh() -> void:
 			sm.set_shader_parameter("seed", float(seed_i))
 			sm.set_shader_parameter("highlight", _hl(key, panel))
 		elif key in TRIM_PARTS or key.begins_with("handle_"):
-			mi.material_override = _trim_mat(car.get("trim", "chrome"), paint)
-			if key == "grille" and car.get("trim", "chrome") == "body":
-				mi.material_override = _trim_mat("black", paint)
+			var kind: String = car.get("trim", "chrome")
+			if key == "grille" and kind == "body":
+				kind = "black"
+			var tm := _trim_mat(kind, paint)
+			if mi.material_override != tm:
+				mi.material_override = tm
 		elif key.begins_with("headlight") or key.begins_with("taillight"):
 			var broken: bool = car.damage.has(key)
-			var m := StandardMaterial3D.new()
+			# one cached material per light; emission stays enabled (black when off) so highlighting
+			# only changes uniforms and never compiles a new shader variant
+			var m: StandardMaterial3D = _cached_mat("light:" + key)
+			m.emission_enabled = true
 			if key.begins_with("head"):
 				m.albedo_color = Color(0.25, 0.25, 0.27) if broken else Color(0.92, 0.94, 0.98)
 				m.metallic = 0.0 if broken else 0.7
 				m.roughness = 0.8 if broken else 0.05
-				m.emission_enabled = not broken
-				m.emission = Color(0.9, 0.95, 1.0)
+				m.emission = Color.BLACK if broken else Color(0.9, 0.95, 1.0)
 				m.emission_energy_multiplier = 0.25
 			else:
 				m.albedo_color = Color(0.2, 0.05, 0.05) if broken else Color(0.75, 0.04, 0.03)
 				m.roughness = 0.8 if broken else 0.1
-				m.emission_enabled = not broken
-				m.emission = Color(0.8, 0.0, 0.0)
+				m.emission = Color.BLACK if broken else Color(0.8, 0.0, 0.0)
 				m.emission_energy_multiplier = 0.3
 			var h := _hl(key, key)
 			if h.a > 0:
-				m.emission_enabled = true
 				m.emission = h
 				m.emission_energy_multiplier = 0.6
-			mi.material_override = m
+			if mi.material_override != m:
+				mi.material_override = m
 		elif key.begins_with("wheel_"):
 			_style_wheel(mi, key)
 		elif key == "glass":
 			var h := _hl(key, "interior")
 			if h.a > 0:
-				var gm := StandardMaterial3D.new()
+				var gm: StandardMaterial3D = _cached_mat("glass")
 				gm.albedo_color = Color(0.05, 0.08, 0.1)
 				gm.metallic = 0.2
 				gm.roughness = 0.05
@@ -216,7 +233,7 @@ func refresh() -> void:
 				gm.emission = h
 				gm.emission_energy_multiplier = 0.3
 				mi.material_override = gm
-			else:
+			elif mi.material_override != null:
 				mi.material_override = null
 	# engine smoke from under the hood when the engine is in bad shape
 	var smoke_on: bool = car.parts.engine < 35
@@ -263,8 +280,19 @@ func _hl(key: String, panel: String) -> Color:
 	return Color(0, 0, 0, 0)
 
 
+func _cached_mat(id: String) -> StandardMaterial3D:
+	var m: StandardMaterial3D = _mat_cache.get(id)
+	if m == null:
+		m = StandardMaterial3D.new()
+		_mat_cache[id] = m
+	return m
+
+
 func _trim_mat(kind: String, paint: Color) -> StandardMaterial3D:
-	var m := StandardMaterial3D.new()
+	var id := "trim:%s:%s" % [kind, paint.to_html() if kind != "chrome" and kind != "black" else ""]
+	if _mat_cache.has(id):
+		return _mat_cache[id]
+	var m := _cached_mat(id)
 	match kind:
 		"chrome":
 			m.albedo_color = Color(0.8, 0.81, 0.84)
@@ -287,7 +315,20 @@ func _style_wheel(mi: MeshInstance3D, key: String) -> void:
 	for i in mi.mesh.get_surface_count():
 		var base: Material = mi.mesh.surface_get_material(i)
 		var name := String(base.resource_name) if base else ""
-		var m: StandardMaterial3D = (base.duplicate() if base is StandardMaterial3D else StandardMaterial3D.new())
+		var cid := "wheel:%s:%d" % [key, i]
+		var m: StandardMaterial3D = _mat_cache.get(cid)
+		if m == null:
+			m = (base.duplicate() if base is StandardMaterial3D else StandardMaterial3D.new())
+			_mat_cache[cid] = m
+			if not m.emission_enabled:
+				# keep emission on (black) so the hover glow is a uniform change, not a shader recompile
+				m.emission_enabled = true
+				m.emission = Color.BLACK
+				m.emission_energy_multiplier = 0.0
+			_mat_cache[cid + ":base"] = [m.emission, m.emission_energy_multiplier]
+		var eb: Array = _mat_cache[cid + ":base"]
+		m.emission = eb[0]
+		m.emission_energy_multiplier = eb[1]
 		if name == "rim":
 			m.albedo_color = RIM_COLORS.get(car.get("rims", "silver"), RIM_COLORS.silver)
 			m.metallic = 0.9 if car.get("rims", "silver") in ["silver", "gold"] else 0.5
@@ -303,15 +344,38 @@ func _style_wheel(mi: MeshInstance3D, key: String) -> void:
 			m.emission_enabled = true
 			m.emission = hl
 			m.emission_energy_multiplier = 0.25
-		mi.set_surface_override_material(i, m)
+		if mi.get_surface_override_material(i) != m:
+			mi.set_surface_override_material(i, m)
 	var flat: bool = car.parts.tires < 25 and key == "wheel_fl"
 	mi.scale = Vector3(1, 0.93, 1) if flat else Vector3.ONE
 
 
 func _process(delta: float) -> void:
+	# software GL / weak GPUs: 4x MSAA alone can double the frame time, so drop it if most frames are slow
+	if _vp.msaa_3d != Viewport.MSAA_DISABLED:
+		_frames_seen += 1
+		if delta > 0.08:
+			_slow_frames += 1
+		if _frames_seen >= 20:
+			if _slow_frames >= 15:
+				_vp.msaa_3d = Viewport.MSAA_DISABLED
+			_frames_seen = 0
+			_slow_frames = 0
 	if _auto_spin and not _dragging and selected == "":
 		yaw += delta * 0.12
 		_place_camera()
+	# hover picking: at most one pick per frame and ~20 per second, however many motion events arrive
+	if _hover_dirty and not _dragging and Time.get_ticks_msec() >= _hover_next_ms:
+		_hover_dirty = false
+		_hover_next_ms = Time.get_ticks_msec() + 50
+		_set_hover(_pick(_hover_pos))
+
+
+func _set_hover(p: String) -> void:
+	if p != hovered:
+		hovered = p
+		part_hovered.emit(p)
+		refresh()
 
 
 func _place_camera() -> void:
@@ -353,11 +417,8 @@ func _gui_input(ev: InputEvent) -> void:
 			pitch = clamp(pitch + ev.relative.y * 0.006, 0.02, 1.2)
 			_place_camera()
 		else:
-			var p := _pick(ev.position)
-			if p != hovered:
-				hovered = p
-				part_hovered.emit(p)
-				refresh()
+			_hover_pos = ev.position
+			_hover_dirty = true
 	elif ev is InputEventMagnifyGesture:
 		dist = clamp(dist / ev.factor, 3.5, 14.0)
 		_place_camera()
@@ -371,17 +432,89 @@ func select(p: String) -> void:
 
 
 ## The game part under a point in this control ("" for none).
+## Pure CPU ray cast: mesh AABBs first, then boxes of PICK_CHUNK triangles, then the triangles inside the boxes hit.
 func _pick(pos: Vector2) -> String:
+	if size.x <= 0 or size.y <= 0 or _pickables.is_empty():
+		return ""
 	var vp_pos := pos * Vector2(_vp.size) / size
 	var from := _cam.project_ray_origin(vp_pos)
-	var dir := _cam.project_ray_normal(vp_pos)
-	var space := _vp.world_3d.direct_space_state
-	var q := PhysicsRayQueryParameters3D.create(from, from + dir * 50.0)
-	var hit := space.intersect_ray(q)
-	if hit.is_empty():
-		return ""
-	var key: String = _bodies.get(hit.collider, "")
-	return part_of(key)
+	var to := from + _cam.project_ray_normal(vp_pos) * 50.0
+	# candidate meshes whose box the ray crosses, nearest first (t runs 0..1 along the segment, the same in every space)
+	var cands := []
+	for pk in _pickables:
+		var mi: MeshInstance3D = pk[0]
+		if not is_instance_valid(mi) or not mi.is_visible_in_tree() or mi.mesh == null:
+			continue
+		var inv := mi.global_transform.affine_inverse()
+		var lf := inv * from
+		var lt := inv * to
+		var box := mi.get_aabb()
+		var t := 0.0
+		if not box.has_point(lf):
+			var hit = box.intersects_segment(lf, lt)
+			if hit == null:
+				continue
+			t = _seg_t(lf, lt, hit)
+		cands.append([t, mi, pk[1], lf, lt])
+	cands.sort_custom(func(a, b): return a[0] < b[0])
+	var best_t := INF
+	var best_key := ""
+	for c in cands:
+		if c[0] >= best_t:
+			break
+		var t := _ray_mesh(c[1], c[3], c[4], best_t)
+		if t < best_t:
+			best_t = t
+			best_key = c[2]
+	return part_of(best_key)
+
+
+const PICK_CHUNK := 32
+
+
+## Nearest hit of a local-space segment on a mesh, as t in 0..1 (best_t when nothing nearer). Builds its boxes on first use.
+func _ray_mesh(mi: MeshInstance3D, lf: Vector3, lt: Vector3, best_t: float) -> float:
+	var data := _pick_data(mi)
+	var faces: PackedVector3Array = data[0]
+	var boxes: Array = data[1]
+	var n := faces.size()
+	for bi in boxes.size():
+		var b: AABB = boxes[bi]
+		if not b.has_point(lf):
+			var bh = b.intersects_segment(lf, lt)
+			if bh == null or _seg_t(lf, lt, bh) >= best_t:
+				continue
+		var i0: int = bi * PICK_CHUNK * 3
+		for i in range(i0, mini(i0 + PICK_CHUNK * 3, n), 3):
+			var p = Geometry3D.segment_intersects_triangle(lf, lt, faces[i], faces[i + 1], faces[i + 2])
+			if p != null:
+				var t := _seg_t(lf, lt, p)
+				if t < best_t:
+					best_t = t
+	return best_t
+
+
+## [triangle corners, one box per PICK_CHUNK triangles] for a mesh, cached for this car.
+func _pick_data(mi: MeshInstance3D) -> Array:
+	var data: Array = _pick_cache.get(mi, [])
+	if data.is_empty():
+		var faces := mi.mesh.get_faces()
+		var boxes := []
+		var n := faces.size()
+		var step := PICK_CHUNK * 3
+		for i in range(0, n, step):
+			var b := AABB(faces[i], Vector3.ZERO)
+			for k in range(i + 1, mini(i + step, n)):
+				b = b.expand(faces[k])
+			boxes.append(b.grow(0.001))
+		data = [faces, boxes]
+		_pick_cache[mi] = data
+	return data
+
+
+static func _seg_t(a: Vector3, b: Vector3, p: Vector3) -> float:
+	var d := b - a
+	return (p - a).dot(d) / d.length_squared()
 
 
 ## Maps a mesh to what you repair: panels and lights are body work, wheels are tires, glass is the interior.
