@@ -123,11 +123,11 @@ def cross_arms(arm, seed=0):
     for side, sgn in (("L", 1 if lx > 0 else -1), ("R", -1 if lx > 0 else 1)):
         front = side == "L"
         _aim_bone(arm, f"Bip01 {side} UpperArm", f"Bip01 {side} Forearm",
-                  Vector((0.2 * sgn, fy * (0.42 if front else 0.36), -1)))
+                  Vector((0.1 * sgn, fy * (0.8 if front else 0.7), -1)))
         _aim_bone(arm, f"Bip01 {side} Forearm", f"Bip01 {side} Hand",
-                  Vector((-sgn, fy * (0.34 if front else 0.12), 0.22 if front else 0.12)))
+                  Vector((-sgn, fy * (0.14 if front else -0.06), 0.24 if front else 0.12)))
         _aim_bone(arm, f"Bip01 {side} Hand", f"Bip01 {side} Finger2",
-                  Vector((-sgn * 0.7, fy * (-0.2 if front else 0.3), -0.25)))
+                  Vector((-sgn * 0.5, -fy * (0.25 if front else 0.55), -0.2 if front else 0.05)))
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
@@ -537,6 +537,27 @@ def render_hero(arm, meshes, cam, out, pid):
     reset_face(arm)
     set_mood(arm, 0.6)
     render(os.path.join(out, f"{pid}_hero.png"))
+    # head box in render pixels (top of hair to chin, ear to ear), for placing the figure in the UI
+    from bpy_extras.object_utils import world_to_camera_view
+    dg = bpy.context.evaluated_depsgraph_get()
+    chin = (arm.matrix_world @ arm.pose.bones["Bip01 Neck"].head).z + 0.035
+    pts = []
+    for ob in meshes:
+        heads = {i for i, sl in enumerate(ob.material_slots) if sl.material.name.split(".")[0].endswith(("head", "opacity"))}
+        ev = ob.evaluated_get(dg)
+        me = ev.to_mesh()
+        for poly in me.polygons:
+            if poly.material_index in heads:
+                for vi in poly.vertices:
+                    w = ob.matrix_world @ me.vertices[vi].co
+                    if w.z > chin:
+                        pts.append(world_to_camera_view(sc, cam, w))
+        ev.to_mesh_clear()
+    rx, ry = sc.render.resolution_x, sc.render.resolution_y
+    xs = [p.x * rx for p in pts]
+    ys = [(1 - p.y) * ry for p in pts]
+    with open(os.path.join(out, f"{pid}_hero_head.json"), "w") as f:
+        json.dump({"head": [min(xs), min(ys), max(xs), max(ys)], "size": [rx, ry]}, f)
 
 
 def do_avatar(folder, out, pid, staff=None):

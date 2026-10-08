@@ -2,7 +2,8 @@
 
 Bodies are cropped to the figure so the feet sit exactly on the bottom edge (the game stands that edge on the
 floor), then scaled to 600 px tall. Faces are scaled to 256 px. Portraits (one per person, the same framing for
-everyone) are scaled to 480 x 600 with a transparent background.
+everyone) are scaled to 480 x 600 with a transparent background. Heroes (PARTS=hero) are cropped to the figure and
+scaled to 1300 px tall.
 
 Usage:  python3 tools/people_post.py <render_dir> <assets/people> [src_pid=dst_pid ...]
 With no pairs every pid in the render dir is copied under its own name. Missing renders are skipped, so a
@@ -39,6 +40,26 @@ def portrait(src, dst):
     im.save(dst, optimize=True)
 
 
+HERO_H = 1300
+
+
+def hero(src, dst):
+    """The Marco-screen figure: cropped tight to the figure, scaled to 1300 px tall. Prints the head's pixel box
+    (from people3d.py's <pid>_hero_head.json) in the output image."""
+    im = Image.open(src).convert("RGBA")
+    l, t, r, b = im.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox()
+    im = im.crop((l, t, r, b))
+    k = HERO_H / im.height
+    im = im.resize((round(im.width * k), HERO_H), Image.LANCZOS)
+    im.save(dst, optimize=True)
+    meta = src.replace("_hero.png", "_hero_head.json")
+    if os.path.exists(meta):
+        import json
+        x0, y0, x1, y1 = json.load(open(meta))["head"]
+        box = [round((x0 - l) * k), max(0, round((y0 - t) * k)), round((x1 - l) * k), round((y1 - t) * k)]
+        print("  %s: %dx%d, head box x0,y0,x1,y1 = %s" % (os.path.basename(dst), im.width, im.height, box))
+
+
 def dialogue_jpg(src, dst):
     """The portrait over a navy gradient with a soft glow behind the head, 416 x 480 (cropped at the chest)."""
     im = Image.open(src).convert("RGBA")
@@ -72,7 +93,7 @@ def main():
                      {f.split("_")[0] for f in os.listdir(src) if f.endswith("_body.png")})
         pairs = [(i, i) for i in ids]
     for s, d in pairs:
-        jobs = [(body, "%s_body.png"), (portrait, "%s_portrait.png")] + \
+        jobs = [(body, "%s_body.png"), (portrait, "%s_portrait.png"), (hero, "%s_hero.png")] + \
                [(face, "%%s_face_%s.png" % m) for m in ("neutral", "happy", "angry")]
         done = []
         for fn, pat in jobs:

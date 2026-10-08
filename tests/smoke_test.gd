@@ -65,6 +65,8 @@ func _initialize() -> void:
 	G.check_tutorial()
 	check(not G.tutorial_active(), "tutorial finishes")
 	# bills the bank can cover draw on the credit line; bills it can't close the dealership
+	# (start from an empty leaderboard: it keeps only the top 10, so earlier runs could push this one out)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(G.LEADERBOARD_PATH))
 	G.new_game()
 	G.seen_intro = true
 	G.money = 1000

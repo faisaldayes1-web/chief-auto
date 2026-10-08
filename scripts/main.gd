@@ -3280,11 +3280,6 @@ func _screen_marco() -> void:
 	man.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
 	man.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stage.add_child(man)
-	var glow := GlowBack.new()
-	glow.accent = UI.GOLD
-	glow.show_behind_parent = true
-	man.add_child(glow)
-	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var place := func():
 		var ts: Vector2 = man.texture.get_size()
 		var hgt: float = stage.size.y + 30.0
