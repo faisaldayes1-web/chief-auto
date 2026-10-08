@@ -2098,7 +2098,16 @@ func _build_lobby(stage: SceneArt) -> void:
 			var ph: float = stage.person_height(feet)
 			var pw: float = ph * 0.42
 			pr[0].size = Vector2(pw, ph)
-			var target := Vector2(w * (0.1 + i * 0.17), feet - ph)
+			# stand in the gaps between the display cars so nobody hides a car or its price tag
+			var gaps := []
+			var shown_pods: Array = pods.slice(0, max(1, displays.size()))
+			for k in range(shown_pods.size() - 1):
+				gaps.append((shown_pods[k].x + shown_pods[k + 1].x) / 2.0)
+			gaps.append(max(pw * 0.6, shown_pods[0].x - w * 0.14) if shown_pods.size() > 0 else w * 0.1)
+			gaps.append(w * 0.62)
+			gaps.append(w * 0.08)
+			var gx: float = gaps[i % gaps.size()]
+			var target := Vector2(gx - pw / 2.0, feet - ph)
 			var cust: Dictionary = pr[4]
 			if not cust.get("entered", false):
 				# new arrivals walk in from the front door on the right
