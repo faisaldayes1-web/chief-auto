@@ -439,29 +439,166 @@ func _update_coach() -> void:
 
 func _screen_lot() -> void:
 	set_bg("lot", 0.0)
-	var h := UI.hbox(16)
-	content.add_child(h)
-	var side := UI.panel()
-	side.custom_minimum_size = Vector2(470, 0)
-	side.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	h.add_child(side)
-	var v := UI.vbox(10)
-	side.add_child(v)
-	v.add_child(UI.label("Your Lot  (%d / %d cars)" % [Game.cars.size(), Game.lot_capacity()], 22, UI.GOLD, true))
-	v.add_child(UI.para("Market today: %s are hot (+10%% sale price)." % _class_name(Game.hot_class), 15, UI.BLUE))
-	var list := UI.vbox(8)
-	v.add_child(UI.scroll(list))
+	var yard := Control.new()
+	yard.mouse_filter = Control.MOUSE_FILTER_PASS
+	content.add_child(yard)
+	var col := UI.vbox(12)
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(col)
+	var menu := _menu_panel(Game.dealership_info().name.to_upper(), [
+		["tag", "Manage Cars", _manage_cars_popup],
+		["chat", "Talk to Customers", show_screen.bind("showroom")],
+		["garage", "Repair in Garage", show_screen.bind("garage")],
+		["staff", "Hire Staff", show_screen.bind("staff")],
+		["upgrades", "Upgrade Dealership", _upgrade_popup],
+		["pc", "Go to Office PC", show_screen.bind("pc")],
+	])
+	col.add_child(menu)
+	col.add_child(_lot_summary())
+	_park_cars(yard)
+
+
+## A compact menu like the reference HUD: gold title, then icon rows that act as buttons.
+func _menu_panel(title: String, rows: Array, w := 270) -> PanelContainer:
+	var p := _glass_panel()
+	p.custom_minimum_size = Vector2(w, 0)
+	p.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	p.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var v := UI.vbox(2)
+	p.add_child(v)
+	v.add_child(UI.label(title, 20, UI.GOLD, true))
+	for r in rows:
+		v.add_child(_menu_row(r[0], r[1], r[2], r[3] if r.size() > 3 else ""))
+	return p
+
+
+func _menu_row(icon: String, text: String, cb: Variant, right := "") -> Control:
+	var b := Button.new()
+	b.focus_mode = Control.FOCUS_NONE
+	b.custom_minimum_size = Vector2(0, 34)
+	b.add_theme_stylebox_override("normal", UI.box(Color.TRANSPARENT, Color.TRANSPARENT, 4, 0, 6))
+	b.add_theme_stylebox_override("hover", UI.box(Color(UI.GOLD, 0.16), Color(UI.GOLD, 0.5), 4, 1, 6))
+	b.add_theme_stylebox_override("pressed", UI.box(Color(UI.GOLD, 0.3), UI.GOLD, 4, 1, 6))
+	b.add_theme_stylebox_override("disabled", UI.box(Color.TRANSPARENT, Color.TRANSPARENT, 4, 0, 6))
+	if cb is Callable:
+		b.pressed.connect(cb)
+	else:
+		b.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var r := UI.hbox(10)
+	r.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	r.offset_left = 6
+	r.offset_right = -8
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(r)
+	var ic := _icon(icon, 20, UI.TEXT)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	r.add_child(ic)
+	var l := UI.label(text, 15, UI.TEXT)
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.add_child(l)
+	if right != "":
+		var rl := UI.label(right, 15, UI.TEXT)
+		rl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(rl)
+	return b
+
+
+## "LOT (3 / 7 CARS)": what's parked, by class, and what it's worth.
+func _lot_summary() -> PanelContainer:
+	var rows := []
+	var counts := {}
+	var total := 0
+	for car in Game.cars:
+		counts[car.cls] = counts.get(car.cls, 0) + 1
+		total += int(car.get("sticker", Game.sale_value(car)))
+	for c in ["economy", "suv", "truck", "sport", "exotic"]:
+		if counts.has(c):
+			rows.append(["truck" if c in ["truck", "suv"] else "car_side", _class_name(c), null, str(counts[c])])
 	if Game.cars.is_empty():
-		list.add_child(UI.para("The lot is empty. Head to the Office PC and win something at auction.", 17, UI.MUTED))
-		list.add_child(UI.gold_button("Open Office PC", show_screen.bind("pc")))
+		rows.append(["gavel", "Empty: buy one at AutoBidz", show_screen.bind("pc")])
+	else:
+		rows.append(["money", "Total sticker value", null, Game.money_str(total)])
+	var hot := _class_name(Game.hot_class)
+	rows.append(["insights", "%s are hot today (+10%%)" % hot, null])
+	return _menu_panel("LOT (%d / %d CARS)" % [Game.cars.size(), Game.lot_capacity()], rows)
+
+
+func _manage_cars_popup() -> void:
+	var c := _modal()
+	c.custom_minimum_size = Vector2(560, 0)
+	var v := UI.vbox(10)
+	c.add_child(v)
+	var top := UI.hbox(8)
+	top.add_child(_icon("tag", 26))
+	top.add_child(UI.label("MANAGE CARS  (%d / %d)" % [Game.cars.size(), Game.lot_capacity()], 24, UI.GOLD, true))
+	v.add_child(top)
+	var list := UI.vbox(8)
+	var sc := UI.scroll(list)
+	sc.custom_minimum_size = Vector2(0, min(420, max(1, Game.cars.size()) * 112))
+	v.add_child(sc)
+	if Game.cars.is_empty():
+		list.add_child(UI.para("The lot is empty. Win something at AutoBidz on the Office PC.", 16, UI.MUTED))
 	for car in Game.cars:
 		list.add_child(_car_card(car))
+	v.add_child(UI.button("Close", _close_overlay, 0, 42))
+
+
+func _upgrade_popup() -> void:
+	var c := _modal()
+	c.custom_minimum_size = Vector2(480, 0)
+	var v := UI.vbox(10)
+	c.add_child(v)
+	var top := UI.hbox(8)
+	top.add_child(_icon("upgrades", 26))
+	top.add_child(UI.label("UPGRADE DEALERSHIP", 24, UI.GOLD, true))
+	v.add_child(top)
 	v.add_child(_dealership_card(false))
-	var yard := Control.new()
-	yard.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	yard.mouse_filter = Control.MOUSE_FILTER_PASS
-	h.add_child(yard)
-	_park_cars(yard)
+	v.add_child(UI.button("Close", _close_overlay, 0, 42))
+
+
+## Small menu by a parked car: inspect in the garage, details, or set the sticker.
+func _car_menu(car: Dictionary, at: Vector2) -> void:
+	UI.clear(overlay)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	var catcher := Button.new()
+	catcher.flat = true
+	catcher.focus_mode = Control.FOCUS_NONE
+	catcher.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for st in ["normal", "hover", "pressed"]:
+		catcher.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+	catcher.pressed.connect(_close_overlay)
+	overlay.add_child(catcher)
+	var p := _menu_panel("%d %s" % [car.year, car.model], [
+		["garage", "Inspect & repair", func():
+			_close_overlay()
+			selected_car_id = car.id
+			show_screen("garage")],
+		["info", "View details", func():
+			_close_overlay()
+			_car_details(car)],
+		["tag", "Set price", func():
+			_close_overlay()
+			_price_popup(car), Game.money_str(car.get("sticker", 0))],
+	], 250)
+	overlay.add_child(p)
+	p.reset_size()
+	var vs := get_viewport_rect().size
+	p.position = Vector2(clamp(at.x + 12, 8, vs.x - 262), clamp(at.y - 40, 80, vs.y - 260))
+
+
+func _car_details(car: Dictionary) -> void:
+	var c := _modal()
+	var v := UI.vbox(8)
+	c.add_child(v)
+	v.add_child(UI.label("%d %s" % [car.year, car.model], 24, UI.GOLD, true))
+	v.add_child(_car_art(car, Vector2(420, 170)))
+	var cond := Game.condition(car)
+	_icon_stat(v, "garage", "Condition", "%d%%" % cond, cond)
+	v.add_child(UI.label("%s · %s mi" % [_class_name(car.cls), _num(car.miles)], 15, UI.MUTED))
+	v.add_child(UI.label("Paid %s · Repairs %s · Sticker %s" % [Game.money_str(car.paid), Game.money_str(car.spent), Game.money_str(car.get("sticker", 0))], 15, UI.TEXT))
+	v.add_child(UI.label("Marco's fair price: %s" % Game.money_str(Game.sale_value(car)), 15, UI.BLUE))
+	v.add_child(UI.button("Close", _close_overlay, 0, 42))
 
 
 ## The cars you own, parked nose-out in the stalls painted on the lot render, with yellow price stickers on the
@@ -479,8 +616,8 @@ func _park_cars(yard: Control) -> void:
 		b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
 		b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 		b.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
-		b.pressed.connect(_price_popup.bind(car))
-		b.tooltip_text = "%d %s · click to set the price" % [car.year, car.model]
+		b.pressed.connect(func(): _car_menu(car, b.get_global_mouse_position()))
+		b.tooltip_text = "%d %s · click for options" % [car.year, car.model]
 		var art := CarArt.new()
 		art.quarter = true
 		art.set_car(car)
@@ -3453,8 +3590,13 @@ func _screen_home() -> void:
 		bg.modulate = Color(0.3, 0.36, 0.6)
 	var h := UI.hbox(16)
 	content.add_child(h)
+	var rows := [["sleep", "Sleep (end the day)", _wake_up if sleeping else _close_for_night],
+		["pc", "Computer (Office PC)", show_screen.bind("pc")],
+		["lot", "Go to the dealership", show_screen.bind("lot")],
+		["marco", "Call Marco", func(): play_dialogue(_marco_tips(), func(): pass)]]
+	h.add_child(_menu_panel(Game.apartment_info().name.to_upper(), rows))
 	h.add_child(UI.spacer())
-	var p := UI.panel(Color(0.03, 0.05, 0.1, 0.82), UI.GOLD_DIM, 18)
+	var p := _glass_panel()
 	p.custom_minimum_size = Vector2(430, 0)
 	p.size_flags_vertical = Control.SIZE_SHRINK_END
 	h.add_child(p)
