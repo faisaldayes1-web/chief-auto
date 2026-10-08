@@ -621,8 +621,14 @@ func _park_cars(yard: Control) -> void:
 		art.quarter = true
 		art.set_car(car)
 		b.add_child(art)
-		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color(0.08, 0.08, 0.08), true)
-		tag.add_theme_stylebox_override("normal", UI.box(Color("f5d90a"), Color(0.2, 0.2, 0.1), 3, 1, 5))
+		# dealer-style windshield price: big yellow numbers with a dark outline, painted at a slight slant
+		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color("ffe14a"), true)
+		tag.add_theme_constant_override("outline_size", 7)
+		tag.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.02, 0.95))
+		tag.add_theme_constant_override("shadow_offset_x", 2)
+		tag.add_theme_constant_override("shadow_offset_y", 3)
+		tag.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.45))
+		tag.rotation_degrees = -5.0
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(tag)
 		# a longer car keeps its tail at the wheel stop, a taller one is centred higher (the sprites are framed on
@@ -681,7 +687,8 @@ func _park_cars(yard: Control) -> void:
 			it.art.position = frame.position - body.position
 			it.art.size = frame.size
 			var tag: Label = it.tag
-			tag.add_theme_font_size_override("font_size", clampi(roundi(w * 0.05), 11, 20))
+			tag.add_theme_font_size_override("font_size", clampi(roundi(w * 0.085), 16, 34))
+			tag.pivot_offset = tag.get_combined_minimum_size() / 2.0
 			tag.reset_size()
 			tag.position = frame.position - body.position + frame.size * Vector2(0.52, 0.32) - tag.get_combined_minimum_size() / 2.0
 	yard.resized.connect(place)
