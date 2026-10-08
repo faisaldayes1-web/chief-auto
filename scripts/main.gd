@@ -3986,8 +3986,8 @@ func _screen_marco() -> void:
 		r.add_child(_icon_box(perk_icons.get(perk.id, "star"), on))
 		var t := UI.vbox(0)
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		t.add_child(UI.label(perk.name.to_upper(), 15, UI.TEXT if on else UI.MUTED, true))
-		t.add_child(UI.label(perk.desc if on else "Unlocks at level %d. %s" % [perk.level, perk.desc], 12, UI.GOLD if on else UI.MUTED, false, true))
+		t.add_child(UI.label(perk.name.to_upper() + ("" if on else "  ·  LVL %d" % perk.level), 15, UI.TEXT if on else UI.MUTED, true))
+		t.add_child(UI.label(perk.desc, 12, UI.GOLD if on else UI.MUTED, false, true))
 		r.add_child(t)
 		pv.add_child(r)
 	rcol.add_child(UI.spacer())
