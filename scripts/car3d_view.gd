@@ -55,12 +55,12 @@ func _init() -> void:
 	sm.sky_top_color = Color(0.55, 0.62, 0.75)
 	sm.sky_horizon_color = Color(0.95, 0.85, 0.72)
 	sm.ground_bottom_color = Color(0.12, 0.11, 0.1)
-	sm.ground_horizon_color = Color(0.5, 0.45, 0.4)
+	sm.ground_horizon_color = Color(0.32, 0.3, 0.28)
 	sky.sky_material = sm
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
-	env.ambient_light_energy = 0.45
+	env.ambient_light_energy = 0.55
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.tonemap_exposure = 0.9
 	var we := WorldEnvironment.new()
@@ -78,6 +78,12 @@ func _init() -> void:
 	fill.light_energy = 0.45
 	fill.light_color = Color(0.75, 0.85, 1.0)
 	_vp.add_child(fill)
+	# rim light from behind so the outline separates from the garage
+	var rim := DirectionalLight3D.new()
+	rim.rotation_degrees = Vector3(-15, 200, 0)
+	rim.light_energy = 0.35
+	rim.light_color = Color(0.85, 0.92, 1.0)
+	_vp.add_child(rim)
 	# floor: catches the car's shadow and a soft contact shadow, fades out at the edges
 	var floor := MeshInstance3D.new()
 	_floor = floor
