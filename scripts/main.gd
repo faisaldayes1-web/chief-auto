@@ -4,7 +4,6 @@ extends Control
 
 const LOGO := preload("res://assets/logo.png")
 const CASH_ICON := preload("res://assets/icons/cash.png")
-const PORTRAITS := {"Marco": preload("res://assets/portrait_marco.jpg"), "Maruchan": preload("res://assets/portrait_maruchan.jpg")}
 const MINUTES_PER_SECOND := 3.5   # game clock speed: a 13-hour day takes about 4 minutes
 const MAX_IN_LOBBY := 4
 
@@ -2036,11 +2035,7 @@ func _build_lobby(stage: SceneArt) -> void:
 	iv.add_child(UI.label("ON THE FLOOR", 13, UI.GOLD, true))
 	for st in Game.staff:
 		var row := UI.hbox(6)
-		var face := PersonArt.new()
-		face.custom_minimum_size = Vector2(30, 30)
-		face.pid = Game.staff_pid(st)
-		face.mood = 0.5
-		row.add_child(face)
+		row.add_child(_thumb(Game.staff_pid(st), 30))
 		row.add_child(UI.label("%s %s" % [st.name, _stars(st.stars)], 13))
 		row.add_child(UI.spacer())
 		var free: bool = st.get("busy_until", 0.0) <= Game.clock or st.get("busy_day", 0) != Game.day
@@ -3419,6 +3414,15 @@ func _team_row(pid: String, name: String, role: String, selected: bool, cb: Call
 ## Portrait for a person: the painted card art for Marco and Maruchan, otherwise the top of the rendered body.
 ## thumb = head and shoulders only.
 func _person_tex(pid: String, thumb := false) -> Texture2D:
+	var portrait := "res://assets/people/%s_portrait.png" % pid
+	if ResourceLoader.exists(portrait):
+		var pt: Texture2D = load(portrait)
+		if not thumb:
+			return pt
+		var pa := AtlasTexture.new()
+		pa.atlas = pt
+		pa.region = Rect2(pt.get_width() * 0.15, 0, pt.get_width() * 0.7, pt.get_width() * 0.7)
+		return pa
 	var card := "res://assets/people/%s_card.png" % pid
 	if ResourceLoader.exists(card):
 		var ct: Texture2D = load(card)
@@ -3440,6 +3444,32 @@ func _person_tex(pid: String, thumb := false) -> Texture2D:
 	return load(face) if ResourceLoader.exists(face) else null
 
 
+## Round-cornered head-and-shoulders thumbnail from the person's one portrait.
+func _thumb(pid: String, px := 40) -> Control:
+	var f := PanelContainer.new()
+	f.add_theme_stylebox_override("panel", UI.box(Color(0.1, 0.16, 0.22), Color(1, 1, 1, 0.2), 4, 1, 1))
+	f.custom_minimum_size = Vector2(px, px)
+	f.clip_contents = true
+	var t := TextureRect.new()
+	t.texture = _person_tex(pid, true)
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	f.add_child(t)
+	return f
+
+
+## Which person's portrait goes with a speaker's name in dialogue.
+func _speaker_pid(speaker: String) -> String:
+	match speaker:
+		"Marco", "Maruchan", "Amna", "Jeff":
+			return speaker.to_lower()
+	for s in Game.staff:
+		if s.name == speaker:
+			return Game.staff_pid(s)
+	return PersonArt.pool_pid(speaker.length() * 7, speaker)
+
+
 func _staff_role(s: Dictionary) -> String:
 	match s.get("look", ""):
 		"jeff": return "Sales Associate"
@@ -3457,9 +3487,9 @@ func _mini_goals() -> Control:
 	v.add_child(hd)
 	for g in Game.goals():
 		var done: bool = g[1]
-		v.add_child(UI.label(("✓ " if done else "○ ") + g[0], 13, UI.GOOD if done else UI.TEXT))
+		v.add_child(UI.label(("✓ " if done else "○ ") + g[0], 13, UI.GOOD if done else UI.TEXT, false, true))
 	var today: bool = Game.stats.goal_sold_today >= 1
-	v.add_child(UI.label(("✓ " if today else "○ ") + "Today: sell a car (+$500, +25 XP)", 13, UI.GOOD if today else UI.MUTED))
+	v.add_child(UI.label(("✓ " if today else "○ ") + "Today: sell a car (+$500, +25 XP)", 13, UI.GOOD if today else UI.MUTED, false, true))
 	return v
 
 
@@ -3688,7 +3718,12 @@ func _show_next_line() -> void:
 		return
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	var line: Array = dialogue_queue.pop_front()
-	var box := UI.panel(Color(0.04, 0.07, 0.13, 0.95), UI.BLUE, 18)
+	var shade := ColorRect.new()
+	shade.color = Color(0, 0, 0, 0.4)
+	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(shade)
+	var box := _glass_panel()
+	(box.get_theme_stylebox("panel") as StyleBoxFlat).bg_color.a = 0.94
 	box.anchor_left = 0.12
 	box.anchor_right = 0.88
 	box.anchor_top = 1.0
@@ -3698,21 +3733,13 @@ func _show_next_line() -> void:
 	overlay.add_child(box)
 	var h := UI.hbox(16)
 	box.add_child(h)
-	if PORTRAITS.has(line[0]):
-		var ph := TextureRect.new()
-		ph.texture = PORTRAITS[line[0]]
-		ph.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		ph.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		ph.custom_minimum_size = Vector2(112, 128)
-		h.add_child(ph)
-	else:
-		var face := _portrait_frame(line[0].to_lower() if line[0] in ["Amna", "Jeff"] else "marco", 0.5, CARD_CYAN, 128)
-		face.custom_minimum_size.x = 112
-		h.add_child(face)
+	var face := _portrait_frame(_speaker_pid(line[0]), 0.5, UI.GOLD if line[0] == "Marco" else CARD_CYAN, 128)
+	face.custom_minimum_size.x = 112
+	h.add_child(face)
 	var v := UI.vbox(8)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
-	v.add_child(UI.label("%s · %s" % [line[0].to_upper(), line[1].to_upper()], 18, Color("8fc3ff"), true))
+	v.add_child(UI.label("%s · %s" % [line[0].to_upper(), line[1].to_upper()], 18, UI.GOLD, true))
 	var text := UI.para(line[2], 18)
 	text.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	v.add_child(text)

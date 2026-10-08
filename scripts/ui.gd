@@ -48,16 +48,16 @@ static func make_theme() -> Theme:
 	_body_font = f
 	t.default_font = f
 	t.set_color("font_color", "Label", TEXT)
-	t.set_stylebox("normal", "Button", box(Color(0.07, 0.085, 0.11, 0.92), Color(1, 1, 1, 0.16), 4, 1, 14))
-	t.set_stylebox("hover", "Button", box(Color(0.11, 0.14, 0.18, 0.96), GOLD, 4, 1, 14))
-	t.set_stylebox("pressed", "Button", box(Color(0.25, 0.19, 0.08, 0.98), GOLD, 4, 1, 14))
-	t.set_stylebox("disabled", "Button", box(Color(0.06, 0.06, 0.07, 0.6), Color(1, 1, 1, 0.06), 4, 1, 14))
+	t.set_stylebox("normal", "Button", box(Color(0.07, 0.085, 0.11, 0.92), Color(1, 1, 1, 0.16), 6, 1, 14))
+	t.set_stylebox("hover", "Button", box(Color(0.11, 0.14, 0.18, 0.96), GOLD, 6, 1, 14))
+	t.set_stylebox("pressed", "Button", box(Color(0.25, 0.19, 0.08, 0.98), GOLD, 6, 1, 14))
+	t.set_stylebox("disabled", "Button", box(Color(0.06, 0.06, 0.07, 0.6), Color(1, 1, 1, 0.06), 6, 1, 14))
 	t.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	t.set_color("font_color", "Button", TEXT)
 	t.set_color("font_hover_color", "Button", GOLD)
 	t.set_color("font_pressed_color", "Button", Color.WHITE)
 	t.set_color("font_disabled_color", "Button", Color(0.5, 0.5, 0.5))
-	t.set_stylebox("panel", "PanelContainer", box(NAVY, GLASS_EDGE, 6, 1, 16))
+	t.set_stylebox("panel", "PanelContainer", box(Color(0.05, 0.06, 0.08, 0.78), Color(1, 0.85, 0.6, 0.35), 12, 1, 16))
 	t.set_stylebox("panel", "Panel", box(NAVY, GLASS_EDGE, 6, 1, 16))
 	t.set_stylebox("background", "ProgressBar", box(Color(1, 1, 1, 0.08), Color.TRANSPARENT, 2, 0, 0))
 	t.set_stylebox("fill", "ProgressBar", box(GOLD, Color.TRANSPARENT, 2, 0, 0))
@@ -116,12 +116,12 @@ static func button(text: String, cb: Callable, min_w := 0, min_h := 48) -> Butto
 
 static func gold_button(text: String, cb: Callable, min_w := 0, min_h := 52) -> Button:
 	var b := button(text, cb, min_w, min_h)
-	var n := box(Color(0.78, 0.6, 0.26, 0.97), Color(1, 0.88, 0.6), 4, 1, 16)
+	var n := box(Color(0.78, 0.6, 0.26, 0.97), Color(1, 0.88, 0.6), 6, 1, 16)
 	n.shadow_color = Color(0.9, 0.7, 0.3, 0.25)
 	n.shadow_size = 6
 	b.add_theme_stylebox_override("normal", n)
-	b.add_theme_stylebox_override("hover", box(Color(0.9, 0.72, 0.35, 1.0), Color.WHITE, 4, 1, 16))
-	b.add_theme_stylebox_override("pressed", box(Color(0.6, 0.45, 0.18, 1.0), Color.WHITE, 4, 1, 16))
+	b.add_theme_stylebox_override("hover", box(Color(0.9, 0.72, 0.35, 1.0), Color.WHITE, 6, 1, 16))
+	b.add_theme_stylebox_override("pressed", box(Color(0.6, 0.45, 0.18, 1.0), Color.WHITE, 6, 1, 16))
 	b.add_theme_color_override("font_color", Color("15110a"))
 	b.add_theme_color_override("font_hover_color", Color("15110a"))
 	b.add_theme_font_override("font", head_font())
@@ -130,9 +130,21 @@ static func gold_button(text: String, cb: Callable, min_w := 0, min_h := 52) -> 
 	return b
 
 
-static func panel(bg := NAVY, border := GOLD_DIM, pad := 16) -> PanelContainer:
+## Smoked glass with a warm rim, the one panel look used across the game.
+const GLASS := Color(0.05, 0.06, 0.08, 0.78)
+const GLASS_RIM := Color(1, 0.85, 0.6, 0.35)
+
+
+static func panel(bg := GLASS, border := GLASS_RIM, pad := 16) -> PanelContainer:
 	var p := PanelContainer.new()
-	var sb := box(bg, border, 6, 1, pad)
+	var radius := 6
+	if bg.v < 0.3:
+		# every dark panel shares the glass look; light panels (web pages, the whiteboard) keep their colours
+		bg = Color(GLASS, max(bg.a, 0.72))
+		if border == GOLD_DIM:
+			border = GLASS_RIM
+		radius = 12
+	var sb := box(bg, border, radius, 1, pad)
 	if bg.a < 0.99 and bg.v < 0.3:
 		sb.shadow_color = Color(0, 0, 0, 0.45)
 		sb.shadow_size = 10
