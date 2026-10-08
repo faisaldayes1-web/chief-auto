@@ -2,22 +2,22 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://brsff4geo8wrl"
-path="res://.godot/imported/marco_office.jpg-d1a65fd8bc375f60083c8bf12abb1fc0.ctex"
+uid="uid://dc6u1l8tx5r7a"
+path="res://.godot/imported/p13_portrait.png-6445bdab9531a97c89063a18b94718cd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/people/marco_office.jpg"
-dest_files=["res://.godot/imported/marco_office.jpg-d1a65fd8bc375f60083c8bf12abb1fc0.ctex"]
+source_file="res://assets/people/p13_portrait.png"
+dest_files=["res://.godot/imported/p13_portrait.png-6445bdab9531a97c89063a18b94718cd.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

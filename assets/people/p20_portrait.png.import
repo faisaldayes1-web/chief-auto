@@ -2,22 +2,22 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dfqe5xhhvi3gy"
-path="res://.godot/imported/maruchan_card.png-e77cb3381ab87919ce8d67e622da7199.ctex"
+uid="uid://v1l6pn2ibfvf"
+path="res://.godot/imported/p20_portrait.png-dc32a221876b3d9b65fe5ef3501d814e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/people/maruchan_card.png"
-dest_files=["res://.godot/imported/maruchan_card.png-e77cb3381ab87919ce8d67e622da7199.ctex"]
+source_file="res://assets/people/p20_portrait.png"
+dest_files=["res://.godot/imported/p20_portrait.png-dc32a221876b3d9b65fe5ef3501d814e.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.85
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0

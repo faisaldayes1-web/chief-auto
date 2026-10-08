@@ -50,6 +50,15 @@ static func pool_pid(n: int, name := "") -> String:
 	return "p%02d" % options[absi(n) % options.size()]
 
 
+## The one portrait of a person (head to mid-chest, transparent, 480 x 600, same framing and lights for everyone):
+## res://assets/people/<pid>_portrait.png. Use it for dialogue, thumbnails and cards. null when there is none.
+static func portrait(pid: String) -> Texture2D:
+	if pid.begins_with("p") and pid.substr(1).is_valid_int() and int(pid.substr(1)) >= POOL:
+		pid = pool_pid(int(pid.substr(1)))
+	var path := "res://assets/people/%s_portrait.png" % pid
+	return load(path) if ResourceLoader.exists(path) else null
+
+
 func _load() -> void:
 	_tex = null
 	if pid.begins_with("p") and pid.substr(1).is_valid_int() and int(pid.substr(1)) >= POOL:

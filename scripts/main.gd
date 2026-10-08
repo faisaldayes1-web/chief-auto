@@ -102,7 +102,7 @@ func _process(delta: float) -> void:
 		_close_for_night()
 	if Engine.get_process_frames() % 15 == 0:
 		_refresh_clock()
-		if current in ["lot", "marco"]:
+		if current in ["lot"]:
 			bg.modulate = Game.sky_tint()
 
 
@@ -631,7 +631,35 @@ func _park_cars(yard: Control) -> void:
 		var st: Dictionary = stalls[i]
 		var target: Vector2 = _v2(st.target) + _v2(st.fwd) * (dims[0] - ref.length) / 2.0 + _v2(st.up) * 0.42 * (dims[2] - ref.height)
 		var frame_w: float = st.ppm * Vector2(1.7 * dims[0], 1.15).length() * 36.0 / 50.0
-		items.append({"button": b, "art": art, "tag": tag, "target": target, "frame_w": frame_w, "order": int(st.get("order", i))})
+		# the car's footprint on the ground (centre, half length, half width as image fractions) for its shadow pad
+		var pad := []
+		if st.has("ground") and st.has("nose"):
+			var n0 := _v2(st.nose[0])
+			var n1 := _v2(st.nose[1])
+			pad = [_v2(st.ground) + _v2(st.fwd) * (dims[0] - ref.length) / 2.0,
+				((n0 + n1) / 2.0 - _v2(st.ground)) * dims[0] / ref.length, (n0 - n1) / 2.0 * dims[1] / ref.width]
+		items.append({"button": b, "art": art, "tag": tag, "target": target, "frame_w": frame_w, "order": int(st.get("order", i)), "pad": pad})
+	# a soft dark pad under every car, drawn before the sprites, so they sit on the asphalt of the render
+	var pads := Control.new()
+	pads.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pads.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	pads.draw.connect(func():
+		var cover := _bg_cover_rect()
+		var origin := cover.position - pads.global_position
+		for it in items:
+			if it.pad.is_empty():
+				continue
+			var c: Vector2 = origin + it.pad[0] * cover.size
+			var ax: Vector2 = it.pad[1] * cover.size
+			var ay: Vector2 = it.pad[2] * cover.size
+			for k in 5:
+				var poly := PackedVector2Array()
+				for j in 24:
+					var a := TAU * j / 24.0
+					poly.append(c + (ax * cos(a) + ay * sin(a)) * (1.3 - k * 0.1))
+				pads.draw_colored_polygon(poly, Color(0, 0, 0, 0.11))
+	)
+	yard.add_child(pads)
 	# back to front: back row first, and in a row each car's nose overlaps its right-hand neighbour
 	var drawn := items.duplicate()
 	drawn.sort_custom(func(a, b): return a.order < b.order)
@@ -642,6 +670,7 @@ func _park_cars(yard: Control) -> void:
 		if cover.size == Vector2.ZERO:
 			return
 		var origin := cover.position - yard.global_position
+		pads.queue_redraw()
 		for it in items:
 			var w: float = it.frame_w * cover.size.x
 			var frame := Rect2(origin + it.target * cover.size - Vector2(w, w * 0.5625) / 2.0, Vector2(w, w * 0.5625))
@@ -3239,11 +3268,31 @@ func _unlock_text() -> String:
 # =====================================================================
 
 func _screen_marco() -> void:
-	set_bg("", 0.0)
-	bg.visible = true
-	bg.texture = load("res://assets/people/marco_office.jpg")
-	bg.modulate = Game.sky_tint()
-	dim.color = Color(0, 0, 0, 0.12)
+	set_bg("office", 0.15)
+	# Marco stands in the middle of his office, between the two panels
+	var stage := Control.new()
+	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(stage)
+	var hero := "res://assets/people/marco_hero.png"
+	var man := TextureRect.new()
+	man.texture = load(hero) if ResourceLoader.exists(hero) else load("res://assets/people/marco_body.png")
+	man.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	man.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+	man.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stage.add_child(man)
+	var glow := GlowBack.new()
+	glow.accent = UI.GOLD
+	glow.show_behind_parent = true
+	man.add_child(glow)
+	glow.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var place := func():
+		var ts: Vector2 = man.texture.get_size()
+		var hgt: float = stage.size.y + 30.0
+		var w: float = hgt * ts.x / ts.y
+		man.size = Vector2(w, hgt)
+		man.position = Vector2((stage.size.x - w) / 2.0 + 10.0, 4.0)
+	stage.resized.connect(place)
+	place.call_deferred()
 	var h := UI.hbox(16)
 	content.add_child(h)
 	# ----- left: the team, Marco highlighted -----
