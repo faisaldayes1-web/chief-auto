@@ -587,100 +587,381 @@ def light_pole(x, y, h=7.5, dirs=((1, 0),)):
         box("lp_lens", (cx - hx + 0.04, cy - hy + 0.04, h - 0.27), (cx + hx - 0.04, cy + hy - 0.04, h - 0.25), lens)
 
 
-def palm(loc, h=9.0, seed=0, kind="date"):
-    """A palm: curved ringed trunk and a crown of pinnate fronds with a few dead ones hanging under it: a stout
-    date palm, or for kind "fan" the slim, taller-looking queen palm of the Southern California streets."""
+# ---------------------------------------------------------------- planting: leaf textures drawn here, cards in Blender
+
+def _pil_image(name, draw, size, ss=2, bg=(60, 100, 36)):
+    """A packed RGBA image drawn with PIL (draw(img, scale) paints at ss times the size, then it is downsampled).
+    The transparent background carries a leaf colour so filtering at the cut edges does not darken them."""
+    if name in bpy.data.images:
+        return bpy.data.images[name]
+    import numpy as np
+    from PIL import Image
+    big = Image.new("RGBA", (size[0] * ss, size[1] * ss), bg + (0,))
+    draw(big, ss)
+    img = big.resize(size, Image.LANCZOS)
+    a = np.asarray(img, dtype=np.float32)[::-1] / 255.0
+    im = bpy.data.images.new(name, size[0], size[1], alpha=True)
+    im.pixels.foreach_set(a.ravel())
+    im.pack()
+    return im
+
+
+def _leaf_poly(d, base, tip, w0, col):
+    """A tapered leaf from base to tip, w0 wide at the base, slightly fuller a third of the way out."""
+    bx, by = base
+    tx, ty = tip
+    dx, dy = tx - bx, ty - by
+    ln = math.hypot(dx, dy) or 1
+    nx, ny = -dy / ln, dx / ln
+    pts = []
+    for t, w in ((0.0, 0.5), (0.3, 1.0), (0.7, 0.6), (1.0, 0.0)):
+        pts.append((bx + dx * t + nx * w0 * w, by + dy * t + ny * w0 * w))
+    pts += [(bx + dx * t - nx * w0 * w, by + dy * t - ny * w0 * w) for t, w in ((0.7, 0.6), (0.3, 1.0), (0.0, 0.5))]
+    d.polygon(pts, fill=col)
+
+
+def frond_image(kind="green"):
+    """A pinnate palm frond, base at the left, tip at the right, rib along the middle (1024 x 256)."""
+    def draw(img, s):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(img)
+        rnd = random.Random(7 if kind == "green" else 8)
+        W, H = img.size
+        cy = H / 2
+        if kind == "green":
+            pal = [(52, 92, 30), (66, 108, 36), (80, 120, 42), (44, 80, 26), (96, 128, 50)]
+        else:
+            pal = [(150, 112, 62), (128, 92, 50), (170, 134, 80), (110, 80, 44)]
+        n = 70
+        for i in range(n):
+            u = 0.05 + 0.94 * i / n
+            for side in (-1, 1):
+                ln = (0.47 * math.sin(math.pi * min(1.0, u * 1.05)) ** 0.55 + 0.03) * H
+                bx = u * W
+                tip = (bx + ln * rnd.uniform(0.7, 1.0) * 1.1, cy + side * ln * rnd.uniform(0.85, 1.0))
+                _leaf_poly(d, (bx, cy), tip, 2.6 * s + 3.5 * s * math.sin(math.pi * u), rnd.choice(pal) + (255,))
+        d.line([(0, cy), (W, cy)], fill=(120, 110, 60, 255) if kind == "green" else (120, 90, 50, 255), width=int(5 * s))
+    return _pil_image("tex_frond_" + kind, draw, (1024, 256))
+
+
+FAN_C, FAN_R = (0.5, 0.03), 0.93    # fan texture: centre (u, v) and radius (fraction of the image height)
+
+
+def fan_image(kind="green"):
+    """A Washingtonia fan leaf: radiating split segments from the petiole at the bottom middle (1024 x 512)."""
+    def draw(img, s):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(img)
+        rnd = random.Random(11 if kind == "green" else 12)
+        W, H = img.size
+        cx, cy, R = W * FAN_C[0], H * (1 - FAN_C[1]), H * FAN_R
+        pal = [(60, 100, 40), (74, 116, 46), (88, 126, 52), (54, 92, 36)] if kind == "green" else \
+              [(160, 124, 72), (140, 104, 60), (176, 142, 90)]
+        segs = 46
+        for j in range(segs):
+            a0 = math.radians(-100 + 200 * j / segs)
+            a1 = math.radians(-100 + 200 * (j + 1) / segs)
+            am = (a0 + a1) / 2
+            r_split = R * rnd.uniform(0.55, 0.7)
+            r_tip = R * rnd.uniform(0.92, 1.0)
+            col = rnd.choice(pal) + (255,)
+            p = lambda a, r: (cx + r * math.sin(a), cy - r * math.cos(a))  # noqa: E731
+            d.polygon([p(am, R * 0.06), p(a0, r_split), p(am - 0.01, r_tip), p(am + 0.01, r_tip), p(a1, r_split)], fill=col)
+            # the split tips hang as thin threads
+            d.line([p(am, r_split), p(am + rnd.uniform(-0.05, 0.05), r_tip * 1.0)], fill=col, width=int(2 * s))
+    return _pil_image("tex_fan_" + kind, draw, (1024, 512))
+
+
+def foliage_image(kind="shrub"):
+    """A clump of leaves (shrub, hedge, house plant) or bougainvillea bracts for leaf cards (512 x 512)."""
+    def draw(img, s):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(img)
+        rnd = random.Random({"shrub": 21, "bouga": 22, "fig": 23}[kind])
+        W, H = img.size
+        greens = [(40, 80, 28), (54, 98, 34), (70, 112, 40), (34, 66, 24), (86, 120, 46)]
+        n = 160 if kind != "fig" else 40
+        for i in range(n):
+            r = (rnd.random() ** 0.6) * 0.46
+            a = rnd.uniform(0, math.tau)
+            cx, cy = W * (0.5 + r * math.cos(a)), H * (0.5 + r * math.sin(a))
+            ang = rnd.uniform(0, math.tau)
+            ln = (0.07 if kind != "fig" else 0.16) * W * rnd.uniform(0.7, 1.2)
+            tip = (cx + ln * math.cos(ang), cy + ln * math.sin(ang))
+            _leaf_poly(d, (cx, cy), tip, ln * (0.28 if kind != "fig" else 0.4), rnd.choice(greens) + (255,))
+        if kind == "bouga":
+            mag = [(205, 30, 120), (225, 50, 140), (180, 20, 100), (235, 90, 165)]
+            for i in range(210):
+                r = (rnd.random() ** 0.5) * 0.45
+                a = rnd.uniform(0, math.tau)
+                cx, cy = W * (0.5 + r * math.cos(a)), H * (0.5 + r * math.sin(a))
+                rr = W * rnd.uniform(0.008, 0.016)
+                col = rnd.choice(mag) + (255,)
+                for k in range(3):
+                    aa = k / 3 * math.tau + rnd.uniform(0, 1)
+                    d.ellipse([cx + rr * math.cos(aa) - rr, cy + rr * math.sin(aa) - rr, cx + rr * math.cos(aa) + rr,
+                               cy + rr * math.sin(aa) + rr], fill=col)
+    return _pil_image("tex_foliage_" + kind, draw, (512, 512))
+
+
+def card_mat(name, img, tint=(1.0, 1.0, 1.0), trans=0.3, rough=0.55, vary=0.15):
+    """Alpha-cut leaf card material: the image's colour (tinted, varied per object) over a translucent leaf."""
+    if name in _mats:
+        return _mats[name]
+    m, nt, b = _node_mat(name)
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    tex.interpolation = "Linear"
+    nt.links.new(_coords(nt, "UV"), tex.inputs["Vector"])
+    info = nt.nodes.new("ShaderNodeObjectInfo")
+    shade = _ramp(nt, info.outputs["Random"], ((0.0, tuple(c * (1 - vary) for c in tint)), (1.0, tuple(min(2, c * (1 + vary)) for c in tint))))
+    col = _mix(nt, 1.0, tex.outputs["Color"], shade, "MULTIPLY")
+    nt.links.new(col, b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = rough
+    tr = nt.nodes.new("ShaderNodeBsdfTranslucent")
+    nt.links.new(col, tr.inputs["Color"])
+    leaf = nt.nodes.new("ShaderNodeMixShader")
+    leaf.inputs["Fac"].default_value = trans
+    nt.links.new(b.outputs[0], leaf.inputs[1])
+    nt.links.new(tr.outputs[0], leaf.inputs[2])
+    clear = nt.nodes.new("ShaderNodeBsdfTransparent")
+    cut = nt.nodes.new("ShaderNodeMixShader")
+    nt.links.new(_math(nt, "GREATER_THAN", tex.outputs["Alpha"], 0.4), cut.inputs["Fac"])
+    nt.links.new(clear.outputs[0], cut.inputs[1])
+    nt.links.new(leaf.outputs[0], cut.inputs[2])
+    nt.links.new(cut.outputs[0], nt.nodes["Material Output"].inputs["Surface"])
+    _mats[name] = m
+    return m
+
+
+def cards_obj(name, quads, m, smooth=False):
+    """One mesh of textured cards: quads is a list of (4 corner points, 4 uvs) or ribbons (rows of points, uvs)."""
+    vs, fs, uvs = [], [], []
+    for pts, uv in quads:
+        base = len(vs)
+        vs.extend(pts)
+        uvs.extend(uv)
+        fs.append(tuple(range(base, base + len(pts))))
+    return _uv_mesh(name, vs, fs, uvs, m, smooth)
+
+
+def _uv_mesh(name, vs, fs, uvs, m, smooth=False):
+    me = bpy.data.meshes.new(name)
+    me.from_pydata([tuple(v) for v in vs], [], fs)
+    lay = me.uv_layers.new(name="UVMap")
+    for poly in me.polygons:
+        for li in poly.loop_indices:
+            lay.data[li].uv = uvs[me.loops[li].vertex_index]
+    me.materials.append(m)
+    if smooth:
+        for p in me.polygons:
+            p.use_smooth = True
+    ob = bpy.data.objects.new(name, me)
+    _link(ob)
+    return ob
+
+
+def _ribbon(vs, fs, uvs, rows):
+    """Adds a ribbon (list of rows of (point, uv)) as quads between consecutive rows."""
+    base = len(vs)
+    w = len(rows[0])
+    for row in rows:
+        for p, uv in row:
+            vs.append(p)
+            uvs.append(uv)
+    for i in range(len(rows) - 1):
+        for j in range(w - 1):
+            a = base + i * w + j
+            fs.append((a, a + 1, a + w + 1, a + w))
+
+
+def palm(loc, h=9.0, seed=0, kind="date", lod=False):
+    """A palm: a ringed, slightly curved trunk and a crown of textured frond cards.
+    kind "date": stout date palm with long arching pinnate fronds; "queen": slim, soft drooping fronds;
+    "fan": the tall skinny Washingtonia fan palm of the Southern California streets, with a skirt of dead fronds."""
     rnd = random.Random(seed)
     loc = Vector(loc)
-    fan = kind == "fan"
+    kind = {"fan": "fan"}.get(kind, kind)
     lean_dir = Vector((math.cos(rnd.uniform(0, math.tau)), math.sin(rnd.uniform(0, math.tau)), 0))
-    lean = rnd.uniform(0.03, 0.09) * h
+    lean = rnd.uniform(0.02, 0.07 if kind != "fan" else 0.05) * h
+    r0 = {"date": 0.38, "queen": 0.2, "fan": 0.22}[kind]
     pts, radii = [], []
-    r0 = 0.2 if fan else 0.36
-    for k in range(15):
-        t = k / 14
+    nseg = 6 if lod else 15
+    for k in range(nseg):
+        t = k / (nseg - 1)
         pts.append(loc + lean_dir * lean * t ** 1.7 + Vector((0, 0, h * t)))
-        flare = 1.0 + 0.6 * max(0.0, 1 - t * 9)
-        radii.append(r0 * flare * (1 - 0.25 * t) * (1.25 if not fan and t > 0.9 else 1.0))
-    trunk = tube("palm_trunk", pts, radii, bark_mat("bark_fan" if fan else "bark_date", (0.28, 0.24, 0.2), (0.48, 0.42, 0.34),
-                                                    ring=0.09 if fan else 0.16), sides=12)
+        flare = 1.0 + (0.7 if kind == "fan" else 0.5) * max(0.0, 1 - t * 8)
+        radii.append(r0 * flare * (1 - 0.22 * t) * (1.3 if kind == "date" and t > 0.92 else 1.0))
+    trunk = tube("palm_trunk", pts, radii, bark_mat("bark_" + kind, (0.27, 0.23, 0.19), (0.42, 0.37, 0.3),
+                                                    ring=0.08 if kind == "fan" else 0.16), sides=6 if lod else 12)
     top = pts[-1]
-    green = leaf_mat("palm_leaf", (0.06, 0.16, 0.035), (0.2, 0.32, 0.07))
-    dead = leaf_mat("palm_dead", (0.3, 0.22, 0.12), (0.5, 0.4, 0.24), trans=0.1)
-    vs, fs, idx = [], [], []
+    vs, fs, uvs = [], [], []
+    dvs, dfs, duvs = [], [], []
 
-    def add_tri(a, b, c, k):
-        base = len(vs)
-        vs.extend((a, b, c))
-        fs.append((base, base + 1, base + 2))
-        idx.append(k)
-
-    def frond(az, elev, length, k, leaflets=26, droop=0.18):
+    def frond(az, elev, length, droop, dead=False, segs=None):
+        segs = segs or (4 if lod else 10)
         hd = Vector((math.cos(az), math.sin(az), 0))
         sd = Vector((-hd.y, hd.x, 0))
-        prev = top
-        rib = []
-        for i in range(leaflets + 1):
-            s = (i / leaflets) * length
-            p = top + hd * (math.cos(elev) * s) + Vector((0, 0, math.sin(elev) * s - droop * s * s))
-            rib.append(p)
-        for i in range(1, leaflets + 1):
-            s = i / leaflets
-            p, q = rib[i - 1], rib[i]
-            along = (q - p).normalized()
-            ll = (0.85 * math.sin(math.pi * min(1.0, s * 1.08)) ** 0.6 + 0.12) * length / 4.0
-            if s < 0.12:
-                continue
-            for side in (-1, 1):
-                # leaflets angle forward and fold up into a V, then hang a little
-                dirv = (sd * side * 0.8 + along * 0.55 + Vector((0, 0, 0.25 - 0.5 * s))).normalized()
-                w = along * 0.075 * length / 4.0
-                tip = p + dirv * ll + Vector((0, 0, -0.08 * ll))
-                add_tri(p - w, p + w, tip, k)
-        # rib itself
-        rv, rf = tube_geo(rib, [0.04 * (1 - j / (len(rib))) + 0.01 for j in range(len(rib))], 4)
-        base = len(vs)
-        vs.extend(rv)
-        for f in rf:
-            fs.append(tuple(base + v for v in f))
-            idx.append(k)
+        half = length * 0.17
+        rows = []
+        for i in range(segs + 1):
+            s = i / segs
+            d = s * length
+            p = top + hd * (math.cos(elev) * d) + Vector((0, 0, math.sin(elev) * d - droop * d * d))
+            fold = math.radians(28 - 55 * s)              # leaflets V up near the base, hang at the tip
+            wv = sd * math.cos(fold) * half
+            up = Vector((0, 0, math.sin(fold) * half))
+            twist = Vector((0, 0, 0))
+            rows.append([(p - wv + up + twist, (s, 0.0)), (p, (s, 0.5)), (p + wv + up, (s, 1.0))])
+        _ribbon(dvs if dead else vs, dfs if dead else fs, duvs if dead else uvs, rows)
 
-    n = 18 if fan else 22
-    for i in range(n):
-        ring = i % 3
-        if fan:
-            # queen palm: a slim trunk and long, soft, drooping fronds
-            elev = math.radians((45, 12, -22)[ring] + rnd.uniform(-8, 8))
-            fl = rnd.uniform(3.0, 3.6)
-            droop = (0.13, 0.2, 0.26)[ring]
-        else:
-            elev = math.radians((55, 20, -15)[ring] + rnd.uniform(-10, 10))
-            fl = h * 0.42 + rnd.uniform(-0.4, 0.4) if h < 9 else rnd.uniform(3.6, 4.4)
-            droop = (0.09, 0.16, 0.22)[ring]
-        frond(i / n * math.tau + ring * 0.35 + rnd.uniform(-0.12, 0.12), elev, fl, 0, leaflets=34, droop=droop)
-    for i in range(5 if fan else 4):
-        frond(rnd.uniform(0, math.tau), math.radians(-65), 2.4, 1, leaflets=14, droop=0.05)
-    crown = mesh_obj("palm_crown", vs, fs, [green, dead], mat_idx=idx)
-    sphere("palm_head", top, (radii[-1] * 1.1, radii[-1] * 1.1, 0.45), bark_mat("bark_date", (0.28, 0.24, 0.2), (0.48, 0.42, 0.34)), seg=12)
+    def fan_leaf(az, elev, dead=False):
+        hd = Vector((math.cos(az), math.sin(az), 0))
+        sd = Vector((-hd.y, hd.x, 0))
+        out = hd * math.cos(elev) + Vector((0, 0, math.sin(elev)))
+        stem = top + out * 0.9
+        R = 1.25
+        nrm = (out.cross(sd)).normalized()          # leaf plane: spanned by out and sd
+        tvs, tfs, tuvs = (dvs, dfs, duvs) if dead else (vs, fs, uvs)
+        base = len(tvs)
+        tvs.append(stem)
+        tuvs.append(FAN_C)
+        segs = 10 if lod else 22
+        for j in range(segs + 1):
+            a = math.radians(-100 + 200 * j / segs)
+            v = out * math.cos(a) + sd * math.sin(a)
+            fold = (0.09 if j % 2 else -0.05) * R
+            p = stem + v * R + nrm * fold + Vector((0, 0, -0.3 * R * abs(math.sin(a)) ** 1.5))
+            tvs.append(p)
+            tuvs.append((FAN_C[0] + FAN_R * 0.5 * math.sin(a), FAN_C[1] + FAN_R * math.cos(a)))
+        for j in range(segs):
+            tfs.append((base, base + 1 + j, base + 2 + j))
+        # petiole
+        pv, pf = tube_geo([top, stem], [0.04, 0.03], 4)
+        b2 = len(tvs)
+        tvs.extend(pv)
+        tuvs.extend([(0.5, 0.01)] * len(pv))
+        tfs.extend(tuple(b2 + q for q in f) for f in pf)
+
+    if kind == "fan":
+        for i in range(10 if lod else 20):
+            fan_leaf(i / (10 if lod else 20) * math.tau + rnd.uniform(-0.2, 0.2), math.radians(rnd.uniform(-20, 60)))
+        # the skirt of old fronds hanging down the trunk under the crown
+        for i in range(0 if lod else 12):
+            az = i / 12 * math.tau + rnd.uniform(-0.2, 0.2)
+            hd = Vector((math.cos(az), math.sin(az), 0))
+            frond(az, math.radians(-80), rnd.uniform(1.4, 2.2), 0.02, dead=True, segs=3)
+    else:
+        n = (12 if lod else 24) if kind == "date" else (10 if lod else 18)
+        for i in range(n):
+            ring = i % 3
+            if kind == "queen":
+                elev = math.radians((45, 12, -22)[ring] + rnd.uniform(-8, 8))
+                fl = rnd.uniform(3.0, 3.6)
+                droop = (0.13, 0.2, 0.26)[ring]
+            else:
+                elev = math.radians((55, 22, -10)[ring] + rnd.uniform(-10, 10))
+                fl = rnd.uniform(3.6, 4.4) if h > 6 else h * 0.55
+                droop = (0.07, 0.12, 0.17)[ring]
+            frond(i / n * math.tau + ring * 0.35 + rnd.uniform(-0.12, 0.12), elev, fl, droop)
+        for i in range(0 if lod else 4):
+            frond(rnd.uniform(0, math.tau), math.radians(-70), 2.2, 0.03, dead=True, segs=4)
+    green = card_mat("palm_" + ("fan" if kind == "fan" else "frond"), fan_image() if kind == "fan" else frond_image(),
+                     trans=0.35)
+    dead = card_mat("palm_dead_" + ("fan" if kind == "fan" else "frond"), fan_image("dead") if kind == "fan" else frond_image("dead"),
+                    trans=0.15)
+    _uv_mesh("palm_crown", vs, fs, uvs, green)
+    if dvs:
+        _uv_mesh("palm_dead", dvs, dfs, duvs, dead)
+    sphere("palm_head", top, (radii[-1] * 1.05, radii[-1] * 1.05, 0.5), bark_mat("bark_" + kind, (0.3, 0.26, 0.21), (0.52, 0.46, 0.38)), seg=10)
     return trunk
 
 
-def shrub(x, y, r=0.7, h=None, seed=0, m=None, z=0.0):
-    """A leafy bush: a few lumpy displaced spheres."""
+def _card_cluster(name, centre, rx, ry, rz, n, size, m, rnd, droop=0.0):
+    """n square leaf cards scattered through an ellipsoid, facing roughly outward."""
+    quads = []
+    c = Vector(centre)
+    for _ in range(n):
+        while True:
+            q = Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1)))
+            if q.length <= 1:
+                break
+        p = c + Vector((q.x * rx, q.y * ry, q.z * rz - droop * (q.x * q.x + q.y * q.y)))
+        nrm = (q + Vector((rnd.uniform(-0.6, 0.6), rnd.uniform(-0.6, 0.6), rnd.uniform(-0.3, 0.8)))).normalized()
+        a = nrm.cross(Vector((0, 0, 1)) if abs(nrm.z) < 0.9 else Vector((1, 0, 0))).normalized()
+        b = nrm.cross(a)
+        rot = rnd.uniform(0, math.tau)
+        a, b = a * math.cos(rot) + b * math.sin(rot), b * math.cos(rot) - a * math.sin(rot)
+        s = size * rnd.uniform(0.75, 1.25) / 2
+        quads.append(([p - a * s - b * s, p + a * s - b * s, p + a * s + b * s, p - a * s + b * s],
+                      [(0, 0), (1, 0), (1, 1), (0, 1)]))
+    return cards_obj(name, quads, m)
+
+
+def shrub(x, y, r=0.7, h=None, seed=0, m=None, z=0.0, kind="shrub"):
+    """A leafy bush: a dark core with leaf cards over it."""
     rnd = random.Random(seed or int(x * 13 + y * 7))
-    m = m or leaf_mat("shrub_leaf", (0.04, 0.12, 0.03), (0.13, 0.24, 0.06), trans=0.15)
     h = h or r * 1.2
-    tex = bpy.data.textures.get("shrub_clouds") or bpy.data.textures.new("shrub_clouds", "CLOUDS")
-    tex.noise_scale = 0.18
-    for k in range(3):
-        bm = bmesh.new()
-        bmesh.ops.create_icosphere(bm, subdivisions=3, radius=1.0)
-        ob = _bm_obj("shrub", bm, m, (x + rnd.uniform(-r, r) * 0.4, y + rnd.uniform(-r, r) * 0.4, z + h * 0.5), smooth=True)
-        ob.scale = (r * rnd.uniform(0.7, 1.0), r * rnd.uniform(0.7, 1.0), h * 0.5 * rnd.uniform(0.8, 1.0))
-        md = ob.modifiers.new("d", "DISPLACE")
-        md.texture = tex
-        md.strength = 0.35
-        md.texture_coords = "GLOBAL"
+    core = mat("shrub_core", (0.03, 0.07, 0.02), rough=0.9)
+    sphere("shrub_core", (x, y, z + h * 0.45), (r * 0.75, r * 0.75, h * 0.38), core, seg=10)
+    lm = card_mat("leaf_" + kind, foliage_image(kind), tint=(1.0, 1.0, 1.0) if kind != "bouga" else (1, 1, 1), trans=0.3)
+    n = int(40 + 90 * r * h)
+    _card_cluster("shrub", (x, y, z + h * 0.5), r, r, h * 0.5, n, max(0.3, r * 0.65), lm, rnd)
+
+
+def bougainvillea(a, b, z, out, seed=0, hang=1.2):
+    """Bougainvillea spilling over a wall top from a to b (out: the side it falls down, as a unit vector)."""
+    rnd = random.Random(seed)
+    a, b, out = Vector(a), Vector(b), Vector(out)
+    lm = card_mat("leaf_bouga", foliage_image("bouga"), trans=0.3)
+    ln = (b - a).length
+    for k in range(max(1, int(ln / 1.4))):
+        t = (k + rnd.uniform(0.2, 0.8)) / max(1, int(ln / 1.4))
+        p = a + (b - a) * t + out * 0.25
+        _card_cluster("bouga", (p.x, p.y, z + 0.2), 0.75, 0.75, 0.45, 40, 0.5, lm, rnd)
+        _card_cluster("bouga_fall", (p.x + out.x * 0.15, p.y + out.y * 0.15, z - hang * 0.5), 0.55, 0.25 if abs(out.y) else 0.55,
+                      hang * 0.5, 26, 0.42, lm, rnd)
+
+
+def agave(x, y, r=0.6, z=0.0, seed=0):
+    """An agave rosette: thick, pointed blue-green leaves curving out from the middle."""
+    rnd = random.Random(seed or int(x * 31 + y * 17))
+    m, nt, b = _node_mat("agave") if "agave" not in _mats else (_mats["agave"], None, None)
+    if nt:
+        co = _coords(nt)
+        nt.links.new(_ramp(nt, _noise(nt, co, 3.0, 3.0).outputs["Fac"], ((0.3, (0.2, 0.32, 0.28)), (0.7, (0.3, 0.42, 0.36)))), b.inputs["Base Color"])
+        b.inputs["Roughness"].default_value = 0.45
+        b.inputs["Coat Weight"].default_value = 0.3
+        _mats["agave"] = m
+    vs, fs = [], []
+    for k in range(22):
+        az = k * 2.4 + rnd.uniform(-0.15, 0.15)
+        elev = math.radians(75 - 55 * (k / 22) + rnd.uniform(-8, 8))
+        hd = Vector((math.cos(az), math.sin(az), 0))
+        sd = Vector((-hd.y, hd.x, 0))
+        ln = r * rnd.uniform(0.9, 1.25) * (0.7 + 0.5 * k / 22)
+        base = len(vs)
+        segs = 5
+        for i in range(segs + 1):
+            s = i / segs
+            p = Vector((x, y, z)) + hd * (math.cos(elev) * ln * s) + Vector((0, 0, math.sin(elev) * ln * s - 0.25 * ln * s * s))
+            w = ln * 0.2 * (1 - s) ** 0.7
+            vs += [p - sd * w, p + Vector((0, 0, w * 0.5)), p + sd * w]
+        for i in range(segs):
+            for j in range(2):
+                q = base + i * 3 + j
+                fs.append((q, q + 1, q + 4, q + 3))
+    mesh_obj("agave", vs, fs, m, smooth=True)
+
+
+def street_lamp(x, y, h=4.2):
+    """A black cast-iron acorn street lamp."""
+    iron = mat("cast_iron", (0.02, 0.025, 0.03), rough=0.4, metal=0.6)
+    cyl("lamp_base", (x, y, 0.35), 0.16, 0.7, iron, r2=0.1, verts=12)
+    cyl("lamp_post", (x, y, h / 2), 0.06, h, iron, r2=0.045, verts=10)
+    cyl("lamp_collar", (x, y, h + 0.05), 0.12, 0.1, iron, verts=12)
+    sphere("lamp_globe", (x, y, h + 0.4), (0.22, 0.22, 0.32), mat("lamp_glass", (0.95, 0.93, 0.85), rough=0.2, emit=0.4, ecol=(1.0, 0.9, 0.7)), seg=12)
+    cyl("lamp_cap", (x, y, h + 0.78), 0.16, 0.12, iron, r2=0.03, verts=12)
 
 
 def hip_roof(name, x0, y0, x1, y1, z, h, m, over=0.4):
@@ -905,17 +1186,13 @@ def blinds(axis, plane, out, a0, a1, ztop, drop, d=0.12):
 
 
 def floor_plant(x, y, h=1.6, z=0.0):
-    """A potted fiddle-leaf style plant: a tapered pot and a column of leafy clumps."""
+    """A potted fiddle-leaf fig: a tapered pot, a stem and a column of big leaf cards."""
     cyl("pot", (x, y, z + 0.25), 0.26, 0.5, mat("pot_cer", (0.85, 0.84, 0.8), rough=0.3), r2=0.2, verts=20)
-    leaf = leaf_mat("house_plant", (0.04, 0.14, 0.04), (0.12, 0.26, 0.07), trans=0.2)
     cyl("stem", (x, y, z + h * 0.45), 0.02, h * 0.6, mat("stem", (0.25, 0.18, 0.1)), verts=6)
     rnd = random.Random(int(x * 7 + y * 3))
-    for k in range(9):
-        t = k / 8
-        r = 0.2 - 0.06 * t
-        spread = 0.28 * (1 - 0.5 * t)
-        shrub(x + rnd.uniform(-spread, spread), y + rnd.uniform(-spread, spread), r, r * 1.5, seed=rnd.randrange(999), m=leaf,
-              z=z + h * (0.45 + 0.5 * t) - r)
+    lm = card_mat("leaf_fig", foliage_image("fig"), trans=0.3)
+    sphere("plant_core", (x, y, z + h * 0.72), (0.18, 0.18, h * 0.22), mat("shrub_core", (0.03, 0.07, 0.02), rough=0.9), seg=10)
+    _card_cluster("fig", (x, y, z + h * 0.72), 0.36, 0.36, h * 0.3, 34, 0.42, lm, rnd)
 
 
 def office_desk_props(x0, x1, y, z, face, seed):
@@ -936,7 +1213,7 @@ def office_desk_props(x0, x1, y, z, face, seed):
 
 
 def build_office_t1():
-    """The corner-lot sales office: warm wainscot and taupe walls, framed car prints, blinds, a credenza, a plant."""
+    """The glass sales pavilion inside: warm wainscot and taupe walls, framed car prints, a credenza, a plant."""
     taupe = mat("wall_taupe", (0.55, 0.47, 0.38), rough=0.85)
     w = walnut()
     x0, x1, yf = OX0 + 0.2, OX1 - 0.2, OY0 + 0.2
@@ -944,10 +1221,6 @@ def build_office_t1():
     wall_box("y", x0, yf, OY1 - 0.2, TZ, 1.0, 0.0, 0.015, 1, w, "wainscot")
     wall_box("y", x0, yf, OY1 - 0.2, 1.0, OH - 0.6, 0.0, 0.005, 1, taupe, "accent")
     wall_box("y", x0, yf, OY1 - 0.2, 0.98, 1.04, 0.0, 0.03, 1, w, "chair_rail")
-    # front wall: wainscot under the windows and round the door
-    for a, b in ((x0, -6.4), (-5.2, x1)):
-        wall_box("x", yf, a, b, TZ, 0.78, 0.0, 0.015, 1, w, "wainscot")
-        wall_box("x", yf, a, b, 0.76, 0.8, 0.0, 0.03, 1, w, "chair_rail")
     # credenza under the whiteboard with binders, a trophy and a little plant
     wall_box("y", x0, 1.5, 4.3, TZ, TZ + 0.72, 0.0, 0.45, 1, w, "credenza")
     wall_box("y", x0, 1.48, 4.32, TZ + 0.72, TZ + 0.75, 0.0, 0.47, 1, w, "credenza_top")
@@ -963,10 +1236,6 @@ def build_office_t1():
     # framed car prints above the whiteboard and beside the door
     for k, yc in enumerate((1.85, 2.9, 3.95)):
         framed_photo("y", x0, 1, yc, 3.08, 0.8, 0.5, 20 + k)
-    framed_photo("x", yf, 1, -7.0, 1.75, 0.75, 1.0, 31)
-    # blinds part way down the two windows
-    for a, b in ((-11.2, -7.6), (-4.4, -2.8)):
-        blinds("x", OY0, 1, a, b, 2.6, 0.55, d=0.25)
     floor_plant(-6.95, -0.35, 1.7, TZ)
     office_desk_props(-9.6, -6.3, 4.05, TZ + 0.8, 1, 5)
     box("o_monitor2", (-9.45, 4.12, TZ + 0.85), (-8.55, 4.16, TZ + 1.4), mat("screen", (0.02, 0.05, 0.1), rough=0.1, emit=0.6, ecol=(0.3, 0.55, 0.9)))
@@ -1094,25 +1363,25 @@ def boat(x, y, length, kind, rnd, bow=1):
 
 
 def hill_mat():
-    """Dry Southern California hillside: golden grass with dark chaparral clumps, greener in the gullies."""
+    """Coastal bluff under gardens: dark tree canopy over patches of green-gold grass, thicker in the gullies."""
     if "hills" in _mats:
         return _mats["hills"]
     m, nt, b = _node_mat("hills")
     co = _coords(nt)
     grass = _noise(nt, co, 0.05, 6.0, 0.6)
-    base = _ramp(nt, grass.outputs["Fac"], ((0.25, (0.45, 0.35, 0.18)), (0.75, (0.66, 0.53, 0.3))))
+    base = _ramp(nt, grass.outputs["Fac"], ((0.25, (0.2, 0.22, 0.1)), (0.75, (0.36, 0.34, 0.18))))
     # chaparral: irregular dark patches where a fine and a coarse noise agree, thicker on some slopes than others
     scrub = _noise(nt, co, 0.08, 10.0, 0.7)
     dens = _noise(nt, co, 0.004, 3.0)
-    thr = _math(nt, "MULTIPLY_ADD", dens.outputs["Fac"], -0.35, 0.78)
+    thr = _math(nt, "MULTIPLY_ADD", dens.outputs["Fac"], -0.35, 0.6)
     clump = _math(nt, "GREATER_THAN", scrub.outputs["Fac"], thr)
-    col = _mix(nt, _math(nt, "MULTIPLY", clump, 0.85), base, (0.12, 0.13, 0.06))
+    col = _mix(nt, _math(nt, "MULTIPLY", clump, 0.9), base, (0.05, 0.09, 0.03))
     # gullies (faces turned away from straight up) hold more scrub
     geo = nt.nodes.new("ShaderNodeNewGeometry")
     sep = nt.nodes.new("ShaderNodeSeparateXYZ")
     nt.links.new(geo.outputs["Normal"], sep.inputs[0])
     gully = _math(nt, "MULTIPLY", _math(nt, "SUBTRACT", 0.8, sep.outputs["Z"], clamp=True), 4.0, clamp=True)
-    col = _mix(nt, _math(nt, "MULTIPLY", gully, 0.5), col, (0.2, 0.19, 0.09))
+    col = _mix(nt, _math(nt, "MULTIPLY", gully, 0.5), col, (0.07, 0.1, 0.04))
     nt.links.new(col, b.inputs["Base Color"])
     b.inputs["Roughness"].default_value = 0.95
     _bump(nt, b, _math(nt, "ADD", clump, _math(nt, "MULTIPLY", scrub.outputs["Fac"], 0.5)), 0.5, 1.5)
@@ -1120,24 +1389,31 @@ def hill_mat():
     return m
 
 
-def hill_height(x, y):
-    """Height of the far-shore ridge (0 at the shoreline, y = 1240)."""
-    j = (y - 1240) / 520.0
-    if j <= 0:
-        return -2.0
-    ridge = 75 + 45 * math.sin(x * 0.004 + 1.3) + 25 * math.sin(x * 0.011 + 0.4) + 10 * math.sin(x * 0.031)
-    gul = 6 * math.sin(x * 0.07 + 2 * math.sin(y * 0.02)) + 3 * math.sin(x * 0.19 + y * 0.05)
-    return (ridge + gul * min(1.0, j * 3)) * math.sin(math.pi * min(1.0, j * 1.6)) ** 0.8 - 2.0 if j < 1 else -2.0
+# white stucco and cream, the odd pale blue or sand: the colours of a Southern California beach town
+TOWN_COLOURS = ((0.95, 0.94, 0.9), (0.93, 0.9, 0.84), (0.96, 0.95, 0.92), (0.9, 0.86, 0.78), (0.82, 0.87, 0.9),
+                (0.94, 0.92, 0.86), (0.88, 0.8, 0.68), (0.96, 0.96, 0.94))
 
 
-# ---------------------------------------------------------------- the site
+def lifeguard_tower(x, y, z=0.0):
+    """A blue-and-white beach lifeguard hut on stilts."""
+    white = mat("lg_white", (0.95, 0.95, 0.93), rough=0.5)
+    blue = mat("lg_blue", (0.15, 0.45, 0.75), rough=0.5)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            box("lg_leg", (x + sx * 1.0 - 0.08, y + sy * 1.0 - 0.08, z), (x + sx * 1.0 + 0.08, y + sy * 1.0 + 0.08, z + 2.2), white)
+    box("lg_deck", (x - 1.6, y - 1.6, z + 2.2), (x + 1.6, y + 1.6, z + 2.35), white)
+    box("lg_hut", (x - 1.2, y - 1.2, z + 2.35), (x + 1.2, y + 1.2, z + 4.3), blue)
+    box("lg_win", (x - 1.0, y - 1.22, z + 3.2), (x + 1.0, y - 1.2, z + 4.0), mat("win_glass", (0.02, 0.03, 0.04), rough=0.05))
+    hip_roof("lg_roof", x - 1.2, y - 1.2, x + 1.2, y + 1.2, z + 4.3, 0.6, white, over=0.3)
+    box("lg_ramp", (x - 0.5, y - 4.5, z), (x + 0.5, y - 1.6, z + 0.2), white)
 
-# The sun: the parked-car sprites (tools/car_sprites_real.py) are lit by a sun 50 degrees up, from the camera's left
-# and a little behind it (sky.sun_rotation -140 with the camera off the car's front-right). The lot cameras look
-# north-north-east, so the same light here is a sun 50 degrees up in the west: shadows fall to the right of the
-# cars in the sprites and to the right of everything in the renders. The azimuth splits the three lot views
-# (each wants -79..-94 degrees; see the sprite camera in lot_stalls).
-SUN_EL, SUN_AZ = 50.0, -88.0
+
+# The sun: the parked-car sprites (tools/car_sprites_real.py) are lit by a sun 50 degrees up, behind the
+# three-quarter camera and to its left (140 degrees round from the view direction). The lot cameras look
+# north-north-east (headings 68..82 degrees), so the same light here is a sun 50 degrees up in the south-west, behind
+# the cameras: the storefronts and the dealership facing the camera are in direct sun, and shadows fall away from the
+# camera and to the right, as they do in the sprites.
+SUN_EL, SUN_AZ = 50.0, -124.0
 
 
 def sun_vector():
@@ -1158,7 +1434,7 @@ def build_world():
     sky.sun_disc = False          # the sun lamp is the sun; a disc as well doubles it
     sky.altitude = 30
     sky.air_density = 1.0
-    sky.aerosol_density = 0.35    # a clear coastal day, not haze
+    sky.aerosol_density = 0.2     # a clear coastal day, not haze
     sky.ozone_density = 1.5       # a little deeper blue overhead
     # fair-weather cumulus: noise projected on a cloud deck, thinning toward the horizon
     tc = nt.nodes.new("ShaderNodeTexCoord")
@@ -1175,8 +1451,8 @@ def build_world():
     dens = _math(nt, "ADD", puff.outputs["Fac"], _math(nt, "MULTIPLY_ADD", field.outputs["Fac"], 0.45, -0.22))
     cloud = nt.nodes.new("ShaderNodeMapRange")
     cloud.interpolation_type = "SMOOTHSTEP"
-    cloud.inputs["From Min"].default_value = 0.5
-    cloud.inputs["From Max"].default_value = 0.66
+    cloud.inputs["From Min"].default_value = 0.57      # a few soft clouds, mostly open blue
+    cloud.inputs["From Max"].default_value = 0.72
     nt.links.new(dens, cloud.inputs["Value"])
     hor = nt.nodes.new("ShaderNodeMapRange")
     hor.interpolation_type = "SMOOTHSTEP"
@@ -1192,7 +1468,7 @@ def build_world():
     # a deeper blue where the sky is seen, without tinting the light it casts
     lp = nt.nodes.new("ShaderNodeLightPath")
     seen = _math(nt, "MAXIMUM", lp.outputs["Is Camera Ray"], lp.outputs["Is Glossy Ray"])
-    blue = _mix(nt, seen, sky.outputs[0], _mix(nt, 1.0, sky.outputs[0], (0.84, 0.95, 1.14), "MULTIPLY"))
+    blue = _mix(nt, seen, sky.outputs[0], _mix(nt, 1.0, sky.outputs[0], (0.66, 0.88, 1.25), "MULTIPLY"))
     col = _mix(nt, _math(nt, "MULTIPLY", cf, 0.95), blue, shade)
     nt.links.new(col, nt.nodes["Background"].inputs[0])
     nt.nodes["Background"].inputs["Strength"].default_value = 0.19
@@ -1208,22 +1484,22 @@ def build_world():
 def build_ground():
     asphalt = asphalt_mat("asphalt", (0.1, 0.096, 0.09), (0.19, 0.18, 0.165))
     concrete = noise_mat("concrete", (0.5, 0.48, 0.45), (0.64, 0.62, 0.58), 8, 0.7, bump=0.05, macro=0.25)
-    box("lot", (-60, -60, -0.1), (60, 0, 0), asphalt)
-    box("street", (-200, -90, -0.12), (200, -60, -0.02), asphalt_mat("street", (0.04, 0.04, 0.045), (0.085, 0.085, 0.09), cracks=0.3))
-    box("sidewalk", (-200, -60, -0.1), (200, -57, 0.08), concrete)
-    box("pad", (-40, 0, -0.1), (40, 30, 0.02), concrete)
+    box("lot", (-26.3, -60, -0.1), (60, 0, 0), asphalt)
+    box("street", (-30.0, -90, -0.12), (200, -60, -0.02), asphalt_mat("street", (0.04, 0.04, 0.045), (0.085, 0.085, 0.09), cracks=0.3))
+    box("sidewalk", (-26.3, -60, -0.1), (200, -57, 0.08), concrete)
+    box("pad", (-26.3, 0, -0.1), (60, HILL_FOOT_Y, 0.02), concrete)
     # patched and stained asphalt across the open lot (each site adds its own stains in the stalls)
     patch = asphalt_mat("asphalt_patch", (0.075, 0.072, 0.07), (0.14, 0.135, 0.125), cracks=0.0, rough=0.75)
     seal = mat("crack_seal", (0.02, 0.02, 0.022), rough=0.4)
     rnd = random.Random(12)
     for i in range(9):
-        x, y = rnd.uniform(-34, 30), rnd.uniform(-44, -6)
+        x, y = rnd.uniform(-24, 30), rnd.uniform(-44, -6)
         w, d = rnd.uniform(1.2, 3.4), rnd.uniform(0.8, 2.2)
         box("asphalt_patch", (x, y, 0.0), (x + w, y + d, 0.004), patch)
         box("patch_seal", (x - 0.04, y - 0.04, 0.0), (x + w + 0.04, y + d + 0.04, 0.003), seal)
     for i in range(26):
-        stain((rnd.uniform(-34, 30), rnd.uniform(-44, -4)), rnd.uniform(0.5, 1.6), rnd)
-    for i, x in enumerate(range(-150, 160, 22)):
+        stain((rnd.uniform(-24, 30), rnd.uniform(-44, -4)), rnd.uniform(0.5, 1.6), rnd)
+    for i, x in enumerate(range(-18, 160, 22)):
         palm((x, -58.5, 0), h=13 + (i % 4) * 1.5, seed=30 + i, kind="fan")
 
 
@@ -1280,20 +1556,15 @@ def build_site3_front():
     box("walk3", (-16.5, -3.0, 0), (33.5, 0.0, 0.14), walk)
     box("walk3_kerb", (14.0, -3.12, 0), (33.5, -2.98, 0.14), kerb_paint())
     # planters along the front with palms and clipped shrubs
-    for x in (-27, -9, 9, 27):
+    for x in (-9, 9, 27):
         box("planter", (x - 2.2, -4.8, 0), (x + 2.2, -3.0, 0.55), concrete, bevel=0.04)
         box("planter_soil", (x - 2.05, -4.65, 0.5), (x + 2.05, -3.15, 0.53), mat("bark_mulch", (0.16, 0.1, 0.06), rough=0.95))
         for k, dx in enumerate((-1.4, 1.4)):
             shrub(x + dx, -3.9, 0.6, 0.8, seed=k + x * 3, z=0.5)
-    for i, x in enumerate((-27, -9, 9, 27, -44, 44)):
+    for i, x in enumerate((-22, -9, 9, 27, 44)):
         palm((x, -3.9 if abs(x) < 40 else 6, 0), h=9 + (i % 3) * 1.4, seed=i)
     light_pole(-22.5, -4.2, 8.0, ((0, -1),))
-    # street pylon sign
-    dark = mat("alu", (0.08, 0.08, 0.09), rough=0.35, metal=0.8)
-    box("pylon", (-33, -40, 0), (-31.2, -39.4, 9.5), dark)
-    box("pylon_face", (-33.4, -40.1, 6.4), (-30.8, -39.3, 9.3), mat("pylon_lit", (0.05, 0.07, 0.12), rough=0.3))
-    text("pylon_txt", "CHIEF\nAUTO", (-32.1, -40.15, 8.35), 0.95, mat("gold", (0.85, 0.62, 0.22)), extrude=0.03)
-    text("pylon_sub", "PRE-OWNED · SERVICE", (-32.1, -40.15, 6.6), 0.2, mat("white_lit", (1, 1, 1), emit=2.0), extrude=0.01)
+    pole_sign(19.0, -8.0, h=10.0, w=4.0, sh=3.2)
     # bunting along the showroom front between two poles, under the fascia and behind the parked cars (the game
     # draws the cars over the render, so nothing may stand between the lot camera and a stall)
     t0, t1 = flag_pole(-21.0, -4.4, 6.4), flag_pole(13.5, -4.4, 6.4)
@@ -1301,92 +1572,447 @@ def build_site3_front():
     bunting_line(t1, (16.5, -2.6, 6.6), sag=0.15)
 
 
-def build_harbour():
+# ---------------------------------------------------------------- the PCH site: road, ocean, planted hillside, villas
+# Laid out like the owner's reference photo of the real lot: the dealership sits on Pacific Coast Highway, the
+# highway runs along the west side of the lot and curves away north-west along the coast, the Pacific is beyond it on
+# the left of the lot views, and behind the lot a steep, densely planted hillside climbs to white Mediterranean villas.
+
+PCH_W = 15.0          # kerb to kerb: two lanes each way and a double yellow line
+PCH_WALK = 3.2        # sidewalk on each side
+
+
+def pch_points(step=4.0):
+    """Centre line of the highway, south to north: straight past the lot, then bending north-west with the coast."""
+    pts, p, bend = [], Vector((-37.0, -260.0, 0.0)), 0.0
+    while len(pts) * step < 1100:
+        if p.y > 5.0:
+            bend += step
+        head = math.radians(90 + 60 * min(1.0, bend / 300.0))
+        pts.append(p.copy())
+        p += Vector((math.cos(head), math.sin(head), 0)) * step
+    return pts
+
+
+def _road_frame(pts):
+    """Unit tangents and left normals (pointing west of a northbound driver) for a polyline."""
+    out = []
+    for i, p in enumerate(pts):
+        a, b = pts[max(0, i - 1)], pts[min(len(pts) - 1, i + 1)]
+        t = (b - a).normalized()
+        out.append((t, Vector((-t.y, t.x, 0))))
+    return out
+
+
+def road_ribbon(name, pts, frames, off0, off1, z, m, dash=None):
+    """A strip along the road between two offsets (metres to the left of the centre line); dash = (on, period)."""
+    vs, fs = [], []
+    run = 0.0
+    for i, (p, (t, n)) in enumerate(zip(pts, frames)):
+        vs += [p + n * off0 + Vector((0, 0, z)), p + n * off1 + Vector((0, 0, z))]
+        if i:
+            run += (p - pts[i - 1]).length
+            if dash is None or (run % dash[1]) < dash[0]:
+                k = len(vs) - 4
+                fs.append((k, k + 2, k + 3, k + 1) if off1 > off0 else (k, k + 1, k + 3, k + 2))
+    return mesh_obj(name, vs, fs, m)
+
+
+def _road_dist(px, py, pts):
+    """Signed distance (numpy arrays) from points to the road centre line: positive to the east (the lot's side)."""
+    import numpy as np
+    P = np.array([(p.x, p.y) for p in pts])
+    A, B = P[:-1], P[1:]
+    D = B - A
+    L2 = (D ** 2).sum(1)
+    best = np.full(px.shape, 1e9)
+    sign = np.ones(px.shape)
+    for k in range(0, len(A), 64):
+        a, d, l2 = A[k:k + 64], D[k:k + 64], L2[k:k + 64]
+        rx = px[..., None] - a[:, 0]
+        ry = py[..., None] - a[:, 1]
+        t = np.clip((rx * d[:, 0] + ry * d[:, 1]) / l2, 0, 1)
+        ex, ey = rx - t * d[:, 0], ry - t * d[:, 1]
+        dist = np.sqrt(ex * ex + ey * ey)
+        j = dist.argmin(-1)
+        dm = np.take_along_axis(dist, j[..., None], -1)[..., 0]
+        cr = d[j, 0] * np.take_along_axis(ry, j[..., None], -1)[..., 0] - d[j, 1] * np.take_along_axis(rx, j[..., None], -1)[..., 0]
+        upd = dm < best
+        best = np.where(upd, dm, best)
+        sign = np.where(upd, np.where(cr > 0, -1.0, 1.0), sign)
+    return best * sign
+
+
+HILL_FOOT_Y = 20.0     # the planted slope starts behind the dealership pad (a stone retaining wall at its foot)
+
+
+def terrain_height(x, y, sd):
+    """Ground height (numpy) from position and signed road distance: the hillside east of the highway, the bluff and
+    beach west of it. Flat (just under the paving) on the road and the lot."""
+    import numpy as np
+    half = PCH_W / 2 + PCH_WALK
+    # east: how far into the hill (from the pad's back edge and from the highway's east sidewalk)
+    q = np.minimum(y - HILL_FOOT_Y, sd - half - 6.0)
+    top = np.clip(4.5 + 0.05 * (x + 10.0), 3.0, 12.0) + 0.8 * np.sin(x * 0.045 + 1.0) + 0.5 * np.sin(x * 0.11)
+    # the hill ends a little west of the lot: beyond the bend the land is low and the ocean shows over it
+    fw = np.clip((x + 150.0) / 90.0, 0, 1)
+    top = top * fw * fw * (3 - 2 * fw)
+    t = np.clip(q / 30.0, 0, 1)
+    face = 1 - (1 - t) ** 2            # steep just behind the wall, easing toward the top
+    gul = 0.5 * np.sin(x * 0.21 + np.sin(y * 0.13) * 2) * np.sin(math.pi * t)
+    east = top * face + gul * fw + np.maximum(0, q - 30.0) * 0.04 * fw
+    east = np.where(q > 0, east + 1.3 * np.clip(q, 0, 1) * np.clip((x + 26.3) * 10, 0, 1), 0.0) - 0.06
+    # west: a low planted bank dropping to the sand, then the beach shelving into the sea
+    w = -sd - half
+    west = np.where(w < 8, -0.4 * np.clip(w / 8, 0, 1), -0.4 - 0.006 * (w - 8) - 0.0004 * np.maximum(0, w - 60) ** 2) - 0.06
+    return np.where(sd > 0, east, west)
+
+
+def pampas_image():
+    """Pampas grass plumes: cream feathery panicles on a few green blades (256 x 512, base at the bottom)."""
+    def draw(img, s):
+        from PIL import ImageDraw
+        d = ImageDraw.Draw(img)
+        rnd = random.Random(31)
+        W, H = img.size
+        for i in range(26):
+            bx = W * rnd.uniform(0.3, 0.7)
+            _leaf_poly(d, (bx, H), (bx + W * rnd.uniform(-0.45, 0.45), H * rnd.uniform(0.35, 0.6)), 3 * s,
+                       rnd.choice([(70, 96, 40), (90, 110, 50), (60, 80, 34)]) + (255,))
+        for i in range(7):
+            bx = W * rnd.uniform(0.35, 0.65)
+            tx, ty = bx + W * rnd.uniform(-0.2, 0.2), H * rnd.uniform(0.05, 0.15)
+            d.line([(bx, H), (tx, ty + H * 0.25)], fill=(150, 140, 100, 255), width=int(2 * s))
+            for k in range(140):
+                u = rnd.random()
+                cx = tx + (bx - tx) * 0.0 + rnd.gauss(0, W * 0.035) * (1 - abs(u - 0.4))
+                cy = ty + u * H * 0.32
+                ln = W * rnd.uniform(0.03, 0.07)
+                c = rnd.choice([(236, 226, 196), (224, 210, 176), (246, 240, 220), (210, 196, 160)]) + (255,)
+                d.line([(cx, cy), (cx + rnd.uniform(-ln, ln), cy + ln)], fill=c, width=int(2 * s))
+    return _pil_image("tex_pampas", draw, (256, 512), bg=(220, 210, 180))
+
+
+class Cards:
+    """Leaf cards for many plants gathered into a few meshes (one object per chunk, so per-object colour variation
+    still breaks them up) instead of one object per plant."""
+
+    def __init__(self, name, m, chunk=6000):
+        self.name, self.m, self.chunk = name, m, chunk
+        self.quads = []
+
+    def cluster(self, centre, rx, ry, rz, n, size, rnd, droop=0.0, upright=False):
+        c = Vector(centre)
+        for _ in range(n):
+            while True:
+                q = Vector((rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(-1, 1)))
+                if q.length <= 1:
+                    break
+            p = c + Vector((q.x * rx, q.y * ry, q.z * rz - droop * (q.x * q.x + q.y * q.y)))
+            nrm = (q + Vector((rnd.uniform(-0.6, 0.6), rnd.uniform(-0.6, 0.6), rnd.uniform(-0.3, 0.8)))).normalized()
+            a = nrm.cross(Vector((0, 0, 1)) if abs(nrm.z) < 0.9 else Vector((1, 0, 0))).normalized()
+            b = nrm.cross(a)
+            rot = rnd.uniform(0, math.tau)
+            a, b = a * math.cos(rot) + b * math.sin(rot), b * math.cos(rot) - a * math.sin(rot)
+            s = size * rnd.uniform(0.75, 1.25) / 2
+            self.quads.append(([p - a * s - b * s, p + a * s - b * s, p + a * s + b * s, p - a * s + b * s],
+                               [(0, 0), (1, 0), (1, 1), (0, 1)]))
+            if len(self.quads) >= self.chunk:
+                self.flush()
+
+    def upright(self, base, w, h, rnd, n=3):
+        """Crossed vertical cards standing on base (grasses, plumes), bottom of the texture at the ground."""
+        for k in range(n):
+            a = rnd.uniform(0, math.pi) + k * math.pi / n
+            d = Vector((math.cos(a), math.sin(a), 0)) * w / 2
+            p = Vector(base)
+            up = Vector((rnd.uniform(-0.1, 0.1) * h, rnd.uniform(-0.1, 0.1) * h, h))
+            self.quads.append(([p - d, p + d, p + d + up, p - d + up], [(0, 0), (1, 0), (1, 1), (0, 1)]))
+        if len(self.quads) >= self.chunk:
+            self.flush()
+
+    def flush(self):
+        if self.quads:
+            cards_obj(self.name, self.quads, self.m)
+            self.quads = []
+
+
+def villa(x, y, z, w, d, rnd, walls, tiles, face=-1):
+    """A white Mediterranean hillside villa facing the view (-y): stepped stucco blocks, deep balconies with white
+    rails and glass, tile hip roofs, a chimney, and a terrace wall below it."""
+    rail = mat("villa_rail", (0.96, 0.96, 0.94), rough=0.5)
+    glass_rail = mat("villa_glass", (0.5, 0.6, 0.65), rough=0.05, alpha=0.45)
+    wall = rnd.choice(walls)
+    floors = rnd.choice((2, 2, 3))
+    fh = 3.3
+    box("villa", (x, y, z - 3), (x + w, y + d, z + floors * fh), wall)
+    hip_roof("villa_roof", x, y, x + w, y + d, z + floors * fh, min(2.8, d * 0.28), tiles, over=0.7)
+    # a lower wing stepping down the slope in front
+    if rnd.random() < 0.7:
+        wx0 = x + rnd.uniform(-0.2, 0.4) * w
+        wx1 = min(x + w + 3, wx0 + w * rnd.uniform(0.5, 0.8))
+        box("villa_wing", (wx0, y - 5.5, z - 4), (wx1, y + 1, z + fh * (floors - 1)), rnd.choice(walls))
+        hip_roof("villa_roof", wx0, y - 5.5, wx1, y + 1, z + fh * (floors - 1), 1.8, tiles, over=0.6)
+    # balconies across the front on each upper floor
+    for f in range(1, floors):
+        zb = z + f * fh
+        bx0, bx1 = x + rnd.uniform(0, 0.25) * w, x + w - rnd.uniform(0, 0.25) * w
+        box("villa_balcony", (bx0, y - 1.6, zb - 0.25), (bx1, y, zb), rail)
+        box("villa_glassrail", (bx0, y - 1.6, zb), (bx1, y - 1.5, zb + 1.05), glass_rail)
+        box("villa_toprail", (bx0, y - 1.62, zb + 1.0), (bx1, y - 1.48, zb + 1.1), rail)
+    # big dark openings on the ground floor (the painted windows do the rest)
+    for k in range(int(w // 4)):
+        ox = x + 1 + k * 4
+        box("villa_door", (ox, y - 0.05, z), (ox + 2.2, y + 0.05, z + 2.6), mat("win_glass", (0.02, 0.03, 0.04), rough=0.05))
+    if rnd.random() < 0.6:
+        cx = x + rnd.uniform(0.2, 0.8) * w
+        box("villa_chimney", (cx, y + d * 0.5, z + floors * fh), (cx + 1.0, y + d * 0.5 + 1.0, z + floors * fh + 3.2), wall)
+    # terrace wall
+    box("villa_terrace", (x - 3, y - 8, z - 6), (x + w + 3, y - 7.6, z + 0.9), rnd.choice(walls))
+
+
+def build_coast():
+    """Pacific Coast Highway along the lot's west side, the ocean and beach beyond it, the planted hillside behind the
+    lot with villas on top, palms along the road, and a small row of beach-town shops down the highway."""
+    import numpy as np
+    rnd = random.Random(5)
+    pts = pch_points()
+    frames = _road_frame(pts)
+    # the sea: a wide ocean to the horizon, west of the coast
     m, nt, b = _node_mat("water")
     co = _coords(nt, scale=(1, 2.5, 1))
     ripple = _noise(nt, co, 1.6, 6.0, 0.6)
     swell = _noise(nt, co, 0.08, 3.0)
-    nt.links.new(_ramp(nt, swell.outputs["Fac"], ((0.3, (0.012, 0.05, 0.07)), (0.7, (0.03, 0.1, 0.13)))), b.inputs["Base Color"])
-    b.inputs["Roughness"].default_value = 0.06
+    nt.links.new(_ramp(nt, swell.outputs["Fac"], ((0.3, (0.0, 0.05, 0.12)), (0.7, (0.02, 0.1, 0.2)))), b.inputs["Base Color"])
+    b.inputs["Roughness"].default_value = 0.16
     _bump(nt, b, _math(nt, "ADD", ripple.outputs["Fac"], _math(nt, "MULTIPLY", swell.outputs["Fac"], 2.0)), 0.25, 0.1)
-    box("sea", (-2500, 30, -1.2), (2500, 1400, -0.6), m)
-    wood = noise_mat("deck", (0.35, 0.25, 0.17), (0.45, 0.33, 0.22), 30, 0.7, stretch=(1, 12, 1))
-    box("boardwalk", (-60, 25, -0.4), (60, 31, 0.02), wood)
-    railm = mat("rail", (0.75, 0.75, 0.76), rough=0.3, metal=1)
-    box("rail", (-60, 30.8, 0.9), (60, 30.9, 0.96), railm)
-    for x in range(-60, 61, 2):
-        box("post", (x - 0.03, 30.82, 0), (x + 0.03, 30.88, 0.95), railm)
-    piling = noise_mat("piling", (0.22, 0.17, 0.12), (0.34, 0.27, 0.2), 12, 0.85, stretch=(1, 1, 6))
-    cap = mat("piling_cap", (0.9, 0.9, 0.88), rough=0.5)
-    rnd = random.Random(5)
-    for dock_x in (-48, -20, 8, 36):
-        box("dock", (dock_x - 0.9, 31, -0.75), (dock_x + 0.9, 95, -0.45), wood)
-        for j in range(6):
-            yf = 32.5 + j * 11
-            for side in (-1, 1):
-                box("finger", (min(dock_x + side * 0.9, dock_x + side * 7.0), yf - 0.4, -0.72),
-                    (max(dock_x + side * 0.9, dock_x + side * 7.0), yf + 0.4, -0.5), wood)
-                px = dock_x + side * 7.0
-                cyl("piling", (px, yf, -0.3), 0.16, 2.2, piling, verts=10)
-                cyl("piling_cap", (px, yf, 0.82), 0.17, 0.04, cap, verts=10)
-        for j in range(5):
-            for side in (-1, 1):
-                if rnd.random() < 0.15:
-                    continue
-                y = 38 + j * 11 + rnd.uniform(-0.3, 0.3)
-                x = dock_x + side * rnd.uniform(4.0, 4.4)
-                boat(x, y, rnd.uniform(8.0, 9.8), "sail" if rnd.random() < 0.55 else "motor", rnd, bow=rnd.choice((1, -1)))
-        boat(dock_x, 102, rnd.uniform(14, 18), "motor", rnd, bow=1)
-    # a few boats on moorings out in the bay
-    for i in range(14):
-        boat(rnd.uniform(-400, 400), rnd.uniform(160, 700), rnd.uniform(8, 13), "sail" if i % 3 else "motor", rnd, bow=rnd.choice((1, -1)))
-    # Tewport's far shore: a waterfront town under a ridge of dry hills
-    me_v, me_f = [], []
-    nx, ny = 360, 36
-    for j in range(ny + 1):
-        for i in range(nx + 1):
-            x = -2600 + 5200 * i / nx
-            y = 1236 + 560 * j / ny
-            me_v.append((x, y, hill_height(x, y)))
-    for j in range(ny):
-        for i in range(nx):
-            a0 = j * (nx + 1) + i
-            me_f.append((a0, a0 + 1, a0 + nx + 2, a0 + nx + 1))
-    mesh_obj("ridge", me_v, me_f, hill_mat(), smooth=True)
-    box("shore", (-2600, 1130, -1.0), (2600, 1240, -0.2), noise_mat("shore", (0.55, 0.5, 0.4), (0.65, 0.6, 0.5), 0.5, 0.9))
-    box("seawall", (-2600, 1128, -1.2), (2600, 1131, 0.2), mat("seawall", (0.6, 0.58, 0.54), rough=0.85))
-    walls = [window_mat("town_%d" % i, c, shade=(0.55, 0.52, 0.45) if i % 2 else None, bay=rnd.uniform(2.4, 3.2))
-             for i, c in enumerate(((0.9, 0.86, 0.78), (0.82, 0.7, 0.56), (0.7, 0.78, 0.82), (0.95, 0.94, 0.9),
-                                    (0.78, 0.56, 0.44), (0.86, 0.82, 0.62), (0.62, 0.66, 0.6), (0.92, 0.9, 0.86)))]
-    tree = leaf_mat("tree_far", (0.05, 0.1, 0.035), (0.11, 0.17, 0.06), trans=0.0)
-    tiles = tile_mat()
-    x = -1100.0
-    while x < 1100:
-        w = rnd.uniform(8, 24)
-        y0 = 1134 + rnd.uniform(0, 6)
-        rows = 3 if abs(x) < 500 else 2
-        yy = y0
-        for r in range(rows):
-            d = rnd.uniform(8, 18)
-            hgt = rnd.choice((4.5, 7.5, 7.5, 10.5)) + (rnd.choice((0, 0, 6, 12)) if abs(x) < 260 and r == 1 else 0)
-            box("house", (x, yy, -0.3), (x + w, yy + d, hgt), rnd.choice(walls))
-            if rnd.random() < 0.45:
-                hip_roof("roof", x, yy, x + w, yy + d, hgt, min(3.5, d * 0.3), tiles, over=0.6)
-            yy += d + rnd.uniform(4, 14)
-        if rnd.random() < 0.6:
-            sphere("tree", (x + w + 2, y0 + rnd.uniform(2, 30), 4), (rnd.uniform(3, 5), rnd.uniform(3, 5), rnd.uniform(3.5, 5)), tree, seg=10)
-        x += w + rnd.uniform(1.5, 7)
-    # houses climbing the lower slopes
-    for i in range(160):
-        x, y = rnd.uniform(-900, 900), rnd.uniform(1250, 1420)
-        z = hill_height(x, y)
-        if z > 45:
+    box("sea", (-12000, -12000, -1.2), (12000, 12000, -0.7), m)
+    # terrain: one grid, hill material east of the highway, ice plant then sand west of it
+    xs = np.concatenate([np.linspace(-700, -150, 56, endpoint=False), np.linspace(-150, 220, 186, endpoint=False), np.linspace(220, 700, 41)])
+    ys = np.concatenate([np.linspace(-300, -20, 30, endpoint=False), np.linspace(-20, 200, 147, endpoint=False), np.linspace(200, 900, 71)])
+    X, Y = np.meshgrid(xs, ys)
+    SD = _road_dist(X, Y, pts)
+    Z = terrain_height(X, Y, SD)
+    nx, ny = len(xs), len(ys)
+    vs = [(float(X[j, i]), float(Y[j, i]), float(Z[j, i])) for j in range(ny) for i in range(nx)]
+    fs, idx = [], []
+    half = PCH_W / 2 + PCH_WALK
+    for j in range(ny - 1):
+        for i in range(nx - 1):
+            a0 = j * nx + i
+            fs.append((a0, a0 + 1, a0 + nx + 1, a0 + nx))
+            sd = SD[j, i]
+            idx.append(0 if sd > 0 else (1 if -sd - half < 7.5 else 2))
+    sand = noise_mat("sand", (0.74, 0.66, 0.5), (0.84, 0.77, 0.62), 2.0, 0.95, bump=0.1, macro=0.2)
+    ice = noise_mat("iceplant", (0.16, 0.26, 0.08), (0.36, 0.4, 0.14), 4.0, 0.7, bump=0.4, macro=0.4)
+    mesh_obj("terrain", vs, fs, [hill_mat(), ice, sand], smooth=True, mat_idx=idx)
+
+    def tz(x, y):
+        sd = _road_dist(np.array([x]), np.array([y]), pts)
+        return float(terrain_height(np.array([x]), np.array([y]), sd)[0]), float(sd[0])
+
+    # the highway: asphalt, double yellow centre line, dashed lane lines, kerbs and sidewalks
+    road = asphalt_mat("pch", (0.05, 0.05, 0.055), (0.1, 0.1, 0.105), cracks=0.15)
+    road_ribbon("pch", pts, frames, -PCH_W / 2, PCH_W / 2, 0.0, road)
+    yellow = mat("line_yellow", (0.85, 0.62, 0.08), rough=0.6)
+    white = mat("line_white", (0.88, 0.88, 0.85), rough=0.6)
+    for o in (-0.12, 0.12):
+        road_ribbon("pch_yellow", pts, frames, o - 0.06, o + 0.06, 0.006, yellow)
+    for o in (-3.7, 3.7):
+        road_ribbon("pch_lane", pts, frames, o - 0.06, o + 0.06, 0.006, white, dash=(3.0, 12.0))
+    for o in (-PCH_W / 2 + 0.3, PCH_W / 2 - 0.3):
+        road_ribbon("pch_edge", pts, frames, o - 0.07, o + 0.07, 0.006, white)
+    walk = noise_mat("walk_pch", (0.62, 0.6, 0.56), (0.72, 0.7, 0.66), 8, 0.75, bump=0.05)
+    red = kerb_paint()
+    for side in (1, -1):
+        # side 1 = east (the lot's side): offsets are measured to the left (west), so east is negative
+        e0 = -side * PCH_W / 2
+        e1 = -side * (PCH_W / 2 + PCH_WALK)
+        road_ribbon("pch_walk", pts, frames, min(e0, e1), max(e0, e1), 0.15, walk)
+        road_ribbon("pch_kerb", pts, frames, e0 - 0.22 if side == -1 else e0, e0 if side == -1 else e0 + 0.22, 0.152, red if side == 1 else walk)
+        # kerb face
+        vs, fs2 = [], []
+        for i, (p, (t, n)) in enumerate(zip(pts, frames)):
+            vs += [p + n * e0, p + n * e0 + Vector((0, 0, 0.15))]
+            if i:
+                k = len(vs) - 4
+                fs2.append((k, k + 2, k + 3, k + 1))
+        mesh_obj("pch_kerb_face", vs, fs2, red if side == 1 else walk)
+    # a white rail along the ocean side, palms both sides, cobra-head street lights on the lot side
+    rail = mat("rail_white", (0.92, 0.92, 0.9), rough=0.5)
+    vs, fs2 = [], []
+    for i, (p, (t, n)) in enumerate(zip(pts, frames)):
+        q = p + n * (PCH_W / 2 + PCH_WALK - 0.1)
+        vs += [q + Vector((0, 0, 0.75)), q + Vector((0, 0, 0.95))]
+        if i:
+            k = len(vs) - 4
+            fs2.append((k, k + 2, k + 3, k + 1))
+    mesh_obj("pch_rail", vs, fs2, rail)
+    run = 0.0
+    for i in range(1, len(pts)):
+        run += (pts[i] - pts[i - 1]).length
+        p, (t, n) = pts[i], frames[i]
+        if p.y < -120 or p.y > 520:
             continue
-        w, d = rnd.uniform(9, 16), rnd.uniform(8, 12)
-        box("hill_house", (x, y, z - 3), (x + w, y + d, z + 4.5), rnd.choice(walls))
-        hip_roof("roof", x, y, x + w, y + d, z + 4.5, 2.4, tiles, over=0.5)
-        if rnd.random() < 0.5:
-            sphere("tree", (x - 4, y + 4, z + 3), (4, 4, 4.5), tree, seg=10)
+        if i % 3 == 0:
+            q = p + n * (PCH_W / 2 + PCH_WALK - 0.4)
+            box("rail_post", (q.x - 0.06, q.y - 0.06, 0.1), (q.x + 0.06, q.y + 0.06, 0.95), rail)
+        if i % 4 == 0:
+            q = p + n * (PCH_W / 2 + 1.6)
+            palm((q.x, q.y, 0.15), rnd.uniform(14, 21), seed=400 + i, kind="fan", lod=p.y > 160)
+        if i % 4 == 2 and p.y > -10:
+            q = p - n * (PCH_W / 2 + 1.6)
+            if p.y > 30:
+                palm((q.x, q.y, 0.15), rnd.uniform(13, 19), seed=500 + i, kind="fan" if i % 3 else "queen", lod=p.y > 160)
+        if i % 10 == 5 and -60 < p.y < 260:
+            q = p - n * (PCH_W / 2 + 0.6)
+            cyl("cobra_pole", (q.x, q.y, 4.5), 0.09, 9.0, mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9), r2=0.06, verts=10)
+            arm = q + n * 2.4 + Vector((0, 0, 8.9))
+            tube("cobra_arm", [q + Vector((0, 0, 8.7)), q + n * 1.2 + Vector((0, 0, 9.1)), arm], 0.05,
+                 mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9), sides=6)
+            box("cobra_head", (arm.x - 0.35, arm.y - 0.35, arm.z - 0.15), (arm.x + 0.35, arm.y + 0.35, arm.z + 0.05),
+                mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9))
+    # a stone retaining wall at the foot of the slope, behind the dealership pad
+    stone = block_mat("retain", (0.55, 0.5, 0.42), (0.64, 0.58, 0.5), (0.46, 0.43, 0.38), (0.9, 0.45), split=0.5)
+    box("retaining_wall", (-26.3, HILL_FOOT_Y - 0.2, 0), (240, HILL_FOOT_Y + 0.35, 1.3), stone)
+    box("retaining_cap", (-26.3, HILL_FOOT_Y - 0.25, 1.3), (240, HILL_FOOT_Y + 0.4, 1.4), mat("wall_cap", (0.78, 0.76, 0.72), rough=0.7))
+    # the lot's chain-link fence along the highway sidewalk
+    chain_fence([(-26.0, -38.0), (-26.0, 28.0)], h=1.8)
+    # a lifeguard tower and a few boats out on the water
+    for y in (60.0, 210.0):
+        h, sd = tz(-80.0, y)
+        if sd < -half - 20:
+            lifeguard_tower(-80.0 - (y - 60) * 0.5, y, -1.6)
+    for i in range(7):
+        boat(rnd.uniform(-1600, -500), rnd.uniform(-200, 900), rnd.uniform(9, 16), "sail" if i % 3 else "motor", rnd, bow=rnd.choice((1, -1)))
+    # ---- the hillside: dense shrubs and trees, bougainvillea, agave, pampas grass, palms, villas along the top
+    leaf = Cards("hill_leaf", card_mat("leaf_shrub", foliage_image("shrub"), trans=0.3))
+    dark = Cards("hill_leaf_dark", card_mat("leaf_shrub_dark", foliage_image("shrub"), tint=(0.6, 0.72, 0.55), trans=0.25, vary=0.25))
+    bouga = Cards("hill_bouga", card_mat("leaf_bouga", foliage_image("bouga"), trans=0.3))
+    pampas = Cards("hill_pampas", card_mat("pampas", pampas_image(), trans=0.4, rough=0.8, vary=0.1))
+    core_v, core_f = [], []
+    walls = [window_mat("town_%d" % i, c, shade=(0.55, 0.52, 0.45) if i % 2 else None, bay=2.8) for i, c in enumerate(TOWN_COLOURS)]
+    tiles = tile_mat()
+    # sample the visible slope (x -140..160 behind the lot, y 30..200) densely, the rest sparsely
+    n_plants = 5200
+    PX = np.array([rnd.uniform(-170, 180) for _ in range(n_plants)])
+    PY = np.array([HILL_FOOT_Y + 1 + 60 * rnd.random() ** 1.2 for _ in range(n_plants)])
+    PSD = _road_dist(PX, PY, pts)
+    PZ = terrain_height(PX, PY, PSD)
+    for x, y, z, sd in zip(PX, PY, PZ, PSD):
+        if sd < half + 7 or z < 0.2:
+            continue
+        r = rnd.random()
+        dist = math.hypot(x + 15, y + 45)
+        fine = dist < 140
+        if r < 0.62:
+            rr = rnd.uniform(0.8, 1.7) * (1.0 if fine else 1.3)
+            hh = rr * rnd.uniform(0.8, 1.3)
+            sphere_v = (x, y, z + hh * 0.4)
+            # a dark core so the gaps between cards read as depth, not ground
+            k = len(core_v)
+            for a in range(6):
+                ang = a / 6 * math.tau
+                core_v.append((x + math.cos(ang) * rr * 0.7, y + math.sin(ang) * rr * 0.7, z))
+            core_v.append((x, y, z + hh * 0.85))
+            core_f.extend((k + a, k + (a + 1) % 6, k + 6) for a in range(6))
+            (dark if rnd.random() < 0.45 else leaf).cluster(sphere_v, rr, rr, hh * 0.5, int(30 + 22 * rr * hh) if fine else 26,
+                                                           max(0.7, rr * 0.75), rnd)
+        elif r < 0.74:
+            rr = rnd.uniform(0.9, 1.6)
+            bouga.cluster((x, y, z + rr * 0.5), rr, rr * 0.8, rr * 0.55, int(40 + 20 * rr) if fine else 24, max(0.6, rr * 0.6), rnd)
+        elif r < 0.82:
+            for k in range(rnd.randint(1, 3)):
+                pampas.upright((x + rnd.uniform(-1, 1), y + rnd.uniform(-1, 1), z - 0.1), rnd.uniform(1.6, 2.4), rnd.uniform(2.2, 3.2), rnd)
+        elif r < 0.9 and fine:
+            agave(x, y, rnd.uniform(0.6, 1.1), z - 0.05, seed=rnd.randrange(99999))
+        elif r < 0.97:
+            # a tree: a trunk and a big rounded canopy
+            th = rnd.uniform(2.0, 3.5)
+            cyl("tree_trunk", (x, y, z + th / 2), 0.18, th, bark_mat("bark_tree", (0.25, 0.2, 0.15), (0.38, 0.31, 0.24)), verts=6)
+            rr = rnd.uniform(1.6, 2.6)
+            dark.cluster((x, y, z + th + rr * 0.4), rr, rr, rr * 0.7, int(60 + 25 * rr) if fine else 40, max(0.9, rr * 0.5), rnd)
+        else:
+            palm((x, y, z - 0.1), rnd.uniform(6, 11), seed=rnd.randrange(99999), kind=rnd.choice(("queen", "fan", "date")), lod=not fine)
+    mesh_obj("hill_cores", core_v, core_f, mat("shrub_core", (0.03, 0.07, 0.02), rough=0.9))
+    # villas along the top of the slope and further up, with garden trees between them
+    x = -150.0
+    while x < 200:
+        w = rnd.uniform(14, 24)
+        y = HILL_FOOT_Y + 32 + rnd.uniform(-2, 8)
+        h, sd = tz(x + w / 2, y)
+        if sd > half + 20 and h > 2.5:
+            villa(x, y, h, w, rnd.uniform(11, 15), rnd, walls, tiles)
+            for k in range(rnd.randint(1, 3)):
+                tx = x + rnd.uniform(-4, w + 4)
+                dark.cluster((tx, y - rnd.uniform(4, 9), h + rnd.uniform(1, 3)), rnd.uniform(2, 3.5), 2.5, 2.2, 70, 1.2, rnd)
+            if rnd.random() < 0.5:
+                palm((x + w + 2, y - 2, h), rnd.uniform(10, 16), seed=rnd.randrange(9999), kind="fan", lod=True)
+        x += w + rnd.uniform(3, 9)
+    for i in range(220):
+        x, y = rnd.uniform(-120, 500), rnd.uniform(HILL_FOOT_Y + 70, 400)
+        h, sd = tz(x, y)
+        if sd < half + 25 or h < 2.5:
+            continue
+        villa(x, y, h, rnd.uniform(12, 22), rnd.uniform(10, 14), rnd, walls, tiles)
+        dark.cluster((x - 4, y - 4, h + 2), 3.5, 3.5, 3.0, 40, 1.6, rnd)
+    for c in (leaf, dark, bouga, pampas):
+        c.flush()
+    build_beach_shops(pts, frames, rnd)
+
+
+def build_beach_shops(pts, frames, rnd):
+    """A small row of beach-town shops on the lot's side of the highway, down the road where it bends: white stucco,
+    a tile pent roof, a surf shop with boards out front and a cafe with umbrellas."""
+    # find the road point at y ~ 70 and build along the east sidewalk there
+    i = min(range(len(pts)), key=lambda k: abs(pts[k].y - 72))
+    p, (t, n) = pts[i], frames[i]
+    east = -n
+    origin = p + east * (PCH_W / 2 + PCH_WALK + 0.4)
+    yaw = math.atan2(t.y, t.x)
+    stucco = noise_mat("stucco_shop", (0.93, 0.92, 0.88), (0.97, 0.96, 0.93), 30, 0.85, bump=0.15)
+    tiles = tile_mat()
+    glass_m = mat("win_glass", (0.02, 0.03, 0.04), rough=0.05)
+    L, D, H = 26.0, 12.0, 5.2
+
+    def w2(u, v, z=0.0):
+        """Shop-local (u along the road, v away from it) to world."""
+        q = origin + t * u + east * v
+        return Vector((q.x, q.y, z))
+
+    def lbox(name, u0, v0, z0, u1, v1, z1, m):
+        corners = [w2(u0, v0), w2(u1, v0), w2(u1, v1), w2(u0, v1)]
+        vs = [Vector((c.x, c.y, z0)) for c in corners] + [Vector((c.x, c.y, z1)) for c in corners]
+        fs = [(0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)]
+        return mesh_obj(name, vs, fs, m)
+
+    lbox("shop_body", -L / 2, 0.8, 0, L / 2, 0.8 + D, H, stucco)
+    c = [w2(-L / 2 - 0.4, 0.4, H), w2(L / 2 + 0.4, 0.4, H), w2(L / 2 + 0.4, 1.2 + D, H), w2(-L / 2 + -0.4, 1.2 + D, H)]
+    r0, r1 = w2(-L / 2 + D / 2, 0.8 + D / 2, H + 2.4), w2(L / 2 - D / 2, 0.8 + D / 2, H + 2.4)
+    mesh_obj("shop_roof", c + [r0, r1], [(0, 1, 5, 4), (1, 2, 5), (2, 3, 4, 5), (3, 0, 4)], tiles)
+    for k in range(4):
+        u0 = -L / 2 + 1.2 + k * (L / 4)
+        lbox("shop_window", u0, 0.75, 0.5, u0 + L / 4 - 2.4, 0.8, 3.0, glass_m)
+        # round-arched tops read as a dark lunette over each window
+        lbox("shop_arch", u0 + 0.6, 0.76, 3.0, u0 + L / 4 - 3.0, 0.8, 3.5, glass_m)
+    # tile pent roof over the shopfronts and a parapet with signs
+    vs = [w2(-L / 2 - 0.3, -0.6, 3.7), w2(L / 2 + 0.3, -0.6, 3.7), w2(L / 2 + 0.3, 0.8, 4.4), w2(-L / 2 - 0.3, 0.8, 4.4)]
+    mesh_obj("shop_pent", vs, [(0, 1, 2, 3)], tiles)
+    blue = mat("surf_blue", (0.05, 0.3, 0.55), rough=0.5)
+    signm = mat("white_lit", (1, 1, 1), emit=2.0)
+    for u, label, col in ((-L / 4, "TEWPORT SURF CO.", (0.05, 0.3, 0.55)), (L / 4, "BEACH CAFE", (0.75, 0.2, 0.1))):
+        pos = w2(u, 0.7, 4.75)
+        text("shop_sign", label, (pos.x, pos.y, pos.z), 0.55, mat("sign_" + label[:4], col, rough=0.4), rot=(math.pi / 2, 0, yaw), extrude=0.03)
+    # surfboards leaning by the surf shop door, umbrellas and tables by the cafe
+    for k in range(5):
+        q = w2(-L / 2 + 2 + k * 0.7, 0.5)
+        col = [(0.95, 0.85, 0.2), (0.1, 0.55, 0.75), (0.95, 0.95, 0.92), (0.9, 0.35, 0.2), (0.2, 0.7, 0.5)][k]
+        cyl("surfboard", (q.x, q.y, 1.15), 0.28, 2.3, mat("board%d" % k, col, rough=0.3), r2=0.12, verts=10, rot=(0.12, 0, yaw))
+    for k in range(3):
+        q = w2(L / 4 - 4 + k * 4, -1.8)
+        cyl("umbrella_pole", (q.x, q.y, 1.2), 0.03, 2.4, mat("cast_iron", (0.02, 0.025, 0.03), rough=0.4, metal=0.6), verts=6)
+        cyl("umbrella", (q.x, q.y, 2.5), 1.4, 0.45, mat("umbrella", (0.95, 0.94, 0.9), rough=0.6), r2=0.05, verts=12)
+        cyl("cafe_table", (q.x, q.y, 0.72), 0.4, 0.04, mat("cast_iron", (0.02, 0.025, 0.03), rough=0.4, metal=0.6), verts=12)
+    _ = blue, signm
 
 
 def build_dealership():
@@ -1529,6 +2155,21 @@ def build_apartment_shell(white, dark, wood):
     gr = box("balcony_glass", (AX0, AY1 + 3.4, AZ0), (AX1, AY1 + 3.45, AZ0 + 1.05), glass())
     gr.visible_shadow = False
     box("balcony_rail", (AX0, AY1 + 3.38, AZ0 + 1.05), (AX1, AY1 + 3.48, AZ0 + 1.1), railm)
+
+
+def pole_sign(x, y, h=8.5, w=3.4, sh=2.8):
+    """The tall roadside pole sign from the reference photo: a dark steel post and a lit white box sign facing the
+    street, CHIEF AUTO in red with TEWPORT BEACH under it, and a lamp on top."""
+    steel = mat("alu", (0.08, 0.08, 0.09), rough=0.35, metal=0.8)
+    box("pole_sign_post", (x - 0.2, y - 0.2, 0), (x + 0.2, y + 0.2, h - sh), steel)
+    box("pole_sign_box", (x - w / 2 - 0.12, y - 0.32, h - sh - 0.1), (x + w / 2 + 0.12, y + 0.32, h + 0.1), steel)
+    box("pole_sign_face", (x - w / 2, y - 0.34, h - sh), (x + w / 2, y - 0.32, h),
+        mat("sign_face_lit", (0.95, 0.94, 0.9), rough=0.4, emit=0.5, ecol=(1.0, 0.97, 0.9)))
+    red = mat("sign_red", (0.75, 0.08, 0.06), rough=0.4)
+    text("pole_sign_txt", "CHIEF\nAUTO", (x, y - 0.36, h - sh * 0.36), w * 0.27, red, extrude=0.02)
+    text("pole_sign_sub", "TEWPORT BEACH", (x, y - 0.36, h - sh + 0.22), w * 0.075, mat("sign_dark", (0.1, 0.1, 0.12)), extrude=0.01)
+    box("pole_sign_lamp", (x - 0.15, y - 0.5, h + 0.1), (x + 0.15, y - 0.2, h + 0.3), steel)
+    sphere("pole_sign_bulb", (x, y - 0.55, h + 0.15), (0.12, 0.12, 0.08), mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68)), seg=8)
 
 
 def chain_fence(pts, h=1.8):
@@ -1761,7 +2402,7 @@ def build_site1():
         box("block_wall", (a, -2.4, 0), (b, -2.1, 1.74), block)
         box("block_wall_cap", (a - 0.04, -2.44, 1.74), (b + 0.04, -2.06, 1.8), cap)
     box("o_kerb", (-12.6, -2.45, 0), (-1.4, -2.2, 0.15), kerb_paint())
-    stucco = noise_mat("stucco1", (0.86, 0.82, 0.74), (0.92, 0.88, 0.8), 30, 0.85, bump=0.15)
+    stucco = noise_mat("stucco1", (0.3, 0.31, 0.32), (0.36, 0.37, 0.38), 30, 0.6, bump=0.08)    # dark grey panel walls
     trim = mat("trim1", (0.12, 0.13, 0.15), rough=0.5)
     navy = mat("fascia1", (0.05, 0.08, 0.16), rough=0.45)
     gold = mat("gold", (0.85, 0.62, 0.22), rough=0.25, metal=1.0, emit=0.6, ecol=(1.0, 0.7, 0.3))
@@ -1770,37 +2411,29 @@ def build_site1():
     box("o_west", (OX0, OY0, 0), (OX0 + 0.2, OY1, OH), stucco)
     box("o_east", (OX1 - 0.2, OY0, 0), (OX1, OY1, OH), stucco)
     box("o_back", (OX0, OY1 - 0.2, 0), (OX1, OY1, OH), stucco)
-    box("o_roof", (OX0 - 0.3, OY0 - 0.3, OH), (OX1 + 0.3, OY1 + 0.3, OH + 0.3), stucco)
+    lining = mat("o_plaster", (0.86, 0.82, 0.74), rough=0.85)
+    box("o_lining_w", (OX0 + 0.2, OY0 + 0.2, 0), (OX0 + 0.21, OY1 - 0.2, OH), lining)
+    box("o_lining_e", (OX1 - 0.21, OY0 + 0.2, 0), (OX1 - 0.2, OY1 - 0.2, OH), lining)
+    box("o_lining_b", (OX0 + 0.2, OY1 - 0.21, 0), (OX1 - 0.2, OY1 - 0.2, OH), lining)
     box("o_ceiling", (OX0, OY0, OH - 0.6), (OX1, OY1, OH - 0.55), mat("ceiling_tile", (0.85, 0.84, 0.8), rough=0.9))
-    # storefront: window, glass door, window
-    holes = [(-11.2, -7.6, 0.8, 2.6), (-6.4, -5.2, TZ, 2.4), (-4.4, -2.8, 0.8, 2.6)]
-    xs = [OX0] + [v for h in holes for v in h[:2]] + [OX1]
-    for i in range(0, len(xs), 2):
-        box("o_front", (xs[i], OY0, 0), (xs[i + 1], OY0 + 0.2, OH), stucco)
-    for hx0, hx1, z0, z1 in holes:
-        if z0 > TZ:
-            box("o_front_low", (hx0, OY0, 0), (hx1, OY0 + 0.2, z0), stucco)
-        box("o_front_high", (hx0, OY0, z1), (hx1, OY0 + 0.2, OH), stucco)
-        g = box("o_glass", (hx0, OY0 + 0.09, z0), (hx1, OY0 + 0.11, z1), glass())
-        g.visible_shadow = False
-        for z in (z0, z1):
-            box("o_frame", (hx0, OY0 - 0.02, z - 0.04), (hx1, OY0 + 0.22, z + 0.04), trim)
-        for x in (hx0, hx1):
-            box("o_frame", (x - 0.04, OY0 - 0.02, z0), (x + 0.04, OY0 + 0.22, z1), trim)
+    # a low glass pavilion like the reference photo: floor-to-ceiling glass in dark mullions across the front and
+    # down the east side, under a flat dark standing-seam metal roof with a deep overhang
+    dark_frame = mat("alu", (0.08, 0.08, 0.09), rough=0.35, metal=0.8)
+    glass_wall("o_front_w", (OX0 + 0.2, OY0 + 0.1), (-6.4, OY0 + 0.1), TZ, OH - 0.6, every=1.6, frame=dark_frame)
+    glass_wall("o_front_e", (-5.2, OY0 + 0.1), (OX1 - 0.2, OY0 + 0.1), TZ, OH - 0.6, every=1.6, frame=dark_frame)
+    box("o_door", (-6.4, OY0 + 0.06, TZ), (-5.2, OY0 + 0.14, 2.5), dark_frame)
+    g = box("o_door_glass", (-6.3, OY0 + 0.04, TZ + 0.1), (-5.3, OY0 + 0.16, 2.4), glass())
+    g.visible_shadow = False
+    box("o_transom", (-6.4, OY0 + 0.04, 2.5), (-5.2, OY0 + 0.16, OH - 0.6), dark_frame)
+    box("o_header", (OX0, OY0, OH - 0.6), (OX1, OY0 + 0.2, OH), dark_frame)
     box("o_door_bar", (-6.3, OY0 - 0.06, 1.0), (-5.3, OY0 - 0.02, 1.05), mat("chrome", (0.8, 0.8, 0.82), rough=0.15, metal=1.0))
-    # ledgestone wainscot along the front and round the corners
-    ledge = block_mat("ledgestone", (0.5, 0.44, 0.36), (0.62, 0.56, 0.46), (0.38, 0.35, 0.3), (0.55, 0.12), split=1.0)
-    for hx0, hx1, z0, z1 in [(OX0 - 0.06, -11.2, 0, 0.8), (-7.6, -6.4, 0, 0.8), (-5.2, -4.4, 0, 0.8), (-2.8, OX1 + 0.06, 0, 0.8)]:
-        box("o_stone", (hx0, OY0 - 0.08, 0), (hx1, OY0, z1), ledge)
-    for hx0, hx1 in ((-11.2, -7.6), (-4.4, -2.8)):
-        box("o_stone", (hx0, OY0 - 0.08, 0), (hx1, OY0, 0.8), ledge)
-    for xs in (OX0 - 0.08, OX1):
-        box("o_stone_side", (xs, OY0 - 0.08, 0), (xs + 0.08, OY1, 0.8), ledge)
-    # the big sign on the fascia
-    box("o_fascia", (OX0 - 0.4, OY0 - 0.45, 2.85), (OX1 + 0.4, OY0 - 0.15, OH + 0.35), navy)
-    text("o_sign", "CHIEF AUTO", ((OX0 + OX1) / 2, OY0 - 0.5, 3.45), 0.78, gold)
-    text("o_sign_sub", "USED CARS", ((OX0 + OX1) / 2, OY0 - 0.5, 3.05), 0.3, mat("white_lit", (1, 1, 1), emit=2.0))
-    box("o_awning", (OX0 - 0.4, OY0 - 1.3, 2.7), (OX1 + 0.4, OY0 - 0.15, 2.85), navy)
+    seam = stripe_mat("seam_roof", (0.1, 0.11, 0.12), (0.15, 0.16, 0.17), 0.22, rough=0.4)
+    box("o_roof_metal", (OX0 - 1.4, OY0 - 1.6, OH), (OX1 + 1.4, OY1 + 0.8, OH + 0.25), seam)
+    box("o_roof_fascia", (OX0 - 1.45, OY0 - 1.65, OH - 0.05), (OX1 + 1.45, OY0 - 1.55, OH + 0.3), dark_frame)
+    text("o_sign", "CHIEF AUTO", ((OX0 + OX1) / 2, OY0 - 1.68, OH + 0.02), 0.22, gold, extrude=0.01)
+    for x in (-10.5, -7.0, -3.5):
+        cyl("o_soffit_light", (x, OY0 - 0.8, OH - 0.02), 0.12, 0.03, mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68)), verts=12)
+    box("o_curb_slab", (OX0 - 1.4, OY0 - 1.6, 0), (OX1 + 1.4, OY0, 0.1), noise_mat("walk1", (0.55, 0.53, 0.5), (0.65, 0.63, 0.6), 8, 0.8))
     # inside: carpet, a desk facing the windows, PC, filing cabinet, whiteboard with goals, poster, plant
     carpet = noise_mat("carpet", (0.3, 0.26, 0.22), (0.37, 0.32, 0.26), 220, 0.95, bump=0.3)
     box("o_carpet", (OX0 + 0.2, OY0 + 0.2, TZ), (OX1 - 0.2, OY1 - 0.2, TZ + 0.01), carpet)
@@ -1831,7 +2464,7 @@ def build_site1():
     # bunting strung between poles at the ends of the block wall and the office roof, all behind the stalls (the
     # game draws the parked cars over the render, so nothing may stand between the lot camera and a stall)
     top = [flag_pole(x, y, h) for x, y, h in ((-21.6, -1.9, 7.2), (5.5, -1.9, 7.2))]
-    roof_w, roof_e = Vector((OX0 - 0.3, OY0 - 0.3, OH + 0.3)), Vector((OX1 + 0.3, OY0 - 0.3, OH + 0.3))
+    roof_w, roof_e = Vector((OX0 - 1.45, OY0 - 1.65, OH + 0.28)), Vector((OX1 + 1.45, OY0 - 1.65, OH + 0.28))
     bunting_line(top[0], roof_w, sag=0.6)
     bunting_line(roof_e, top[1], sag=0.6)
     bunting_line(top[0], top[1], sag=1.3)
@@ -1843,13 +2476,7 @@ def build_site1():
     palm((19.5, -2.0, 0), h=9.0, seed=92, kind="fan")
     for x in (-20.6, -19.2, -21.2):
         shrub(x, -1.2 + (x + 20) * 0.6, 0.7, 0.9)
-    # the neighbours: a taqueria and a laundromat to the west, an insurance office and a dentist behind the carport
-    shop_block(-40.0, -23.0, -2.0, 18.0, 2, SHOP_COLOURS[1], ((0.45, "TACOS", (0.95, 0.85, 0.3), ((0.7, 0.1, 0.06), (0.95, 0.9, 0.8))),
-                                                            (0.55, "LAUNDROMAT", (0.08, 0.2, 0.5), None)), sides=("e",), seed=11,
-               side_sign=("TACOS  BURRITOS", (0.95, 0.85, 0.3), (0.6, 0.08, 0.05)))
-    shop_block(1.0, 21.0, 9.0, 12.0, 2, SHOP_COLOURS[2], ((0.55, "TEWPORT INSURANCE", (0.08, 0.1, 0.16), None),
-                                                        (0.45, "DENTAL", (0.95, 0.95, 0.92), ((0.1, 0.3, 0.2), (0.85, 0.85, 0.8)))),
-               sides=("w",), seed=12)
+    pole_sign(1.6, -4.2)
     power_line(-110, 110, -57.0)
     # carport for repairs on the east side
     galv = mat("galv", (0.6, 0.62, 0.63), rough=0.4, metal=0.9)
@@ -1888,14 +2515,7 @@ def build_site2():
     palm((15, -3.5, 0), h=10.0, seed=72)
     palm((-21.5, 1.0, 0), h=12.0, seed=73, kind="fan")
     light_pole(-17.0, -3.2, 7.5, ((0, -1),))
-    shop_block(-36.0, -17.0, 2.0, 15.0, 1, SHOP_COLOURS[0], ((0.5, "SURF SHOP", (0.05, 0.25, 0.45), ((0.05, 0.25, 0.45), (0.92, 0.92, 0.88))),
-                                                           (0.5, "DONUTS", (0.75, 0.1, 0.3), ((0.85, 0.35, 0.45), (0.95, 0.9, 0.85)))),
-               sides=("e",), seed=21, side_sign=("SURF  SKATE", (0.95, 0.95, 0.92), (0.05, 0.25, 0.45)))
-    shop_block(16.0, 34.0, 3.0, 14.0, 2, SHOP_COLOURS[4], ((1.0, "TIRES  BRAKES  SMOG", (0.95, 0.85, 0.3), None),), sides=("w",), seed=22)
-    # small pylon
-    box("pylon2", (-24, -28, 0), (-23.6, -27.6, 5.0), dark)
-    box("pylon2_face", (-25.4, -28.1, 3.4), (-22.2, -27.5, 5.0), mat("pylon2_face", (0.95, 0.95, 0.93), rough=0.4))
-    text("pylon2_txt", "CHIEF AUTO", (-23.8, -28.15, 4.05), 0.45, mat("sign_red", (0.75, 0.08, 0.06)), extrude=0.01)
+    pole_sign(16.5, -6.0, h=9.0)
     power_line(-110, 110, -57.0)
     # bunting along the roofline, behind the parked cars
     t0, t1 = flag_pole(-12.2, -1.6, 6.8), flag_pole(14.6, -1.6, 6.8)
@@ -2132,6 +2752,7 @@ def setup_render():
     sc.cycles.use_denoising = True
     sc.cycles.max_bounces = 6
     sc.cycles.transmission_bounces = 6
+    sc.cycles.transparent_max_bounces = 16
     sc.cycles.caustics_reflective = False
     sc.cycles.caustics_refractive = False
     sc.render.resolution_x, sc.render.resolution_y = RES
@@ -2198,7 +2819,7 @@ def build():
     bpy.ops.wm.read_factory_settings(use_empty=True)
     build_world()
     build_ground()
-    build_harbour()
+    build_coast()
     global COL
     COL = tier_collection("s3")
     build_site3_front()

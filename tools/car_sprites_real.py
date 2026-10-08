@@ -30,6 +30,10 @@ SUN = float(os.environ.get("SUN", 14.0))   # no sun disc in the sky: the lamp ca
 PAINT = float(os.environ.get("PAINT", 0.75))
 GROUND = float(os.environ.get("GROUND", 0.12))     # floor colour for the light it bounces under the car
 EXPOSURE = float(os.environ.get("EXPOSURE", 0.6))
+# The sun: 50 degrees up, behind the three-quarter camera and to its left (140 degrees round from the view direction),
+# so the faces the camera sees are in sunlight and the shadow falls back and to the right. tools/dealership3d.py
+# turns its sun the same way relative to the lot cameras (SUN_EL / SUN_AZ there), so parked sprites match the renders.
+SUN_EL, SUN_AZ = 50.0, -178.0
 
 # slug: source file, real length in metres, paint materials (regex), badge/plate materials (regex),
 # drop_mat: objects using these materials are removed (shadow planes), front: which way the car faces along its long axis after import (+1 / -1)
@@ -85,8 +89,8 @@ def setup():
     w.use_nodes = True
     sky = w.node_tree.nodes.new("ShaderNodeTexSky")
     sky.sky_type = "MULTIPLE_SCATTERING"
-    sky.sun_elevation = math.radians(50)
-    sky.sun_rotation = math.radians(-140)
+    sky.sun_elevation = math.radians(SUN_EL)
+    sky.sun_rotation = math.radians(SUN_AZ)
     # the sun lamp does the sun; a sun disc in the sky texture as well turns every rough black part (tyres, trim)
     # into a grey reflection of it
     sky.sun_disc = False
@@ -115,7 +119,7 @@ def setup():
     sun.energy = SUN
     sun.angle = math.radians(6)
     so = bpy.data.objects.new("sun", sun)
-    el, az = math.radians(50), math.radians(-140)
+    el, az = math.radians(SUN_EL), math.radians(SUN_AZ)
     d = Vector((math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el)))
     so.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
     sc.collection.objects.link(so)
