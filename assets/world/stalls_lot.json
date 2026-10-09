@@ -1,8 +1,8 @@
 {
  "view": "lot",
  "image": [
-  1600,
-  900
+  2560,
+  1440
  ],
  "about": "Stalls in fill order. Coordinates are fractions of the image (u right, v down). target is where the middle of a sprite frame goes for the reference car (its centre at 0.42 of its height); frame_w is that car's 640x360 sprite frame width as a fraction of the image width; ppm is image widths per metre there; fwd and up are image offsets per metre along the car's heading and straight up. For another car: move target by fwd * (L - ref L) / 2 (its tail stays at the wheel stop) and by up * 0.42 * (H - ref H), and use frame_w = ppm * hypot(1.7 L, 1.15) * 36 / 50. order is the draw order.",
  "ref_car": {
@@ -138,7 +138,7 @@
     -0.0641
    ],
    "ppm": 0.036387,
-   "px_per_m": 58.219,
+   "px_per_m": 93.151,
    "frame_w": 0.21148,
    "depth": 38.17,
    "order": 9
@@ -172,7 +172,7 @@
     -0.06292
    ],
    "ppm": 0.035706,
-   "px_per_m": 57.129,
+   "px_per_m": 91.406,
    "frame_w": 0.20752,
    "depth": 38.898,
    "order": 8
@@ -206,7 +206,7 @@
     -0.06179
    ],
    "ppm": 0.03506,
-   "px_per_m": 56.096,
+   "px_per_m": 89.754,
    "frame_w": 0.20377,
    "depth": 39.615,
    "order": 7
@@ -240,7 +240,7 @@
     -0.06071
    ],
    "ppm": 0.034444,
-   "px_per_m": 55.111,
+   "px_per_m": 88.177,
    "frame_w": 0.20019,
    "depth": 40.323,
    "order": 6
@@ -274,7 +274,7 @@
     -0.05969
    ],
    "ppm": 0.033854,
-   "px_per_m": 54.166,
+   "px_per_m": 86.666,
    "frame_w": 0.19676,
    "depth": 41.026,
    "order": 5
@@ -308,7 +308,7 @@
     -0.04907
    ],
    "ppm": 0.027782,
-   "px_per_m": 44.451,
+   "px_per_m": 71.121,
    "frame_w": 0.16147,
    "depth": 49.993,
    "order": 4
@@ -342,7 +342,7 @@
     -0.04835
    ],
    "ppm": 0.027363,
-   "px_per_m": 43.781,
+   "px_per_m": 70.05,
    "frame_w": 0.15904,
    "depth": 50.758,
    "order": 3
@@ -376,7 +376,7 @@
     -0.04765
    ],
    "ppm": 0.026966,
-   "px_per_m": 43.145,
+   "px_per_m": 69.032,
    "frame_w": 0.15673,
    "depth": 51.506,
    "order": 2
@@ -410,7 +410,7 @@
     -0.04698
    ],
    "ppm": 0.026586,
-   "px_per_m": 42.538,
+   "px_per_m": 68.061,
    "frame_w": 0.15452,
    "depth": 52.241,
    "order": 1
@@ -444,7 +444,7 @@
     -0.04634
    ],
    "ppm": 0.026222,
-   "px_per_m": 41.955,
+   "px_per_m": 67.128,
    "frame_w": 0.1524,
    "depth": 52.966,
    "order": 0

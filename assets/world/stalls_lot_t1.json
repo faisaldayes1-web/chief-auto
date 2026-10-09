@@ -1,8 +1,8 @@
 {
  "view": "lot_t1",
  "image": [
-  1600,
-  900
+  2560,
+  1440
  ],
  "about": "Stalls in fill order. Coordinates are fractions of the image (u right, v down). target is where the middle of a sprite frame goes for the reference car (its centre at 0.42 of its height); frame_w is that car's 640x360 sprite frame width as a fraction of the image width; ppm is image widths per metre there; fwd and up are image offsets per metre along the car's heading and straight up. For another car: move target by fwd * (L - ref L) / 2 (its tail stays at the wheel stop) and by up * 0.42 * (H - ref H), and use frame_w = ppm * hypot(1.7 L, 1.15) * 36 / 50. order is the draw order.",
  "ref_car": {
@@ -138,7 +138,7 @@
     -0.08821
    ],
    "ppm": 0.05001,
-   "px_per_m": 80.016,
+   "px_per_m": 128.025,
    "frame_w": 0.29066,
    "depth": 27.772,
    "order": 6
@@ -172,7 +172,7 @@
     -0.08863
    ],
    "ppm": 0.05025,
-   "px_per_m": 80.4,
+   "px_per_m": 128.64,
    "frame_w": 0.29206,
    "depth": 27.64,
    "order": 5
@@ -206,7 +206,7 @@
     -0.0889
    ],
    "ppm": 0.05041,
-   "px_per_m": 80.656,
+   "px_per_m": 129.049,
    "frame_w": 0.29299,
    "depth": 27.552,
    "order": 4
@@ -240,7 +240,7 @@
     -0.06401
    ],
    "ppm": 0.036188,
-   "px_per_m": 57.9,
+   "px_per_m": 92.64,
    "frame_w": 0.21033,
    "depth": 38.38,
    "order": 3
@@ -274,7 +274,7 @@
     -0.0642
    ],
    "ppm": 0.036294,
-   "px_per_m": 58.071,
+   "px_per_m": 92.913,
    "frame_w": 0.21094,
    "depth": 38.268,
    "order": 2
@@ -308,7 +308,7 @@
     -0.06433
    ],
    "ppm": 0.036374,
-   "px_per_m": 58.198,
+   "px_per_m": 93.116,
    "frame_w": 0.21141,
    "depth": 38.184,
    "order": 1
@@ -342,7 +342,7 @@
     -0.06444
    ],
    "ppm": 0.036431,
-   "px_per_m": 58.29,
+   "px_per_m": 93.263,
    "frame_w": 0.21174,
    "depth": 38.124,
    "order": 0
