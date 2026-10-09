@@ -297,10 +297,10 @@ func _draw_desk() -> void:
 	var chair: String = Game.equipped.get("chair", "plastic")
 	var ctex := _deskview("chair_" + chair)
 	if ctex != null:
-		# just its top peeking in at the corner, clear of the front-left collectible slot
-		var ch := h * (0.36 if desk_view else 0.3)
+		# its back in the corner, partly behind the bottom bar
+		var ch := h * (0.4 if desk_view else 0.32)
 		var cw := ch * ctex.get_width() / ctex.get_height()
-		draw_texture_rect(ctex, Rect2(-cw * 0.42, h - ch * 0.5, cw, ch), false)
+		draw_texture_rect(ctex, Rect2(-cw * 0.22, h - ch * 0.8, cw, ch), false)
 		return
 	var ccol: Color = {"plastic": Color("d9d9d9"), "office": Color("2c3e50"), "leather": Color("5a321f"), "racing": Color("111111")}[chair]
 	var cx := w * 0.035
