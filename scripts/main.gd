@@ -26,9 +26,11 @@ var hud_lobby: Label
 var hud_rent: Label
 
 # Auction
-var auction: Dictionary = {}
-var auction_timer := 0.0
-var rival_timer := 0.0
+var auction_page := "lane"      # AutoBidz sub-page: lane, mybids, watch
+var auction_detail: Dictionary = {}   # listing open on its detail page
+var live_ui: Array = []         # [listing, node, kind] refreshed while auctions run
+var _auc_acc := 0.0
+var _lane_sig := ""
 var auction_view: Dictionary = {}
 var pc_tab := "auction"
 var desk_look := false   # Office PC: pulled back to look at (and arrange) the desk
@@ -260,6 +262,7 @@ func show_screen(name: String) -> void:
 		closing = false
 	current = name
 	auction_view = {}
+	auction_detail = {}
 	lobby_stage = null
 	UI.clear(content)
 	_margins(16)
@@ -535,9 +538,23 @@ func _lot_summary() -> PanelContainer:
 		rows.append(["gavel", "Empty: buy one at AutoBidz", show_screen.bind("pc")])
 	else:
 		rows.append(["money", "Total sticker value", null, Game.money_str(total)])
-	var hot := _class_name(Game.hot_class)
-	rows.append(["insights", "%s are hot today (+10%%)" % hot, null])
-	return _menu_panel("LOT (%d / %d CARS)" % [Game.cars.size(), Game.lot_capacity()], rows)
+	var panel := _menu_panel("LOT (%d / %d CARS)" % [Game.cars.size(), Game.lot_capacity()], rows)
+	# market line wraps inside the panel instead of running past its edge
+	var hot_row := UI.hbox(10)
+	var ic := _icon("insights", 20, UI.TEXT)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	hot_row.add_child(ic)
+	var hl := UI.para("%s are hot today (+10%%)" % _class_name(Game.hot_class), 15, UI.TEXT)
+	hl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hl.custom_minimum_size.x = 200
+	hot_row.add_child(hl)
+	var mg := MarginContainer.new()
+	mg.add_theme_constant_override("margin_left", 6)
+	mg.add_theme_constant_override("margin_right", 8)
+	mg.add_theme_constant_override("margin_top", 4)
+	mg.add_child(hot_row)
+	panel.get_child(0).add_child(mg)
+	return panel
 
 
 func _manage_cars_popup() -> void:
@@ -1099,33 +1116,90 @@ func _dark_btn(b: Button) -> void:
 # ---------- AutoBidz (and the lanes inside it) ----------
 
 func _tab_auction(inner: Control) -> void:
+	live_ui = []
+	_lane_sig = _auction_sig()
 	var house := Game.auction(auction_house)
 	var lane: Dictionary = LANES.get(auction_house, LANES.autobidz)
 	var site := _auction_site(inner, house, lane)
 	var body: VBoxContainer = site.body
+	if auction_page == "mybids":
+		_my_bids_page(body, lane)
+		return
 	if not auction_house in Game.memberships:
 		body.add_child(_auction_join_card(house, lane))
 		return
-	var n := 0
-	for l in Game.listings:
-		if l.get("house", "autobidz") == auction_house:
-			n += 1
+	var shown: Array = Game.open_listings(auction_house)
+	if auction_page == "watch":
+		shown = Game.listings.filter(func(l): return l.get("watch", false))
 	var tools := UI.hbox(10)
-	tools.add_child(UI.label("%d vehicles in today's lane" % n, 13, INK, true))
+	tools.add_child(UI.label(("%d on your watchlist" if auction_page == "watch" else "%d live auctions in this lane") % shown.size(), 13, INK, true))
 	tools.add_child(UI.label("Sort: Ending soonest  ·  View: Grid", 12, GREY))
 	tools.add_child(UI.spacer())
-	tools.add_child(UI.label("Buy It Now prices are firm unless you make an offer.", 12, GREY))
+	tools.add_child(UI.label("Each lot runs about a minute. Tap ☆ to watch one.", 12, GREY))
 	body.add_child(tools)
 	var grid := GridContainer.new()
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
 	body.add_child(UI.scroll(grid))
-	for l in Game.listings:
-		if l.get("house", "autobidz") == auction_house:
-			grid.add_child(_listing_card(l, lane))
-	if n == 0:
-		body.add_child(UI.label("New lanes open tomorrow morning.", 15, GREY))
+	shown.sort_custom(func(x, y): return float(x.get("ends_at", 0.0)) < float(y.get("ends_at", 0.0)))
+	for l in shown:
+		grid.add_child(_listing_card(l, lane))
+	if shown.is_empty():
+		body.add_child(UI.label("Nothing on your watchlist yet. Tap the ☆ on any lot." if auction_page == "watch" else "New lots are rolling in...", 15, GREY))
+
+
+## My Bids: every lot you've bid on, across lanes, with its status and a live countdown.
+func _my_bids_page(body: VBoxContainer, lane: Dictionary) -> void:
+	var mine: Array = Game.listings.filter(func(l): return _my_status(l) != "")
+	mine.sort_custom(func(x, y): return (0 if not x.sold else 1) < (0 if not y.sold else 1))
+	body.add_child(UI.label("My Bids  (%d)" % mine.size(), 17, INK, true))
+	var list := UI.vbox(6)
+	body.add_child(UI.scroll(list))
+	if mine.is_empty():
+		list.add_child(UI.label("You haven't bid on anything today. Open a lane and hit Bid.", 15, GREY))
+	for l in mine:
+		var row := _flat(Color.WHITE, 8, 8, WEB_LINE, 1)
+		var h := UI.hbox(12)
+		row.add_child(h)
+		h.add_child(_car_art(l.car, Vector2(110, 44)))
+		var v := UI.vbox(0)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_child(UI.label("%d %s" % [l.car.year, l.car.model], 15, INK, true))
+		v.add_child(UI.label("%s  ·  your bid %s" % [Game.auction(l.get("house", "autobidz")).name, Game.money_str(int(l.my_bid))], 12, GREY))
+		h.add_child(v)
+		var pv := UI.vbox(0)
+		var pl := UI.label("", 16, INK, true)
+		pv.add_child(pl)
+		live_ui.append([l, pl, "price"])
+		var tl := UI.label("", 12, GREY)
+		pv.add_child(tl)
+		live_ui.append([l, tl, "time"])
+		h.add_child(pv)
+		var stl := UI.label("", 15, WEB_GOOD, true)
+		stl.custom_minimum_size.x = 90
+		h.add_child(stl)
+		live_ui.append([l, stl, "status"])
+		var bid := _web_btn("", _place_bid.bind(l), lane.btn, 130, 32, false, lane.btn_ink)
+		h.add_child(bid)
+		live_ui.append([l, bid, "bidbtn"])
+		h.add_child(_web_btn("View", _open_listing.bind(l), INK, 64, 32, true))
+		list.add_child(row)
+	_refresh_live()
+
+
+func _auction_page_btn(text: String, page: String, lane: Dictionary) -> Button:
+	var on := auction_page == page
+	var b := UI.button(text, func():
+		auction_page = page
+		pc_tab = "auction"
+		show_screen("pc"), 0, 28)
+	b.add_theme_font_size_override("font_size", 12)
+	for st in ["normal", "hover", "pressed"]:
+		b.add_theme_stylebox_override(st, UI.box(Color(lane.bar_ink, 0.22 if on else (0.12 if st == "hover" else 0.0)), Color(lane.bar_ink, 0.4 if on else 0.0), 5, 1, 8))
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		b.add_theme_color_override(c, lane.bar_ink)
+	return b
 
 
 ## AutoBidz chrome: a header bar with search, the lane tabs (every auction house is a lane), then a band in the lane's colours.
@@ -1135,7 +1209,11 @@ func _auction_site(inner: Control, house: Dictionary, lane: Dictionary, with_lan
 	bar.add_child(_fake_search("Search %s vehicles" % _num(2400 + Game.listings.size() * 7), "Search", lane.btn, lane.btn_ink, 250))
 	bar.add_child(UI.spacer())
 	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, lane.bar_ink, true))
-	bar.add_child(UI.label("My bids  ·  Watchlist  ·  Help", 12, Color(lane.bar_ink, 0.75)))
+	var n_bids: int = Game.listings.filter(func(l): return _my_status(l) in ["winning", "outbid"]).size()
+	var n_watch: int = Game.listings.filter(func(l): return l.get("watch", false)).size()
+	bar.add_child(_auction_page_btn("Live lanes", "lane", lane))
+	bar.add_child(_auction_page_btn("My Bids (%d)" % n_bids, "mybids", lane))
+	bar.add_child(_auction_page_btn("Watchlist (%d)" % n_watch, "watch", lane))
 	var band := _site_strip(site, lane.band, 12)
 	band.add_child(_pill(lane.badge, Color(lane.ink, 0.18), lane.ink))
 	band.add_child(UI.label(house.name, 17, lane.ink, true))
@@ -1153,6 +1231,7 @@ func _auction_site(inner: Control, house: Dictionary, lane: Dictionary, with_lan
 		var lp: Dictionary = LANES.get(a.id, LANES.autobidz)
 		var b := UI.button(a.name, func():
 			auction_house = a.id
+			auction_page = "lane"
 			show_screen("pc"), 0, 30)
 		b.add_theme_font_size_override("font_size", 13)
 		for st in ["normal", "hover", "pressed"]:
@@ -1221,7 +1300,8 @@ func _auction_join_card(a: Dictionary, lane: Dictionary) -> Control:
 	return box
 
 
-## Listing card: photo with the lot number and a time-left badge, title, bid line and the lane-coloured button.
+## Listing card: photo with the lot number, a watch star and a live countdown, title, current bid and bidder,
+## Buy It Now while it's still under the bidding, and quick-bid / view buttons.
 func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	var car: Dictionary = l.car
 	var p := _flat(Color.WHITE, 8, 0, WEB_LINE, 1)
@@ -1235,15 +1315,14 @@ func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	var pv := UI.vbox(0)
 	photo.add_child(pv)
 	var tags := UI.hbox(6)
+	tags.add_child(_watch_star(l))
 	tags.add_child(UI.label("Lot %05d" % (int(car.get("id", 0)) % 100000), 12, GREY))
 	tags.add_child(UI.spacer())
-	var live: bool = auction == l
-	if l.sold:
-		tags.add_child(_pill("WON" if l.winner == "you" else "SOLD", WEB_GOOD if l.winner == "you" else GREY, Color.WHITE))
-	else:
-		tags.add_child(_pill("LIVE · %ds" % ceil(auction_timer) if live else "Ends today", WEB_BAD if live else Color(0.2, 0.2, 0.25), Color.WHITE))
+	var timer_pill := _pill("", WEB_BAD, Color.WHITE)
+	tags.add_child(timer_pill)
+	live_ui.append([l, timer_pill, "pill"])
 	pv.add_child(tags)
-	pv.add_child(_car_art(car, Vector2(0, 56)))
+	pv.add_child(_car_art(car, Vector2(0, 44)))
 	v.add_child(photo)
 	var m := MarginContainer.new()
 	for side in ["left", "right"]:
@@ -1255,19 +1334,118 @@ func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	m.add_child(tv)
 	tv.add_child(UI.label("%d %s" % [car.year, car.model], 15, INK, true))
 	tv.add_child(UI.label("%s mi · Grade %s · %s" % [_num(car.miles), _grade(Game.condition(car)), _class_name(car.cls).trim_suffix("s")], 12, GREY))
-	if l.sold:
-		tv.add_child(UI.label(("Won by you · " if l.winner == "you" else "Sold to %s · " % l.winner) + Game.money_str(l.current), 14, WEB_GOOD if l.winner == "you" else GREY, true))
-	else:
-		var price := UI.hbox(6)
-		price.add_child(UI.label(Game.money_str(l.current), 18, INK, true))
-		price.add_child(UI.label("current bid" if l.leader != "" else "opening bid", 12, GREY))
-		tv.add_child(price)
-		tv.add_child(UI.label("Buy It Now " + Game.money_str(l.buy_now) if l.buy_now > 0 else "Auction only · no reserve", 12, WEB_LINK if l.buy_now > 0 else GREY))
+	var price := UI.hbox(6)
+	var pl := UI.label("", 18, INK, true)
+	price.add_child(pl)
+	live_ui.append([l, pl, "price"])
+	var ll := UI.label("", 12, GREY)
+	price.add_child(ll)
+	live_ui.append([l, ll, "lead"])
+	tv.add_child(price)
+	var bin := UI.label("", 12, WEB_LINK)
+	tv.add_child(bin)
+	live_ui.append([l, bin, "bin"])
 	var gap := Control.new()
 	gap.custom_minimum_size.y = 4
 	tv.add_child(gap)
-	tv.add_child(_web_btn("View listing" if l.sold else "Bid now", _open_listing.bind(l), lane.btn, 0, 32, l.sold, lane.btn_ink))
+	var btns := UI.hbox(6)
+	var bid := _web_btn("", _place_bid.bind(l), lane.btn, 0, 32, false, lane.btn_ink)
+	bid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btns.add_child(bid)
+	live_ui.append([l, bid, "bidbtn"])
+	btns.add_child(_web_btn("View", _open_listing.bind(l), INK, 64, 32, true))
+	tv.add_child(btns)
+	_refresh_live_one([l, timer_pill, "pill"])
 	return p
+
+
+func _watch_star(l: Dictionary) -> Button:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.text = "★" if l.get("watch", false) else "☆"
+	b.tooltip_text = "Watch this auction"
+	b.add_theme_font_size_override("font_size", 18)
+	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(c, Color("e0a400") if l.get("watch", false) else GREY)
+	b.custom_minimum_size = Vector2(24, 22)
+	b.pressed.connect(func():
+		l.watch = not l.get("watch", false)
+		b.text = "★" if l.watch else "☆"
+		for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+			b.add_theme_color_override(c, Color("e0a400") if l.watch else GREY)
+		toast("Added to your watchlist." if l.watch else "Removed from your watchlist."))
+	return b
+
+
+func _secs_left(l: Dictionary) -> float:
+	return max(0.0, float(l.get("ends_at", 0.0)) - Game.auction_clock)
+
+
+func _clock_txt(secs: float) -> String:
+	var n := int(ceil(secs))
+	return "%d:%02d" % [n / 60, n % 60]
+
+
+## winning / outbid / won / lost (or "" when you never bid)
+func _my_status(l: Dictionary) -> String:
+	if int(l.get("my_bid", 0)) <= 0 and l.get("winner", "") != "you":
+		return ""
+	if l.sold:
+		return "won" if l.winner == "you" else "lost"
+	return "winning" if l.leader == "you" else "outbid"
+
+
+func _refresh_live() -> void:
+	live_ui = live_ui.filter(func(e): return is_instance_valid(e[1]))
+	for e in live_ui:
+		_refresh_live_one(e)
+	_refresh_auction_view()
+
+
+func _refresh_live_one(e: Array) -> void:
+	var l: Dictionary = e[0]
+	var node = e[1]
+	var secs := _secs_left(l)
+	match e[2]:
+		"pill":
+			var txt := ""
+			var col := WEB_BAD if secs <= 10 else Color(0.2, 0.2, 0.25)
+			if l.sold:
+				txt = "WON" if l.winner == "you" else ("NO SALE" if l.winner == "no sale" else "SOLD")
+				col = WEB_GOOD if l.winner == "you" else GREY
+			else:
+				txt = "LIVE · " + _clock_txt(secs)
+			node.get_child(0).text = txt
+			node.get_theme_stylebox("panel").bg_color = col
+		"price":
+			node.text = Game.money_str(int(l.current))
+		"lead":
+			var st := _my_status(l)
+			if l.sold:
+				node.text = "won by you" if l.winner == "you" else ("sold to " + l.winner if l.winner != "no sale" else "no bids")
+			elif l.leader == "":
+				node.text = "opening bid"
+			elif st == "winning":
+				node.text = "you're the high bidder"
+			elif st == "outbid":
+				node.text = "OUTBID · " + l.leader
+			else:
+				node.text = "high bid · " + l.leader
+			node.add_theme_color_override("font_color", WEB_GOOD if st in ["winning", "won"] else (WEB_BAD if st in ["outbid", "lost"] else GREY))
+		"bin":
+			node.visible = Game.buy_now_open(l)
+			node.text = "Buy It Now " + Game.money_str(int(l.buy_now))
+		"bidbtn":
+			var next: int = int(l.current) + (Game.bid_increment(l) if l.leader != "" else 0)
+			node.text = "Closed" if l.sold else ("Winning" if l.leader == "you" else "Bid " + Game.money_str(next))
+			node.disabled = l.sold or l.leader == "you"
+		"status":
+			var st := _my_status(l)
+			node.text = {"winning": "WINNING", "outbid": "OUTBID", "won": "WON", "lost": "LOST"}.get(st, "")
+			node.add_theme_color_override("font_color", WEB_GOOD if st in ["winning", "won"] else WEB_BAD)
+		"time":
+			node.text = "Ended" if l.sold else "Ends in " + _clock_txt(secs)
 
 
 func _num(n: int) -> String:
@@ -1499,18 +1677,20 @@ func _listing_detail(inner: Control, l: Dictionary) -> void:
 	cols.add_child(right)
 	var rv := UI.vbox(6)
 	right.add_child(rv)
+	auction_detail = l
 	if l.sold:
 		rv.add_child(UI.label("Auction closed", 20, INK, true))
-		rv.add_child(UI.para("Won by %s for %s" % ["you" if l.winner == "you" else l.winner, Game.money_str(l.current)], 14, GREY))
+		rv.add_child(UI.para(("Won by you for %s. It's on your lot." if l.winner == "you" else ("No bids. The seller kept it." if l.winner == "no sale" else "Sold to " + l.winner + " for %s.")).replace("%s", Game.money_str(int(l.current))), 14, GREY))
 		return
 	var cur := UI.label("", 26, INK, true)
 	var lead := UI.label("", 14, GREY)
-	var time_l := UI.label("", 14, WEB_BAD)
+	var time_l := UI.label("", 16, WEB_BAD, true)
 	var feed := UI.label("", 12, GREY)
 	var cur_row := UI.hbox(8)
 	cur_row.add_child(UI.label("Current bid", 13, GREY))
 	cur_row.add_child(UI.spacer())
-	cur_row.add_child(_pill("LIVE" if auction == l else "OPEN", WEB_BAD if auction == l else GREY, Color.WHITE))
+	cur_row.add_child(_watch_star(l))
+	cur_row.add_child(_pill("LIVE", WEB_BAD, Color.WHITE))
 	rv.add_child(cur_row)
 	rv.add_child(cur)
 	rv.add_child(lead)
@@ -1518,14 +1698,17 @@ func _listing_detail(inner: Control, l: Dictionary) -> void:
 	var bid_btn := _web_btn("", _place_bid.bind(l), lane.btn, 0, 42, false, lane.btn_ink, 21)
 	bid_btn.add_theme_font_size_override("font_size", 16)
 	rv.add_child(bid_btn)
-	if l.buy_now > 0:
-		rv.add_child(_web_btn("Buy It Now  %s" % Game.money_str(l.buy_now), _buy_now.bind(l), WEB_LINK, 0, 38, true, Color.WHITE, 19))
-		if not l.haggled:
-			rv.add_child(_web_btn("Make an offer", _haggle.bind(l), GREY, 0, 34, true, Color.WHITE, 17))
+	var bin_btn := _web_btn("Buy It Now  %s" % Game.money_str(int(l.buy_now)), _buy_now.bind(l), WEB_LINK, 0, 38, true, Color.WHITE, 19)
+	rv.add_child(bin_btn)
+	var offer: Button = null
+	if not l.haggled:
+		offer = _web_btn("Make an offer", _haggle.bind(l), GREY, 0, 34, true, Color.WHITE, 17)
+		rv.add_child(offer)
+	rv.add_child(UI.para("Rivals bid at random. Bidding past Buy It Now takes it off the table. Highest bid when the clock hits zero wins.", 12, GREY))
 	rv.add_child(UI.rule(WEB_LINE))
 	rv.add_child(UI.label("BID HISTORY", 12, GREY, true))
 	rv.add_child(feed)
-	auction_view = {"listing": l, "cur": cur, "lead": lead, "time": time_l, "bid": bid_btn, "feed": feed}
+	auction_view = {"listing": l, "cur": cur, "lead": lead, "time": time_l, "bid": bid_btn, "feed": feed, "bin": bin_btn, "offer": offer}
 	_refresh_auction_view()
 
 
@@ -1551,102 +1734,74 @@ func _fill_history(hist: VBoxContainer, car: Dictionary) -> void:
 
 
 func bid_increment(l: Dictionary) -> int:
-	return max(100, int(round(Game.value(l.car) * 0.03 / 100.0)) * 100)
+	return Game.bid_increment(l)
 
 
 func _place_bid(l: Dictionary) -> void:
 	if Game.cars.size() >= Game.lot_capacity():
 		toast("Your lot is full. Sell a car first, or expand the lot at ShowroomPro.")
 		return
-	if not auction.is_empty() and auction != l:
-		toast("You're already bidding on the %s. One lane at a time." % auction.car.model)
+	var why := Game.place_bid(l)
+	if why != "":
+		toast(why)
 		return
-	var next: int = l.current + (bid_increment(l) if l.leader != "" else 0)
-	if next > Game.money:
-		toast("You can't cover that bid.")
-		return
-	l.current = next
-	l.leader = "you"
-	if auction != l:
-		auction = l
-		auction_timer = 12.0
-		rival_timer = randf_range(1.0, 2.0)
-	auction_timer = max(auction_timer, 5.0)
-	_auction_note("You bid %s" % Game.money_str(l.current))
-	_refresh_auction_view()
+	_refresh_live()
 
 
+## Live auctions run on their own clock while the Office PC is open.
 func _tick_auction(delta: float) -> void:
-	if auction.is_empty():
+	if current != "pc" or closing:
 		return
-	auction_timer -= delta
-	rival_timer -= delta
-	if rival_timer <= 0:
-		rival_timer = randf_range(0.8, 2.2)
-		var inc := bid_increment(auction)
-		if auction.leader != auction.rival and auction.current + inc <= auction.rival_max:
-			auction.current += inc if auction.leader != "" else 0
-			auction.leader = auction.rival
-			auction_timer = max(auction_timer, 4.0)
-			_auction_note("%s bids %s" % [auction.rival, Game.money_str(auction.current)])
-	if auction_timer <= 0:
-		_finish_auction()
-	else:
-		_refresh_auction_view()
+	for n in Game.tick_auctions(delta):
+		toast(n.text)
+	_auc_acc += delta
+	if _auc_acc < 0.25:
+		return
+	_auc_acc = 0.0
+	_refresh_live()
+	# lanes changed (a lot closed, a fresh one rolled in): redraw the page you're on
+	if pc_tab == "auction" and auction_detail.is_empty() and not _overlay_open() and not desk_look:
+		var sig := _auction_sig()
+		if sig != _lane_sig:
+			_lane_sig = sig
+			show_screen("pc")
 
 
-func _auction_note(text: String) -> void:
-	if not auction.has("feed_log"):
-		auction.feed_log = []
-	auction.feed_log.push_front(text)
-	auction.feed_log = auction.feed_log.slice(0, 3)
+func _auction_sig() -> String:
+	var parts := []
+	for l in Game.listings:
+		parts.append("%d%s" % [int(l.car.get("id", 0)), "s" if l.sold else ""])
+	return ",".join(parts)
 
 
 func _refresh_auction_view() -> void:
 	if auction_view.is_empty() or not is_instance_valid(auction_view.cur):
 		return
 	var l: Dictionary = auction_view.listing
-	auction_view.cur.text = Game.money_str(l.current)
-	auction_view.lead.text = "No bids yet" if l.leader == "" else "Leading: " + ("YOU" if l.leader == "you" else l.leader)
-	auction_view.time.text = ("Closes in %ds" % ceil(auction_timer)) if auction == l else "Place a bid to start the clock"
-	var next: int = l.current + (bid_increment(l) if l.leader != "" else 0)
-	auction_view.bid.text = "Bid %s" % Game.money_str(next)
-	auction_view.bid.disabled = l.leader == "you"
+	if l.sold:
+		if auction_detail == l:
+			auction_view = {}
+			_open_listing(l)
+		return
+	var st := _my_status(l)
+	auction_view.cur.text = Game.money_str(int(l.current))
+	auction_view.lead.text = "No bids yet" if l.leader == "" else ("You're the high bidder" if st == "winning" else ("Outbid! %s leads" % l.leader if st == "outbid" else "High bidder: " + l.leader))
+	auction_view.lead.add_theme_color_override("font_color", WEB_GOOD if st == "winning" else (WEB_BAD if st == "outbid" else GREY))
+	auction_view.time.text = "Closes in " + _clock_txt(_secs_left(l))
+	var next: int = int(l.current) + (bid_increment(l) if l.leader != "" else 0)
+	auction_view.bid.text = "You're winning" if st == "winning" else "Bid %s  (+%s)" % [Game.money_str(next), Game.money_str(bid_increment(l))]
+	auction_view.bid.disabled = st == "winning"
+	auction_view.bin.visible = Game.buy_now_open(l)
+	if auction_view.offer and is_instance_valid(auction_view.offer):
+		auction_view.offer.visible = Game.buy_now_open(l)
 	auction_view.feed.text = "\n".join(l.get("feed_log", []))
 
 
-func _finish_auction() -> void:
-	var l := auction
-	auction = {}
-	l.sold = true
-	l.winner = l.leader
-	if l.winner == "you":
-		if Game.cars.size() < Game.lot_capacity() and Game.spend(l.current, "cars"):
-			Game.add_car(l.car, l.current)
-			toast("You won the %s for %s! It's on your lot." % [l.car.model, Game.money_str(l.current)])
-		else:
-			l.winner = l.rival
-			toast("You couldn't take the %s (no money or no room), so it went to %s." % [l.car.model, l.rival])
-	else:
-		toast("%s won the %s." % [l.rival, l.car.model])
-	Game.save_game()
-	if auction_view.get("listing") == l:
-		_open_listing(l)
-
-
 func _buy_now(l: Dictionary) -> void:
-	if Game.cars.size() >= Game.lot_capacity():
-		toast("Your lot is full. Sell a car first.")
+	var why := Game.buy_listing_now(l)
+	if why != "":
+		toast(why)
 		return
-	if not Game.spend(l.buy_now, "cars"):
-		toast("Not enough money.")
-		return
-	if auction == l:
-		auction = {}
-	l.sold = true
-	l.winner = "you"
-	l.current = l.buy_now
-	Game.add_car(l.car, l.buy_now)
 	Game.save_game()
 	toast("Bought the %s outright." % l.car.model)
 	_open_listing(l)
@@ -3226,7 +3381,7 @@ func _price_popup(car: Dictionary) -> void:
 	v.add_child(UI.label("Sticker price · %d %s" % [car.year, car.model], 22, UI.GOLD, true))
 	v.add_child(_car_art(car, Vector2(360, 140)))
 	var fair := Game.sale_value(car)
-	v.add_child(UI.label("Marco's fair price: %s%s" % [Game.money_str(fair), "  (hot today +10%)" if car.cls == Game.hot_class else ""], 16, UI.BLUE))
+	v.add_child(UI.para("Marco's fair price: %s%s" % [Game.money_str(fair), "  (hot today +10%)" if car.cls == Game.hot_class else ""], 16, UI.BLUE))
 	v.add_child(UI.label("You've put in %s" % Game.money_str(car.paid + car.spent), 15, UI.MUTED))
 	var lab := UI.label("", 22, UI.TEXT, true)
 	var marg := UI.label("", 15)
@@ -4967,9 +5122,8 @@ func _close_for_night() -> void:
 	if closing or current == "title":
 		return
 	closing = true
-	if not auction.is_empty():
-		auction_timer = 0
-		_finish_auction()
+	for n in Game.settle_auctions():
+		toast(n.text)
 	var notes := []
 	# customers still in the showroom go home
 	if not lobby.is_empty():

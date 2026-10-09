@@ -34,6 +34,38 @@ func _initialize() -> void:
 		cheapest = min(cheapest, l.buy_now if l.buy_now > 0 else l.rival_max + 500)
 	check(cheapest <= G.money, "a listing is winnable after borrowing (cheapest %d, money %d)" % [cheapest, G.money])
 	check(G.monthly_bills().interest > 0, "loan interest billed")
+	# live auctions: bid, rivals answer, the high bidder at the bell wins; Buy It Now goes once bidding passes it
+	G.money = 500000
+	G.cars = []
+	var la: Dictionary = G.listings[0]
+	check(la.has("ends_at") and float(la.ends_at) > G.auction_clock + 30.0, "listing has a live end time")
+	check(G.buy_now_open(la) and la.buy_now > G.value(la.car), "Buy It Now above market value")
+	check(G.place_bid(la) == "" and la.leader == "you", "player bid leads")
+	la.rival_max = la.current
+	var won := false
+	for i in 200:
+		for n in G.tick_auctions(1.0):
+			won = won or n.good
+		if la.sold:
+			break
+	check(la.sold and la.winner == "you" and won and G.cars.has(la.car), "winning bidder gets the car")
+	var lb: Dictionary = G.open_listings("autobidz")[0]
+	G.place_bid(lb)
+	lb.rival_max = lb.current + 50 * G.bid_increment(lb)
+	lb.next_ai = 0.0
+	G.tick_auctions(0.1)
+	check(lb.leader != "you", "rivals outbid the player")
+	var lc: Dictionary = G.open_listings("autobidz")[0]
+	check(G.buy_listing_now(lc) == "" and lc.winner == "you", "Buy It Now buys instantly")
+	G.tick_auctions(0.1)
+	check(G.open_listings("autobidz").size() == G.lane_size("autobidz"), "fresh lots roll in")
+	var over := 0
+	for i in 400:
+		var t: Dictionary = G.make_listing("autobidz")
+		if t.rival_max > G.value(t.car) * 1.04:
+			over += 1
+	check(over > 50 and over < 160, "about a quarter of auctions run over value (%d/400)" % over)
+	G.money = -2000
 	# save / load keeps every field
 	G.pending_referrals = 2
 	G.upgrades = ["expand1"]

@@ -312,6 +312,7 @@ func _ready() -> void:
 
 
 func new_game() -> void:
+	auction_clock = 0.0
 	run_id = randi()
 	peak_worth = 0
 	bankrupt = {}
@@ -1001,35 +1002,185 @@ func listing_count() -> int:
 	return 6 + {"crt": 0, "lcd": 1, "dual": 2, "ultra": 3}[equipped.monitor]
 
 
+# price ranges per house: [start lo, start hi, typical final lo, typical final hi]
+const AUCTION_DEAL := {
+	"autobidz": [0.25, 0.4, 0.7, 1.0],
+	"salvage": [0.1, 0.2, 0.38, 0.6],
+	"dealer": [0.28, 0.4, 0.65, 0.88],
+	"exotic": [0.3, 0.45, 0.68, 0.92],
+}
+const AUCTION_SECONDS := 60.0
+var auction_clock := 0.0   # seconds of live auction time; only advances while the PC is open
+
+
+func lane_size(house: String) -> int:
+	return listing_count() if house == "autobidz" else 4
+
+
+func bid_increment(l: Dictionary) -> int:
+	return max(100, int(round(value(l.car) * 0.03 / 100.0)) * 100)
+
+
+## One live auction: ends AUCTION_SECONDS (+/- a little) of auction time from `delay`.
+## The rival field's walk-away price is randomized; a quarter of lanes run hot and close 5-30% over value.
+func make_listing(house: String, delay := 0.0, avoid: Array = []) -> Dictionary:
+	var car := make_car(max_auction_base(), house)
+	for attempt in 4:
+		if not avoid.has(car.model):
+			break
+		car = make_car(max_auction_base(), house)
+	var v := value(car)
+	var d: Array = AUCTION_DEAL.get(house, AUCTION_DEAL.autobidz)
+	var start: int = int(round(v * randf_range(d[0], d[1]) / 100.0) * 100)
+	var final: int = int(v * randf_range(d[2], d[3]))
+	if randf() < 0.25:
+		final = int(v * randf_range(1.05, 1.3))
+	final = max(final, start)
+	return {
+		"car": car, "current": start, "start": start, "house": house,
+		"leader": "", "rival": RIVALS.pick_random(), "rival_max": final,
+		"buy_now": int(round(v * randf_range(1.1, 1.35) / 100.0) * 100),
+		"ends_at": auction_clock + delay + randf_range(AUCTION_SECONDS - 10.0, AUCTION_SECONDS + 10.0),
+		"next_ai": auction_clock + delay + randf_range(2.0, 6.0),
+		"bids": 0, "my_bid": 0, "watch": false, "feed_log": [],
+		"haggled": false, "sold": false, "winner": "",
+	}
+
+
 func generate_listings() -> void:
 	listings = []
-	# price ranges per house: [start lo, start hi, rival max lo, rival max hi, buy-now chance, buy-now lo, buy-now hi]
-	var deal := {
-		"autobidz": [0.25, 0.4, 0.7, 1.0, 0.35, 0.85, 0.95],
-		"salvage": [0.1, 0.2, 0.38, 0.6, 0.5, 0.55, 0.7],
-		"dealer": [0.28, 0.4, 0.65, 0.88, 0.45, 0.78, 0.88],
-		"exotic": [0.3, 0.45, 0.68, 0.92, 0.3, 0.82, 0.92],
-	}
 	for house in memberships:
 		var used := []
-		var n: int = listing_count() if house == "autobidz" else 4
-		for i in n:
-			var car := make_car(max_auction_base(), house)
-			for attempt in 4:
-				if not used.has(car.model):
-					break
-				car = make_car(max_auction_base(), house)
-			used.append(car.model)
-			var v := value(car)
-			var d: Array = deal[house]
-			var start: int = int(round(v * randf_range(d[0], d[1]) / 100.0) * 100)
-			listings.append({
-				"car": car, "current": start, "start": start, "house": house,
-				"leader": "", "rival": RIVALS.pick_random(),
-				"rival_max": int(v * randf_range(d[2], d[3])),
-				"buy_now": int(round(v * randf_range(d[5], d[6]) / 100.0) * 100) if randf() < d[4] else 0,
-				"haggled": false, "sold": false, "winner": "",
-			})
+		for i in lane_size(house):
+			var l := make_listing(house, i * 8.0, used)
+			used.append(l.car.model)
+			listings.append(l)
+
+
+func open_listings(house: String) -> Array:
+	return listings.filter(func(l): return l.get("house", "autobidz") == house and not l.sold)
+
+
+## Buy It Now disappears once the bidding passes it.
+func buy_now_open(l: Dictionary) -> bool:
+	return not l.sold and int(l.get("buy_now", 0)) > 0 and l.current < int(l.buy_now)
+
+
+func _auction_note(l: Dictionary, text: String) -> void:
+	var f: Array = l.get("feed_log", [])
+	f.push_front(text)
+	l.feed_log = f.slice(0, 4)
+
+
+## The player bids one increment over the current price (or the opening bid). Returns "" or why not.
+func place_bid(l: Dictionary) -> String:
+	if l.sold or auction_clock >= float(l.get("ends_at", 0.0)):
+		return "That auction has closed."
+	if l.leader == "you":
+		return "You're already the high bidder."
+	var next: int = int(l.current) + (bid_increment(l) if l.leader != "" else 0)
+	if next > money:
+		return "You can't cover that bid."
+	l.current = next
+	l.leader = "you"
+	l.my_bid = next
+	l.bids = int(l.get("bids", 0)) + 1
+	l.watch = true
+	# a late bid keeps the lane open a few more seconds so rivals can answer
+	l.ends_at = max(float(l.ends_at), auction_clock + 6.0)
+	l.next_ai = auction_clock + randf_range(1.0, 3.0)
+	_auction_note(l, "You bid %s" % money_str(next))
+	return ""
+
+
+## Buy It Now. Returns "" or why not.
+func buy_listing_now(l: Dictionary) -> String:
+	if not buy_now_open(l):
+		return "Buy It Now is gone: the bidding passed it."
+	if cars.size() >= lot_capacity():
+		return "Your lot is full. Sell a car first."
+	if not spend(int(l.buy_now), "cars"):
+		return "Not enough money."
+	l.sold = true
+	l.winner = "you"
+	l.current = int(l.buy_now)
+	l.my_bid = int(l.buy_now)
+	add_car(l.car, int(l.buy_now))
+	return ""
+
+
+## Advances live auction time: rivals bid at random intervals, lanes close, fresh lanes roll in.
+## Returns notes for the player: [{"text", "good"}].
+func tick_auctions(dt: float) -> Array:
+	auction_clock += dt
+	var notes := []
+	for l in listings.duplicate():
+		if l.sold:
+			continue
+		if not l.has("ends_at"):
+			l.ends_at = auction_clock + randf_range(40.0, 70.0)
+			l.next_ai = auction_clock + randf_range(2.0, 5.0)
+		var inc := bid_increment(l)
+		if auction_clock >= float(l.next_ai) and auction_clock < float(l.ends_at):
+			l.next_ai = auction_clock + randf_range(1.5, 5.0)
+			var cap := int(l.rival_max)
+			if l.leader != "you" and l.leader != "" and randf() < 0.35:
+				pass   # rivals sometimes let a bid stand for a while
+			elif l.current + inc <= cap:
+				var left: float = max(1.0, float(l.ends_at) - auction_clock)
+				# bigger jumps early, single increments near the end
+				var jump: int = max(inc, int(round((cap - l.current) * randf_range(0.05, 0.3) * min(1.0, left / 30.0) / 100.0)) * 100)
+				var was_you: bool = l.leader == "you"
+				l.current = int(min(cap, l.current + jump)) if l.leader != "" else int(l.current)
+				var names: Array = RIVALS.filter(func(r): return r != l.leader)
+				l.leader = names.pick_random()
+				l.bids = int(l.get("bids", 0)) + 1
+				_auction_note(l, "%s bids %s" % [l.leader, money_str(int(l.current))])
+				if float(l.ends_at) - auction_clock < 5.0:
+					l.ends_at = auction_clock + 5.0
+				if was_you:
+					notes.append({"text": "Outbid on the %s: %s now leads at %s." % [l.car.model, l.leader, money_str(int(l.current))], "good": false})
+		if auction_clock >= float(l.ends_at):
+			notes.append_array(close_auction(l))
+	# fresh lanes roll in for the ones that closed
+	for house in memberships:
+		var open := open_listings(house)
+		var used := open.map(func(x): return x.car.model)
+		for i in max(0, lane_size(house) - open.size()):
+			listings.append(make_listing(house, randf_range(0.0, 6.0), used))
+	# closed lots stay visible only if you bid on them (they show in My Bids)
+	listings = listings.filter(func(l): return not l.sold or int(l.get("my_bid", 0)) > 0 or l.winner == "you")
+	var mine := listings.filter(func(l): return l.sold)
+	if mine.size() > 12:
+		var drop: Array = mine.slice(0, mine.size() - 12)
+		listings = listings.filter(func(l): return not drop.has(l))
+	return notes
+
+
+func close_auction(l: Dictionary) -> Array:
+	l.sold = true
+	l.winner = l.leader
+	if l.winner == "":
+		l.winner = "no sale"
+		return []
+	if l.winner != "you":
+		if int(l.get("my_bid", 0)) > 0:
+			return [{"text": "%s won the %s for %s." % [l.winner, l.car.model, money_str(int(l.current))], "good": false}]
+		return []
+	if cars.size() < lot_capacity() and spend(int(l.current), "cars"):
+		add_car(l.car, int(l.current))
+		return [{"text": "You won the %s for %s! It's on your lot." % [l.car.model, money_str(int(l.current))], "good": true}]
+	l.winner = l.rival
+	return [{"text": "You couldn't take the %s (no money or no room), so it went to %s." % [l.car.model, l.rival], "good": false}]
+
+
+## End of the business day: every open lane closes at its current price.
+func settle_auctions() -> Array:
+	var notes := []
+	for l in listings:
+		if not l.sold:
+			notes.append_array(close_auction(l))
+	return notes
 
 
 func add_car(car: Dictionary, price: int) -> void:
@@ -1142,7 +1293,7 @@ func legal_exposure() -> int:
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
-	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt"]
+	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock"]
 
 
 func save_game() -> void:
