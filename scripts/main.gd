@@ -103,8 +103,7 @@ func _process(delta: float) -> void:
 		_close_for_night()
 	if Engine.get_process_frames() % 15 == 0:
 		_refresh_clock()
-		if current in ["lot"]:
-			bg.modulate = Game.sky_tint()
+		_update_bg_look()
 
 
 # =====================================================================
@@ -226,12 +225,27 @@ static func world_tex(key: String) -> Texture2D:
 	return load("res://assets/world/bg_%s%s.jpg" % [key, suffix])
 
 
+var bg_key := ""
+
+
 func set_bg(key: String, darkness: float) -> void:
 	bg.visible = key != ""
+	bg_key = key
 	if key != "":
 		bg.texture = world_tex(key)
-		bg.modulate = Game.sky_tint()
+		bg.modulate = Color.WHITE
+		if bg.material == null:
+			bg.material = WorldLook.new_material()
+		_update_bg_look()
 	dim.color = Color(0, 0, 0, darkness)
+
+
+## Day/dusk/night crossfade and the shared grade on the current background (see WorldLook).
+func _update_bg_look() -> void:
+	if bg_key == "" or bg.material == null:
+		return
+	var suffix := "" if bg_key.begins_with("apartment") else Game.world_suffix()
+	WorldLook.update(bg.material, bg.texture, bg_key + suffix)
 
 
 func _margins(px: int) -> void:
@@ -667,8 +681,26 @@ func _park_cars(yard: Control) -> void:
 					var a := TAU * j / 24.0
 					poly.append(c + (ax * cos(a) + ay * sin(a)) * (1.3 - k * 0.1))
 				pads.draw_colored_polygon(poly, Color(0, 0, 0, 0.11))
+			# a tight dark core where the tyres meet the asphalt
+			for k in 3:
+				var core := PackedVector2Array()
+				for j in 24:
+					var a := TAU * j / 24.0
+					core.append(c + (ax * cos(a) * (0.95 - k * 0.08) + ay * sin(a) * (0.75 - k * 0.12)))
+				pads.draw_colored_polygon(core, Color(0, 0, 0, 0.16))
 	)
 	yard.add_child(pads)
+	# a faint mirror image of each car on the asphalt (the same fade as the showroom floor, much weaker)
+	for it in items:
+		var r := CarArt.new()
+		r.quarter = true
+		r.set_car(it.art.car)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		r.scale = Vector2(1, -1)
+		r.modulate = Color(1, 1, 1, 0.35)
+		r.material = _floor_reflection_material()
+		it["refl"] = r
+		yard.add_child(r)
 	# back to front: back row first, and in a row each car's nose overlaps its right-hand neighbour
 	var drawn := items.duplicate()
 	drawn.sort_custom(func(a, b): return a.order < b.order)
@@ -689,6 +721,10 @@ func _park_cars(yard: Control) -> void:
 			it.button.size = body.size
 			it.art.position = frame.position - body.position
 			it.art.size = frame.size
+			if it.has("refl") and not it.pad.is_empty():
+				var gy: float = origin.y + it.pad[0].y * cover.size.y
+				it.refl.size = frame.size
+				it.refl.position = Vector2(frame.position.x, 2.0 * gy - frame.position.y + frame.size.y * 0.04)
 			var tag: Label = it.tag
 			tag.add_theme_font_size_override("font_size", clampi(roundi(w * 0.085), 16, 34))
 			tag.pivot_offset = tag.get_combined_minimum_size() / 2.0
@@ -3393,7 +3429,9 @@ func _render_customer() -> void:
 	back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
-	back.modulate = Game.sky_tint().darkened(0.15)
+	back.modulate = Color(0.87, 0.87, 0.87)
+	back.material = WorldLook.new_material()
+	WorldLook.update(back.material, back.texture, "dealdesk" + Game.world_suffix())
 	overlay.add_child(back)
 	var vign := ColorRect.new()
 	vign.color = Color(0, 0, 0, 0.25)
@@ -4283,15 +4321,8 @@ func _unlock_text() -> String:
 
 func _screen_marco() -> void:
 	set_bg("office", 0.15)
-	# Marco himself (the render of him in his office) fills the screen; he stands in the gap between the two panels
-	var office := "res://assets/people/marco_office.jpg"
-	var real := ResourceLoader.exists(office)
-	if real:
-		bg.texture = load(office)
-		bg.modulate = Color.WHITE
-		dim.color = Color(0, 0, 0, 0.08)
+	# Marco (rendered from his 3D model, tools/marco_glb.py) stands in his office in the gap between the two panels
 	var stage := Control.new()
-	stage.visible = not real
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(stage)
 	var hero := "res://assets/people/marco_hero.png"

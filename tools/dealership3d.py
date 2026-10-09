@@ -8,6 +8,8 @@ the same room can be upgraded visually in the game; the showroom tiers work the 
 Usage (bpy venv):  python tools/dealership3d.py <out_dir> [view ...]
 Views: lot, showroom, office, garage, desk, dealdesk (add _t1 / _t2 for the starting and mid-size
 dealerships), apartment1, apartment2, apartment3.  SAMPLES env sets quality, PREVIEW=1 renders 640x360.
+NIGHT=1 renders the same views at night as bg_<view>_night.jpg (make_night: dark blue starry sky, no sun, lit
+street lamps, pole sign and lot lights, interiors at full light); the game crossfades day to night by the clock.
 The lot views also write stalls_<view>.json next to the render: where the game parks each owned car (see LOT_ROWS).
 """
 import math
@@ -3045,7 +3047,11 @@ def render_view(cam, name, out):
     cam.data.clip_end = 5000
     cam.rotation_euler = (Vector(tgt) - Vector(pos)).to_track_quat("-Z", "Y").to_euler()
     bpy.context.scene.view_settings.exposure = exp - 0.6   # daylight is bright; keep whites from blowing out
-    bpy.context.scene.render.filepath = os.path.join(out, "bg_%s.jpg" % name)
+    bpy.context.scene.render.filepath = os.path.join(out, "bg_%s%s.jpg" % (name, "_night" if NIGHT else ""))
+    if NIGHT:
+        bpy.context.scene.view_settings.exposure = exp - 0.2
+        bpy.ops.render.render(write_still=True)
+        return
     if name in LOT_ROWS:
         export_stalls(name, cam, os.path.join(out, "stalls_%s.json" % name))
     if name in SHOW_ROWS:
@@ -3085,12 +3091,89 @@ def build():
             TIER_COLLECTIONS[key].objects.link(lo)
 
 
+NIGHT = bool(os.environ.get("NIGHT"))
+GLOW = {"lamp": 3.0, "lamp_glass": 14.0, "lp_lens": 18.0, "sign_face_lit": 5.0, "white_lit": 2.5, "screen": 2.0}
+
+
+def make_night():
+    """Turns the built day scene into night: the sky becomes a dark blue gradient with faint stars (seen by the
+    camera only), the sun lamps go, lamp glass and signs glow and get a real light each, interior fills brighten."""
+    sc = bpy.context.scene
+    for name in [o.name for o in bpy.data.objects if o.type == "LIGHT" and o.data.type == "SUN"]:
+        bpy.data.objects.remove(bpy.data.objects[name])
+    w = bpy.data.worlds.new("night")
+    sc.world = w
+    w.use_nodes = True
+    nt = w.node_tree
+    tc = nt.nodes.new("ShaderNodeTexCoord")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tc.outputs["Generated"], sep.inputs[0])
+    grad = _ramp(nt, sep.outputs["Z"], ((0.0, (0.035, 0.05, 0.11)), (0.12, (0.012, 0.02, 0.06)), (0.5, (0.003, 0.005, 0.02))))
+    vor = nt.nodes.new("ShaderNodeTexVoronoi")
+    vor.inputs["Scale"].default_value = 260.0
+    nt.links.new(tc.outputs["Generated"], vor.inputs["Vector"])
+    star = _ramp(nt, vor.outputs["Distance"], ((0.0, (1.6, 1.6, 1.7)), (0.06, (0, 0, 0))))
+    pick = _n(nt, "ShaderNodeTexNoise", Scale=90.0, Detail=0.0)
+    nt.links.new(tc.outputs["Generated"], pick.inputs["Vector"])
+    keep = _ramp(nt, pick.outputs["Fac"], ((0.62, (0, 0, 0)), (0.66, (1, 1, 1))))
+    stars = _mix(nt, 1.0, star, keep, "MULTIPLY")
+    lp = nt.nodes.new("ShaderNodeLightPath")
+    hi = _ramp(nt, sep.outputs["Z"], ((0.03, (0, 0, 0)), (0.12, (1, 1, 1))))
+    sv = _mix(nt, 1.0, stars, hi, "MULTIPLY")
+    seen = _mix(nt, 1.0, sv, lp.outputs["Is Camera Ray"], "MULTIPLY")
+    col = _mix(nt, 1.0, grad, seen, "ADD")
+    nt.links.new(col, nt.nodes["Background"].inputs[0])
+    nt.nodes["Background"].inputs["Strength"].default_value = 1.0
+    moon = bpy.data.lights.new("moon", "SUN")
+    moon.energy, moon.color, moon.angle = 0.12, (0.55, 0.65, 1.0), math.radians(2)
+    mo = bpy.data.objects.new("moon", moon)
+    mo.rotation_euler = (math.radians(35), 0, math.radians(-30))
+    sc.collection.objects.link(mo)
+    for m in bpy.data.materials:
+        k = GLOW.get(m.name.split(".")[0])
+        if k and m.use_nodes:
+            b = m.node_tree.nodes.get("Principled BSDF")
+            if b:
+                b.inputs["Emission Strength"].default_value *= k
+    dg = bpy.context.evaluated_depsgraph_get()
+    for o in list(bpy.data.objects):
+        base = o.name.split(".")[0]
+        spec = {"lamp_globe": ("POINT", 320, (1.0, 0.8, 0.55), 0.3), "lp_lens": ("SPOT", 2200, (1.0, 0.93, 0.82), 0.4),
+                "pole_sign_face": ("AREA", 400, (1.0, 0.95, 0.88), 2.5)}.get(base)
+        if not spec or o.type != "MESH":
+            continue
+        bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        c = sum(bb, Vector()) / 8
+        ld = bpy.data.lights.new("night_" + base, spec[0])
+        ld.energy, ld.color = spec[1], spec[2]
+        if spec[0] == "AREA":
+            ld.size = spec[3]
+        else:
+            ld.shadow_soft_size = spec[3]
+        if spec[0] == "SPOT":
+            ld.spot_size = math.radians(120)
+            ld.spot_blend = 0.6
+        lo = bpy.data.objects.new(ld.name, ld)
+        if base == "pole_sign_face":
+            lo.location = c + Vector((0, -1.2, 0))
+            lo.rotation_euler = (math.radians(90), 0, 0)
+        else:
+            lo.location = c - Vector((0, 0, 0.12))
+        for col_ in o.users_collection:
+            col_.objects.link(lo)
+    for o in bpy.data.objects:
+        if o.type == "LIGHT" and o.name.startswith("fill"):
+            o.data.energy *= 1.35
+
+
 def main():
     out = sys.argv[1]
     os.makedirs(out, exist_ok=True)
     views = sys.argv[2:] or [v + t for t in ("", "_t1", "_t2") for v in ("lot", "showroom", "office", "garage", "desk", "dealdesk")] + \
         ["apartment1", "apartment2", "apartment3"]
     build()
+    if NIGHT:
+        make_night()
     cam = setup_render()
     for v in views:
         render_view(cam, v, out)

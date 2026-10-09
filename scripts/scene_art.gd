@@ -18,6 +18,7 @@ var desk_top := 0.0           # y of the desk's back edge (desk mode), set in _c
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_PASS
+	material = WorldLook.new_material()
 	resized.connect(func():
 		_compute()
 		queue_redraw())
@@ -127,10 +128,18 @@ func person_height(feet_y: float) -> float:
 ## Draws one of the dealership renders to cover the whole stage, bottom-aligned, tinted for the time of day.
 func _cover(tex: Texture2D, dim := 0.35) -> Rect2:
 	var dst := cover_rect(tex)
-	draw_texture_rect(tex, dst, false, Game.sky_tint())
+	var key := tex.resource_path.get_file().get_basename().trim_prefix("bg_")
+	var nt := WorldLook.night_tex(key)
 	var night: float = Game.night_amount()
+	if nt == null:
+		draw_texture_rect(tex, dst, false, Game.sky_tint())
+		if night > 0.0:
+			draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.1, night * dim))
+		return dst
+	# only the sky and outdoors darken: crossfade to the night render (interiors stay lit)
+	draw_texture_rect(tex, dst, false, Color(1, 1, 1).lerp(Color(1.0, 0.84, 0.72), Game.sunset_amount()))
 	if night > 0.0:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.02, 0.03, 0.1, night * dim))
+		draw_texture_rect(nt, dst, false, Color(1, 1, 1, night))
 	return dst
 
 
