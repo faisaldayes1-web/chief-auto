@@ -114,6 +114,7 @@ SKIN = lambda t=0.0: mat("skin", (0.86 - t * 0.25, 0.64 - t * 0.22, 0.5 - t * 0.
 
 def _link(ob, m):
     bpy.context.scene.collection.objects.link(ob)
+    bpy.context.view_layer.objects.active = ob   # builders tweak bpy.context.object right after making a piece
     if m is not None:
         ob.data.materials.append(m)
     return ob
@@ -239,19 +240,32 @@ def frame(name, c, w, h, depth, m, lip=0.02):
 
 
 def import_car(glb, scale, at, yaw=0.0):
-    """One of the game's cars, shrunk to a model, standing on z=at[2] (its wheels touch the ground at z=0 in the file)."""
+    """One of the game's cars, shrunk to a model: wheels on z=at[2], centred on at in x/y."""
     before = set(bpy.context.scene.objects)
     bpy.ops.import_scene.gltf(filepath=os.path.join(ROOT, "assets", "cars3d", glb))
     new = [o for o in bpy.context.scene.objects if o not in before]
+    names = [o.name for o in new]
+    meshes = [o for o in new if o.type == "MESH"]
     bpy.ops.object.select_all(action="DESELECT")
-    for o in new:
+    for o in meshes:
         o.select_set(True)
-    bpy.context.view_layer.objects.active = new[0]
-    bpy.ops.object.join() if len([o for o in new if o.type == "MESH"]) > 1 else None
+    bpy.context.view_layer.objects.active = meshes[0]
+    bpy.ops.object.parent_clear(type="CLEAR_KEEP_TRANSFORM")
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    if len(meshes) > 1:
+        bpy.ops.object.join()
     car = bpy.context.view_layer.objects.active
-    for o in bpy.context.scene.objects:
-        if o not in before and o != car:
+    for n in names:
+        o = bpy.data.objects.get(n)
+        if o is not None and o != car:
             bpy.data.objects.remove(o)
+    vs = [v.co for v in car.data.vertices]
+    mn = Vector((min(v.x for v in vs), min(v.y for v in vs), min(v.z for v in vs)))
+    mx = Vector((max(v.x for v in vs), max(v.y for v in vs), max(v.z for v in vs)))
+    off = Vector(((mn.x + mx.x) / 2, (mn.y + mx.y) / 2, mn.z))
+    for v in car.data.vertices:
+        v.co -= off
+    car.data.update()
     car.scale = (scale, scale, scale)
     car.rotation_euler = (0, 0, yaw)
     car.location = at
@@ -607,11 +621,8 @@ def b_lamp():
     box("base", (-0.09, -0.05, 0), (0.09, 0.05, 0.015), br, 0.006)
     cyl("post", (0, 0.02, 0.1), 0.007, 0.18, br)
     cyl("arm", (0, 0.01, 0.19), 0.006, 0.05, br, rot=(D90, 0, 0))
-    # half-cylinder shade: a cylinder cut by a box is fiddly; use a flattened cylinder lying along x
-    cyl("shade", (0, -0.01, 0.2), 0.045, 0.22, gr, rot=(0, D90, 0))
-    box("shadecut", (-0.12, -0.07, 0.14), (0.12, 0.05, 0.2), mat("inner", (0.95, 0.9, 0.6), 0.5, emit=3.0, ecol=(1.0, 0.85, 0.5)))
-    bpy.context.object.scale = (1, 1, 0.01)
-    bpy.context.object.location = (0, -0.01, 0.2)
+    sphere("shade", (0, -0.01, 0.2), 0.05, gr, scale=(2.2, 1.0, 0.75))
+    sphere("glow", (0, -0.01, 0.175), 0.046, mat("inner", (0.95, 0.9, 0.6), 0.5, emit=4.0, ecol=(1.0, 0.85, 0.5)), scale=(2.1, 0.9, 0.35))
     cyl("knob", (0.0, -0.03, 0.1), 0.006, 0.02, br, rot=(D90, 0, 0))
 
 
@@ -632,8 +643,6 @@ def b_modelcar():
     box("plinth", (-0.17, -0.09, 0), (0.17, 0.09, 0.025), BLACK(), 0.005)
     box("plaque", (-0.05, -0.0905, 0.006), (0.05, -0.089, 0.02), GOLD())
     import_car("ferrano_488.glb", 1 / 18, (0, 0, 0.025), yaw=0.35)
-    g = glass("case", (0.95, 0.98, 1.0), 0.02)
-    box("case", (-0.165, -0.085, 0.025), (0.165, 0.085, 0.13), g)
 
 
 def b_trophy():
@@ -904,6 +913,7 @@ def studio():
 
 
 def frame_and_light(cam):
+    bpy.context.view_layer.update()
     mn = Vector((1e9, 1e9, 1e9))
     mx = -mn
     for o in bpy.context.scene.objects:
