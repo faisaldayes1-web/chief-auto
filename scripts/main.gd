@@ -732,6 +732,53 @@ func _park_cars(yard: Control) -> void:
 			tag.position = frame.position - body.position + frame.size * Vector2(0.52, 0.32) - tag.get_combined_minimum_size() / 2.0
 	yard.resized.connect(place)
 	place.call_deferred()
+	_lot_traffic(yard, lot)
+
+
+## Now and then a car passes on PCH behind the lot (lanes projected from the render camera by tools/lot_road.py).
+func _lot_traffic(yard: Control, lot: Dictionary) -> void:
+	var path := "res://assets/world/road_lot%s.json" % Game.world_suffix()
+	var res = load(path) if ResourceLoader.exists(path) else null
+	if not (res is JSON and res.data is Dictionary):
+		return
+	var lanes: Array = res.data.get("lanes", []).filter(func(l): return l.size() > 4)
+	var models: Array = lot.get("cars", {}).keys()
+	if lanes.is_empty() or models.is_empty():
+		return
+	var road := Control.new()
+	road.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	road.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	road.clip_contents = true
+	yard.add_child(road)
+	yard.move_child(road, 0)
+	var send := func(again: Callable):
+		if not is_instance_valid(road):
+			return
+		var lane: Array = lanes.pick_random()
+		var art := CarArt.new()
+		art.quarter = true
+		art.set_car({"model": models.pick_random(), "color": Color.from_hsv(randf(), randf_range(0.0, 0.7), randf_range(0.25, 0.95))})
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		road.add_child(art)
+		var toward: bool = randf() < 0.5
+		var at := func(t: float):
+			var cover := _bg_cover_rect()
+			if not is_instance_valid(art) or cover.size == Vector2.ZERO:
+				return
+			var f: float = (1.0 - t if toward else t) * (lane.size() - 1)
+			var i: int = mini(int(f), lane.size() - 2)
+			var a: Array = lane[i]
+			var b: Array = lane[i + 1]
+			var k: float = f - i
+			var p := Vector2(lerpf(a[0], b[0], k), lerpf(a[1], b[1], k))
+			var w: float = lerpf(a[2], b[2], k) * 8.07 * 0.72 * cover.size.x
+			art.size = Vector2(w, w * 0.5625)
+			art.position = cover.position - road.global_position + p * cover.size - Vector2(w * 0.5, w * 0.36)
+		var tw := art.create_tween()
+		tw.tween_method(at, 0.0, 1.0, randf_range(5.0, 8.0))
+		tw.tween_callback(art.queue_free)
+		road.get_tree().create_timer(randf_range(7.0, 16.0)).timeout.connect(again.bind(again))
+	road.get_tree().create_timer(randf_range(1.0, 4.0)).timeout.connect(send.bind(send))
 
 
 static func _v2(a: Array) -> Vector2:
