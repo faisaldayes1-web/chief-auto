@@ -3,7 +3,7 @@
 Everyone in the game is rendered by tools/people3d.py; Marco and Maruchan are Rocketbox avatars whose head textures are
 recombined (all Rocketbox adult male heads share one UV layout) and whose clothes are repainted to match the owner's art:
 
-  Marco     Male_Adult_17 face (goatee, greyed) + Male_Adult_05 short combed-back greying hair, black polo with a round
+  Marco     Male_Adult_17 face (full dark goatee) + Male_Adult_05 short combed-back greying hair, navy polo with a round
             chest badge, charcoal trousers, black shoes.
   Maruchan  Male_Adult_15 face, beard trimmed to moustache + chin beard (cheeks from Male_Adult_17), navy polo with small
             white CHIEF AUTO chest text. people3d.py gives him Female_Adult_03's long hair cards, dyed black.
@@ -101,7 +101,9 @@ def marco_head(rb, rbx):
     dark = np.clip((95 - lum(out)) / 60, 0, 1) * beard
     n = noise(shape, 5)
     grey = np.stack([lum(out) * 1.2 + 70] * 3, -1) * np.array([1.0, 0.98, 0.95])
-    out = mix(out, grey, dark * np.clip(n * 1.6 - 0.2, 0, 1) * 0.9)
+    out = mix(out, grey, dark * np.clip(n * 1.6 - 0.2, 0, 1) * 0.12)
+    # Faisal's photo: a full, near-black goatee and moustache on olive skin
+    out = mix(out, out * np.array([0.45, 0.42, 0.4]), blur(beard * 255, 8) / 255.0 * 0.8)
     # a little grey in the sideburns
     sb = (soft_box(shape, 520, 380, 720, 780, 30) + soft_box(shape, 1330, 380, 1530, 780, 30)).clip(0, 1)
     sdark = np.clip((80 - lum(out)) / 50, 0, 1) * sb
@@ -262,7 +264,7 @@ def main():
     Image.fromarray((hm * 255).astype(np.uint8)).save(os.path.join(out, "marco", "hair_mask.png"))
     Image.fromarray((tm * 255).astype(np.uint8)).save(os.path.join(out, "marco", "grey_mask.png"))
     Image.fromarray(np.clip(mh, 0, 255).astype(np.uint8)).save(os.path.join(out, "marco", "head_color.png"))
-    body(rb, mean_rgb(mh, *SKIN_REF), (17, 17, 19), (20, 20, 22), (26, 22, 20), marco_badge).save(
+    body(rb, mean_rgb(mh, *SKIN_REF), (20, 27, 48), (20, 20, 22), (26, 22, 20), marco_badge).save(
         os.path.join(out, "marco", "body_color.png"))
     uh = maruchan_head(rb, rbx)
     Image.fromarray(np.clip(uh, 0, 255).astype(np.uint8)).save(os.path.join(out, "maruchan", "head_color.png"))
