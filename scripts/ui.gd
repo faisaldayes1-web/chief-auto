@@ -8,6 +8,10 @@ const NAVY_SOLID := Color("0b0e13")
 const PANEL_LIGHT := Color(0.09, 0.11, 0.14, 0.92)
 const GLASS_EDGE := Color(0.9, 0.74, 0.42, 0.55)
 const CYAN := Color("5ad1ff")
+## reference-style dialogue/showroom navy: translucent body, lighter desaturated header strip, light-blue rim
+const DIALOG_NAVY := Color(0.04, 0.09, 0.2, 0.72)
+const DIALOG_HEAD := Color(0.32, 0.45, 0.62, 0.85)
+const DIALOG_RIM := Color(0.62, 0.8, 1.0, 0.75)
 
 static var _body_font: Font
 static var _head_font: Font

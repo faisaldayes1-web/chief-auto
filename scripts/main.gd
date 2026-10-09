@@ -4404,7 +4404,7 @@ func _show_next_line() -> void:
 	wrap.anchor_right = 0.8
 	wrap.anchor_top = 1.0
 	wrap.anchor_bottom = 1.0
-	wrap.offset_top = -300
+	wrap.offset_top = -262
 	wrap.offset_bottom = -92
 	wrap.mouse_filter = Control.MOUSE_FILTER_STOP
 	wrap.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
