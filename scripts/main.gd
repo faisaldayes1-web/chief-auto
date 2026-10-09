@@ -1579,7 +1579,7 @@ func _haggle(l: Dictionary) -> void:
 
 ## Product card for the shops: a pictogram "photo" with an optional badge, name, blurb, price and the action button.
 ## pal: card, line, photo, pict, ink, muted, price colours.
-func _product_card(name: String, desc: String, pict: String, pal: Dictionary, price: String, btn: Button, badge := "") -> Control:
+func _product_card(name: String, desc: String, pict: String, pal: Dictionary, price: String, btn: Button, badge := "", img := "") -> Control:
 	var p := _flat(pal.card, 8, 0, pal.line, 1)
 	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var v := UI.vbox(0)
@@ -1596,9 +1596,52 @@ func _product_card(name: String, desc: String, pict: String, pal: Dictionary, pr
 	if badge != "":
 		tags.add_child(_pill(badge, pal.price, Color.WHITE))
 	pv.add_child(tags)
-	var centre := CenterContainer.new()
-	centre.add_child(_web_img(pict, 40, pal.pict))
-	pv.add_child(centre)
+	var tex := _prop_tex(img) if img != "" else null
+	if tex:
+		# product shot on a soft studio sweep; hover for a bigger look
+		sb.content_margin_left = 0
+		sb.content_margin_right = 0
+		sb.content_margin_bottom = 0
+		var g := Gradient.new()
+		var c: Color = pal.photo
+		g.set_color(0, c.lightened(0.22))
+		g.set_color(1, c.darkened(0.12))
+		var gt := GradientTexture2D.new()
+		gt.gradient = g
+		gt.fill = GradientTexture2D.FILL_RADIAL
+		gt.fill_from = Vector2(0.5, 0.35)
+		gt.fill_to = Vector2(1.1, 1.0)
+		var stack := Control.new()
+		stack.custom_minimum_size = Vector2(0, 118)
+		stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var bg := TextureRect.new()
+		bg.texture = gt
+		bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		bg.stretch_mode = TextureRect.STRETCH_SCALE
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		stack.add_child(bg)
+		var t := TextureRect.new()
+		t.texture = tex
+		t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		t.set_anchors_preset(Control.PRESET_FULL_RECT)
+		t.offset_top = -14
+		t.offset_bottom = -2
+		stack.add_child(t)
+		pv.add_child(stack)
+		pv.remove_child(tags)
+		tags.set_anchors_preset(Control.PRESET_TOP_WIDE)
+		tags.offset_left = 6
+		tags.offset_right = -6
+		tags.offset_top = 6
+		stack.add_child(tags)
+		stack.mouse_filter = Control.MOUSE_FILTER_PASS
+		stack.mouse_entered.connect(_show_prop_preview.bind(stack, tex, pal))
+		stack.mouse_exited.connect(_hide_prop_preview)
+	else:
+		var centre := CenterContainer.new()
+		centre.add_child(_web_img(pict, 40, pal.pict))
+		pv.add_child(centre)
 	v.add_child(photo)
 	var m := MarginContainer.new()
 	for side in ["left", "right"]:
@@ -1614,6 +1657,40 @@ func _product_card(name: String, desc: String, pict: String, pal: Dictionary, pr
 	btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	tv.add_child(btn)
 	return p
+
+
+var _preview: Control = null
+
+
+## Bigger product shot floating beside a shop card while the mouse is over its photo.
+func _show_prop_preview(over: Control, tex: Texture2D, pal: Dictionary) -> void:
+	_hide_prop_preview()
+	var p := _flat(pal.card, 12, 10, pal.line, 1)
+	var sb: StyleBoxFlat = p.get_theme_stylebox("panel")
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 14
+	var t := TextureRect.new()
+	t.texture = tex
+	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	t.custom_minimum_size = Vector2(240, 240)
+	p.add_child(t)
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.top_level = true
+	p.z_index = 50
+	over.add_child(p)
+	var r := over.get_global_rect()
+	var vp := get_viewport_rect().size
+	var x := r.end.x + 8 if r.end.x + 270 < vp.x else r.position.x - 268
+	p.global_position = Vector2(x, clamp(r.position.y - 40, 8, vp.y - 270))
+	_preview = p
+
+
+func _hide_prop_preview() -> void:
+	if is_instance_valid(_preview):
+		_preview.queue_free()
+	_preview = null
 
 
 func _small_btn(text: String, cb: Callable, gold := false) -> Button:
@@ -1672,14 +1749,10 @@ func _tab_desk(inner: Control) -> void:
 			if not owned:
 				btn = _web_btn("Add to cart", _buy_desk_item.bind(it), DEPOT_RED, 0, 32)
 			elif slot == "decor":
-				var on: bool = it.id in Game.decor_on
+				var on: bool = Game.has_decor(it.id)
 				badge = "ON DESK" if on else "OWNED"
-				btn = _web_btn("Hide" if on else "Show", func():
-					if on:
-						Game.decor_on.erase(it.id)
-					else:
-						Game.decor_on.append(it.id)
-					Game.save_game()
+				btn = _web_btn("Arrange desk", func():
+					desk_look = true
 					show_screen("pc"), INK, 0, 32, true)
 			elif Game.equipped[slot] == it.id:
 				badge = "IN USE"
@@ -1692,7 +1765,7 @@ func _tab_desk(inner: Control) -> void:
 					Game.save_game()
 					show_screen("pc"), INK, 0, 32, true)
 			var price: String = "Owned" if owned else (Game.money_str(it.price) if it.price > 0 else "Included")
-			grid.add_child(_product_card(it.name, it.desc, DESK_PICTS.get(it.id, DESK_PICTS.get(it.slot, "desk")), DEPOT_PAL, price, btn, badge))
+			grid.add_child(_product_card(it.name, it.desc, DESK_PICTS.get(it.id, DESK_PICTS.get(it.slot, "desk")), DEPOT_PAL, price, btn, badge, it.id))
 
 
 func _buy_desk_item(it: Dictionary) -> void:
@@ -1701,7 +1774,8 @@ func _buy_desk_item(it: Dictionary) -> void:
 		return
 	Game.owned.append(it.id)
 	if it.slot == "decor":
-		Game.decor_on.append(it.id)
+		Game.auto_place(it.id)
+		toast("On your desk. Use \"Look at desk\" to move it." if Game.has_decor(it.id) else "Bought. The desk is full: use \"Look at desk\" to swap it in.")
 	else:
 		Game.equipped[it.slot] = it.id
 	if it.slot == "monitor":
@@ -1778,7 +1852,7 @@ func _tab_showroom_shop(inner: Control) -> void:
 				else:
 					toast("Not enough money."), SP_TEAL, 0, 32, false, Color("06201e"))
 		_dark_btn(btn)
-		grid.add_child(_product_card(it.name, it.desc, SP_PICTS.get(it.id, "lot"), SP_PAL, Game.money_str(it.price), btn, badge))
+		grid.add_child(_product_card(it.name, it.desc, SP_PICTS.get(it.id, "lot"), SP_PAL, Game.money_str(it.price), btn, badge, it.id))
 
 
 ## Current dealership and the next one to buy. web = styled for ShowroomPro's dark page.
@@ -1915,9 +1989,21 @@ func _campaign_card(a: Dictionary, on: bool, btn: Button) -> Control:
 	var card := _flat(Color.WHITE, 8, 12, Color(0.86, 0.87, 0.89), 1)
 	var h := UI.hbox(12)
 	card.add_child(h)
-	var ic := _flat(Color("e8f0fe") if on else Color(0.94, 0.95, 0.96), 8, 8)
+	var ic := _flat(Color("e8f0fe") if on else Color(0.94, 0.95, 0.96), 8, 4 if _prop_tex(a.id) else 8)
 	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	ic.add_child(_web_img(ADS_PICTS.get(a.id, "flyer"), 26, ADS_BLUE if on else ADS_GREY))
+	var ptex := _prop_tex(a.id)
+	if ptex:
+		var t := TextureRect.new()
+		t.texture = ptex
+		t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		t.custom_minimum_size = Vector2(96, 96)
+		t.mouse_filter = Control.MOUSE_FILTER_PASS
+		t.mouse_entered.connect(_show_prop_preview.bind(t, ptex, {"card": Color.WHITE, "line": Color(0.86, 0.87, 0.89)}))
+		t.mouse_exited.connect(_hide_prop_preview)
+		ic.add_child(t)
+	else:
+		ic.add_child(_web_img(ADS_PICTS.get(a.id, "flyer"), 26, ADS_BLUE if on else ADS_GREY))
 	h.add_child(ic)
 	var v := UI.vbox(2)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
