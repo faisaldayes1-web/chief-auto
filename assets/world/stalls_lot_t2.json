@@ -1,8 +1,8 @@
 {
  "view": "lot_t2",
  "image": [
-  1600,
-  900
+  2560,
+  1440
  ],
  "about": "Stalls in fill order. Coordinates are fractions of the image (u right, v down). target is where the middle of a sprite frame goes for the reference car (its centre at 0.42 of its height); frame_w is that car's 640x360 sprite frame width as a fraction of the image width; ppm is image widths per metre there; fwd and up are image offsets per metre along the car's heading and straight up. For another car: move target by fwd * (L - ref L) / 2 (its tail stays at the wheel stop) and by up * 0.42 * (H - ref H), and use frame_w = ppm * hypot(1.7 L, 1.15) * 36 / 50. order is the draw order.",
  "ref_car": {
@@ -138,7 +138,7 @@
     -0.07942
    ],
    "ppm": 0.045063,
-   "px_per_m": 72.101,
+   "px_per_m": 115.361,
    "frame_w": 0.26191,
    "depth": 30.821,
    "order": 7
@@ -172,7 +172,7 @@
     -0.07801
    ],
    "ppm": 0.044253,
-   "px_per_m": 70.804,
+   "px_per_m": 113.287,
    "frame_w": 0.2572,
    "depth": 31.385,
    "order": 6
@@ -206,7 +206,7 @@
     -0.07666
    ],
    "ppm": 0.043479,
-   "px_per_m": 69.567,
+   "px_per_m": 111.307,
    "frame_w": 0.2527,
    "depth": 31.944,
    "order": 5
@@ -240,7 +240,7 @@
     -0.07537
    ],
    "ppm": 0.042735,
-   "px_per_m": 68.376,
+   "px_per_m": 109.402,
    "frame_w": 0.24838,
    "depth": 32.5,
    "order": 4
@@ -274,7 +274,7 @@
     -0.05636
    ],
    "ppm": 0.031875,
-   "px_per_m": 51.001,
+   "px_per_m": 81.601,
    "frame_w": 0.18526,
    "depth": 43.572,
    "order": 3
@@ -308,7 +308,7 @@
     -0.0556
    ],
    "ppm": 0.031436,
-   "px_per_m": 50.297,
+   "px_per_m": 80.475,
    "frame_w": 0.18271,
    "depth": 44.182,
    "order": 2
@@ -342,7 +342,7 @@
     -0.05486
    ],
    "ppm": 0.031018,
-   "px_per_m": 49.629,
+   "px_per_m": 79.406,
    "frame_w": 0.18028,
    "depth": 44.777,
    "order": 1
@@ -376,7 +376,7 @@
     -0.05415
    ],
    "ppm": 0.030618,
-   "px_per_m": 48.989,
+   "px_per_m": 78.383,
    "frame_w": 0.17796,
    "depth": 45.362,
    "order": 0
