@@ -242,24 +242,15 @@ func _draw_desk() -> void:
 	var desk: String = Game.equipped.get("desk", "folding")
 	var top := desk_top
 	var col: Color = {"folding": Color("8c8f94"), "oak": Color("8a5a35"), "glass": Color(0.75, 0.88, 0.95, 0.55), "carbon": Color("1c1c1e")}[desk]
-	draw_rect(Rect2(0, top, w, h - top), col)
-	draw_rect(Rect2(0, top, w, 5), col.lightened(0.25))
-	match desk:
-		"oak":
-			for i in 6:
-				var y := top + 10 + i * 7
-				draw_line(Vector2(0, y), Vector2(w, y + (i % 2) * 3), Color(0, 0, 0, 0.12), 1.5)
-		"carbon":
-			for x in range(0, int(w), 10):
-				for y in range(int(top) + 6, int(h), 10):
-					if (x / 10 + y / 10) % 2 == 0:
-						draw_rect(Rect2(x, y, 10, 10), Color(1, 1, 1, 0.04))
-			draw_rect(Rect2(0, top + 4, w, 3), Color("c0392b"))
-		"glass":
-			draw_rect(Rect2(0, top, w, 2), Color(1, 1, 1, 0.8))
-		"folding":
-			draw_line(Vector2(w * 0.1, top), Vector2(w * 0.14, h), Color("4a4d52"), 4.0)
-			draw_line(Vector2(w * 0.9, top), Vector2(w * 0.86, h), Color("4a4d52"), 4.0)
+	var dtex := _deskview("desk_" + desk)
+	if dtex != null:
+		# rendered from the chair (tools/deskview3d.py): its back edge lands on the desk line
+		var edge: float = float(_deskview_meta().get("edge_" + desk, 0.42))
+		var dh: float = max(w * 9.0 / 16.0, (h - top) / (1.0 - edge))
+		var dw := dh * 16.0 / 9.0
+		draw_texture_rect(dtex, Rect2((w - dw) / 2.0, top - edge * dh, dw, dh), false)
+	else:
+		_draw_flat_desk(desk, col, top, w, h)
 	# monitor(s)
 	var mon: String = Game.equipped.get("monitor", "crt")
 	if mon == "dual":
@@ -298,12 +289,18 @@ func _draw_desk() -> void:
 		if r.size.x <= 0:
 			continue
 		draw_texture_rect(tex, r, false, Color(0.96, 0.93, 0.88) if desk_view else Color(0.9, 0.87, 0.82))
-	if desk_view:
+	if desk_view and dtex == null:
 		# front edge of the desk, so it reads as a top seen from the chair
 		draw_rect(Rect2(0, h - h * 0.035, w, h * 0.035), col.darkened(0.35))
 		draw_rect(Rect2(0, h - h * 0.035, w, 2), col.lightened(0.2))
-	# chair back in the corner
+	# the chair, seen from behind in the corner
 	var chair: String = Game.equipped.get("chair", "plastic")
+	var ctex := _deskview("chair_" + chair)
+	if ctex != null:
+		var ch := h * (0.5 if desk_view else 0.42)
+		var cw := ch * ctex.get_width() / ctex.get_height()
+		draw_texture_rect(ctex, Rect2(-cw * 0.08, h - ch * 0.66, cw, ch), false)
+		return
 	var ccol: Color = {"plastic": Color("d9d9d9"), "office": Color("2c3e50"), "leather": Color("5a321f"), "racing": Color("111111")}[chair]
 	var cx := w * 0.035
 	draw_rect(Rect2(cx - 40, h - 70, 110, 90), ccol)
@@ -313,6 +310,47 @@ func _draw_desk() -> void:
 	elif chair == "leather":
 		for i in 3:
 			draw_line(Vector2(cx - 40, h - 50 + i * 18), Vector2(cx + 70, h - 50 + i * 18), ccol.darkened(0.3), 2.0)
+
+
+## The flat-colour desk top (only when the rendered one is missing).
+func _draw_flat_desk(desk: String, col: Color, top: float, w: float, h: float) -> void:
+	draw_rect(Rect2(0, top, w, h - top), col)
+	draw_rect(Rect2(0, top, w, 5), col.lightened(0.25))
+	match desk:
+		"oak":
+			for i in 6:
+				var y := top + 10 + i * 7
+				draw_line(Vector2(0, y), Vector2(w, y + (i % 2) * 3), Color(0, 0, 0, 0.12), 1.5)
+		"carbon":
+			for x in range(0, int(w), 10):
+				for y in range(int(top) + 6, int(h), 10):
+					if (x / 10 + y / 10) % 2 == 0:
+						draw_rect(Rect2(x, y, 10, 10), Color(1, 1, 1, 0.04))
+			draw_rect(Rect2(0, top + 4, w, 3), Color("c0392b"))
+		"glass":
+			draw_rect(Rect2(0, top, w, 2), Color(1, 1, 1, 0.8))
+		"folding":
+			draw_line(Vector2(w * 0.1, top), Vector2(w * 0.14, h), Color("4a4d52"), 4.0)
+			draw_line(Vector2(w * 0.9, top), Vector2(w * 0.86, h), Color("4a4d52"), 4.0)
+
+
+var _dv := {}
+var _dv_meta = null
+
+
+## A desk-view furniture render (assets/deskview/<name>.png from tools/deskview3d.py), or null.
+func _deskview(name: String) -> Texture2D:
+	if not _dv.has(name):
+		var p := "res://assets/deskview/%s.png" % name
+		_dv[name] = load(p) if ResourceLoader.exists(p) else null
+	return _dv[name]
+
+
+func _deskview_meta() -> Dictionary:
+	if _dv_meta == null:
+		var res = load("res://assets/deskview/deskview.json") if ResourceLoader.exists("res://assets/deskview/deskview.json") else null
+		_dv_meta = res.data if res is JSON and res.data is Dictionary else {}
+	return _dv_meta
 
 
 # ---------- service bay ----------
