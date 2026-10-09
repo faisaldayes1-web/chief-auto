@@ -657,7 +657,7 @@ func _park_cars(yard: Control) -> void:
 		b.add_child(art)
 		# parked cars darken with the lot at night (the background crossfades to its night render)
 		if WorldLook.night_tex("lot" + Game.world_suffix()) != null:
-			art.modulate = Color.WHITE.lerp(Color(0.42, 0.46, 0.62), Game.night_amount())
+			art.modulate = Color.WHITE.lerp(Color(0.3, 0.33, 0.48), Game.night_amount())
 		# dealer-style windshield price: big yellow numbers with a dark outline, painted at a slight slant
 		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color("ffe14a"), true)
 		tag.add_theme_constant_override("outline_size", 7)
@@ -771,9 +771,12 @@ func _lot_traffic(yard: Control, lot: Dictionary) -> void:
 	road.clip_contents = true
 	yard.add_child(road)
 	yard.move_child(road, 0)
-	var send := func(again: Callable):
-		if not is_instance_valid(road):
-			return
+	var clock := Timer.new()
+	clock.one_shot = true
+	clock.wait_time = randf_range(1.0, 4.0)
+	clock.autostart = true
+	road.add_child(clock)
+	var send := func():
 		var lane: Array = lanes.pick_random()
 		var art := CarArt.new()
 		art.quarter = true
@@ -797,8 +800,8 @@ func _lot_traffic(yard: Control, lot: Dictionary) -> void:
 		var tw := art.create_tween()
 		tw.tween_method(at, 0.0, 1.0, randf_range(5.0, 8.0))
 		tw.tween_callback(art.queue_free)
-		road.get_tree().create_timer(randf_range(7.0, 16.0)).timeout.connect(again.bind(again))
-	road.get_tree().create_timer(randf_range(1.0, 4.0)).timeout.connect(send.bind(send))
+		clock.start(randf_range(7.0, 16.0))
+	clock.timeout.connect(send)
 
 
 static func _v2(a: Array) -> Vector2:
