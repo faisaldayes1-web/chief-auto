@@ -15,9 +15,9 @@ dest_files=["res://.godot/imported/bg_showroom_t2_night.jpg-87885cfb63fd17ab2383
 
 [params]
 
-compress/mode=0
+compress/mode=1
 compress/high_quality=false
-compress/lossy_quality=0.7
+compress/lossy_quality=0.92
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
