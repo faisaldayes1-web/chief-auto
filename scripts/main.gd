@@ -1892,12 +1892,7 @@ func _portrait_frame(pid: String, mood: float, accent: Color, h := 120.0) -> Pan
 	frame.add_child(glow)
 	var tex := _person_tex(pid)
 	if tex:
-		var pic := TextureRect.new()
-		pic.texture = tex
-		pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		frame.add_child(pic)
+		frame.add_child(_face_rect(pid))
 	else:
 		var art := PersonArt.new()
 		art.pid = pid
@@ -4081,14 +4076,14 @@ func _team_row(pid: String, name: String, role: String, selected: bool, cb: Call
 	r.offset_left = 6
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(r)
-	var th := TextureRect.new()
+	var th: TextureRect = _face_rect(pid, true) if pid != "" else TextureRect.new()
 	th.custom_minimum_size = Vector2(48, 48)
 	th.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	th.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	th.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if pid != "":
-		th.texture = _person_tex(pid, true)
+		th.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	else:
 		th.texture = icon_tex("staff")
 		th.modulate = UI.MUTED
@@ -4142,12 +4137,7 @@ func _thumb(pid: String, px := 40) -> Control:
 	f.add_theme_stylebox_override("panel", UI.box(Color(0.1, 0.16, 0.22), Color(1, 1, 1, 0.2), 4, 1, 1))
 	f.custom_minimum_size = Vector2(px, px)
 	f.clip_contents = true
-	var t := TextureRect.new()
-	t.texture = _person_tex(pid, true)
-	t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	f.add_child(t)
+	f.add_child(_face_rect(pid, true))
 	return f
 
 
@@ -4253,12 +4243,7 @@ func _tall_card(pid: String, name: String, role: String, stats: Array, accent: C
 	var glow := GlowBack.new()
 	glow.accent = accent
 	frame.add_child(glow)
-	var pic := TextureRect.new()
-	pic.texture = _person_tex(pid)
-	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.add_child(pic)
+	frame.add_child(_face_rect(pid))
 	v.add_child(frame)
 	v.add_child(UI.label(name.to_upper(), 24, Color.WHITE, true))
 	v.add_child(UI.label(role, 12, accent, true, true))
@@ -4414,31 +4399,94 @@ func _show_next_line() -> void:
 	shade.color = Color(0, 0, 0, 0.4)
 	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(shade)
-	var box := _glass_panel()
-	(box.get_theme_stylebox("panel") as StyleBoxFlat).bg_color.a = 0.94
-	box.anchor_left = 0.12
-	box.anchor_right = 0.88
-	box.anchor_top = 1.0
-	box.anchor_bottom = 1.0
-	box.offset_top = -250
-	box.offset_bottom = -90
-	overlay.add_child(box)
-	var h := UI.hbox(16)
-	box.add_child(h)
-	var face := _portrait_frame(_speaker_pid(line[0]), 0.5, UI.GOLD if line[0] == "Marco" else CARD_CYAN, 128)
-	face.custom_minimum_size.x = 112
-	h.add_child(face)
-	var v := UI.vbox(8)
-	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	h.add_child(v)
-	v.add_child(UI.label("%s · %s" % [line[0].to_upper(), line[1].to_upper()], 18, UI.GOLD, true))
-	var text := UI.para(line[2], 18)
-	text.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	v.add_child(text)
-	var hh := UI.hbox()
+	var wrap := Control.new()
+	wrap.anchor_left = 0.2
+	wrap.anchor_right = 0.8
+	wrap.anchor_top = 1.0
+	wrap.anchor_bottom = 1.0
+	wrap.offset_top = -300
+	wrap.offset_bottom = -92
+	wrap.mouse_filter = Control.MOUSE_FILTER_STOP
+	wrap.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	wrap.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_show_next_line())
+	overlay.add_child(wrap)
+	var row := UI.hbox(14)
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_child(row)
+	var face := _portrait_frame(_speaker_pid(line[0]), 0.5, UI.DIALOG_RIM, 150)
+	face.custom_minimum_size.x = 132
+	face.size_flags_vertical = Control.SIZE_SHRINK_END
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(face)
+	var col := UI.vbox(6)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(col)
+	var box := PanelContainer.new()
+	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = UI.DIALOG_NAVY
+	sb.border_color = UI.DIALOG_RIM
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(14)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 10
+	box.add_theme_stylebox_override("panel", sb)
+	col.add_child(box)
+	var v := UI.vbox(0)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(v)
+	var head := PanelContainer.new()
+	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hs := StyleBoxFlat.new()
+	hs.bg_color = UI.DIALOG_HEAD
+	hs.corner_radius_top_left = 13
+	hs.corner_radius_top_right = 13
+	hs.content_margin_left = 18
+	hs.content_margin_right = 14
+	hs.content_margin_top = 6
+	hs.content_margin_bottom = 6
+	head.add_theme_stylebox_override("panel", hs)
+	v.add_child(head)
+	var hh := UI.hbox(8)
+	head.add_child(hh)
+	hh.add_child(UI.label("%s - %s" % [String(line[0]).to_upper(), _dialogue_role(line[0], line[1]).to_upper()], 17, Color.WHITE, true))
 	hh.add_child(UI.spacer())
-	hh.add_child(UI.button("Continue ▸", _show_next_line, 160, 40))
-	v.add_child(hh)
+	hh.add_child(UI.label("★", 18, UI.GOLD, true))
+	var bm := MarginContainer.new()
+	bm.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for k in ["left", "right"]:
+		bm.add_theme_constant_override("margin_" + k, 20)
+	bm.add_theme_constant_override("margin_top", 12)
+	bm.add_theme_constant_override("margin_bottom", 14)
+	v.add_child(bm)
+	var text := UI.para(line[2], 18)
+	text.add_theme_color_override("font_color", Color.WHITE)
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bm.add_child(text)
+	var cont := UI.label("Click to continue", 14, Color(0.85, 0.9, 1.0, 0.85))
+	cont.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cont.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_child(cont)
+
+
+## The role shown in the dialogue header strip.
+func _dialogue_role(speaker: String, given: String) -> String:
+	match speaker:
+		"Marco": return "CEO Advisor"
+		"Jeff": return "Sales Associate"
+		"Maruchan": return "Leasing & VIP"
+		"Amna": return "Finance"
+	for s in Game.staff:
+		if s.name == speaker:
+			return _staff_role(s)
+	if given.to_lower().contains("customer") or given == "":
+		return "Customer"
+	return given
 
 
 func toast(text: String) -> void:
@@ -4706,3 +4754,55 @@ class DealBar extends Control:
 		draw_string(font, Vector2(8, 12), ("BANK RATE " if percent else "BUYER OFFER ") + _fmt(offer), HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color("4aa3ff"))
 		draw_string(font, Vector2(0, 12), "YOU " + _fmt(counter), HORIZONTAL_ALIGNMENT_RIGHT, size.x - 8, 12, Color("e8b64c"))
 		draw_string(font, Vector2(0, size.y - 2), "BAD DEAL WALKOUT LINE: " + _fmt(threshold), HORIZONTAL_ALIGNMENT_CENTER, size.x, 12, Color("ff6b5b"))
+
+
+## A person's portrait cropped to whatever box it sits in with the whole face centred (see FaceRect).
+func _face_rect(pid: String, tight := false) -> TextureRect:
+	var r := FaceRect.new()
+	r.tight = tight
+	r.src = _person_tex(pid)
+	return r
+
+
+## Shows a 480x600 portrait through an AtlasTexture region with the box's aspect, anchored on the head (top ~55% of the
+## portrait), so wide boxes no longer crop to the chest. Boxes wider than the head allow fit the whole head, centred.
+## tight = thumbnails: head and a little shoulder only. Other textures (body crops) fall back to cover.
+class FaceRect extends TextureRect:
+	var src: Texture2D
+	var tight := false
+
+	func _init() -> void:
+		expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		resized.connect(_fit)
+
+	func _ready() -> void:
+		_fit()
+
+	func _fit() -> void:
+		if src == null:
+			return
+		var tw := float(src.get_width())
+		var th := float(src.get_height())
+		if src is AtlasTexture or absf(tw / th - 0.8) > 0.02:
+			stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			texture = src
+			return
+		var k := tw / 480.0
+		var aspect := 1.0 if size.y <= 0.0 else clampf(size.x / size.y, 0.45, 1.45)
+		var h := minf(600.0, maxf(330.0, 480.0 / aspect))
+		if tight:
+			h = 360.0 if aspect >= 0.8 else minf(600.0, 360.0 / aspect * 0.8)
+		var w := h * aspect
+		if w > 480.0:
+			w = 480.0
+			h = w / aspect
+		var y0 := clampf(215.0 - h * 0.5, 0.0, 600.0 - h)
+		if tight:
+			y0 = clampf(40.0 - (h - 360.0) * 0.3, 0.0, 600.0 - h)
+		var a := AtlasTexture.new()
+		a.atlas = src
+		a.region = Rect2((240.0 - w * 0.5) * k, y0 * k, w * k, h * k)
+		texture = a
