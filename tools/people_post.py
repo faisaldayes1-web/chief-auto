@@ -21,10 +21,34 @@ PORTRAIT = (480, 600)
 
 
 def body(src, dst):
+    """Crops to the figure with its feet on the bottom edge. The ground shadow people3d.py bakes in (dark,
+    semi-transparent pixels) is kept: the faint shadow-catcher floor is cleared, the shadow fades out with distance
+    from the feet so the disc edge never shows, and the crop widens symmetrically (figure stays centred) to keep it."""
+    import numpy as np
     im = Image.open(src).convert("RGBA")
-    alpha = im.getchannel("A").point(lambda a: 255 if a > 24 else 0)
-    l, t, r, b = alpha.getbbox()
-    im = im.crop((max(0, l - 4), max(0, t - 4), min(im.width, r + 4), b))
+    px = np.asarray(im).astype(np.float32)
+    a = px[..., 3]
+    shadow = (a < 235) & (px[..., :3].max(-1) < 40)
+    solid = (a > 24) & ~shadow
+    ys, xs = np.nonzero(solid)
+    t, b = ys.min(), ys.max() + 1
+    l, r = xs.min(), xs.max() + 1
+    feet = solid[max(t, b - 40):b]
+    fx = np.nonzero(feet.any(0))[0].mean() if feet.any() else (l + r) / 2
+    hgt = b - t
+    yy, xx = np.mgrid[0:a.shape[0], 0:a.shape[1]]
+    d = np.sqrt(((xx - fx) / (0.42 * hgt)) ** 2 + ((yy - b) / (0.17 * hgt)) ** 2)
+    fade = np.clip(1.15 - d, 0, 1) ** 1.2
+    sa = np.minimum(np.where(a < 14, 0, a) * fade * 1.35, 220)
+    px[..., 3] = np.where(shadow, sa, a)
+    px[..., :3] = np.where(shadow[..., None], 0, px[..., :3])
+    im = Image.fromarray(px.clip(0, 255).astype(np.uint8))
+    cx = (l + r) / 2
+    sh = np.nonzero((px[t:b, :, 3] > 6).any(0))[0]
+    half = max(cx - l, r - cx, cx - sh.min(), sh.max() - cx) + 4
+    half = min(half, 0.45 * hgt, cx, im.width - cx)
+    half = max(half, (r - l) / 2 + 2)
+    im = im.crop((round(cx - half), max(0, t - 4), round(cx + half), b))
     h = 600
     im = im.resize((round(im.width * h / im.height), h), Image.LANCZOS)
     im.save(dst, optimize=True)
