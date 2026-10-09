@@ -1,0 +1,32 @@
+{
+ "view": "showroom_t1",
+ "eye": 0.48546,
+ "floor": 0.59995,
+ "row": [
+  {
+   "ground": [
+    0.78045,
+    0.64664
+   ],
+   "target": [
+    0.78077,
+    0.58541
+   ],
+   "frame_w": 0.32967,
+   "ppm": 0.056721
+  },
+  {
+   "ground": [
+    0.21955,
+    0.64664
+   ],
+   "target": [
+    0.21923,
+    0.58541
+   ],
+   "frame_w": 0.32967,
+   "ppm": 0.056721
+  }
+ ],
+ "about": "eye: horizon line; floor: where the floor meets the front glass; row: the leftmost and rightmost display car (ground point, sprite frame centre, frame width as a fraction of image width)."
+}
