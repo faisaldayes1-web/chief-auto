@@ -22,7 +22,8 @@ import bmesh  # bpy must load first
 from mathutils import Matrix, Vector
 
 SAMPLES = int(os.environ.get("SAMPLES", 96))
-RES = (640, 360) if os.environ.get("PREVIEW") else ((1920, 1080) if os.environ.get("HD") else (1600, 900))
+# 2560x1440 so the backgrounds stay sharp on big fullscreen monitors (the game stretches its 1280x720 canvas)
+RES = (640, 360) if os.environ.get("PREVIEW") else ((1920, 1080) if os.environ.get("HD") else (2560, 1440))
 TIER_COLLECTIONS = {}
 
 
@@ -1423,6 +1424,24 @@ def sun_vector():
     return Vector((math.sin(az) * math.cos(el), math.cos(az) * math.cos(el), math.sin(el)))
 
 
+GOLDEN = {}
+
+
+def golden_hour(on):
+    """Showroom renders only: warm the sky and turn the shared midday sun down and amber, so the low golden_sun
+    through the front glass carries the picture. SUN_EL/SUN_AZ (lot views, car sprites) are untouched."""
+    if "warm" not in GOLDEN or NIGHT:
+        return
+    GOLDEN["warm"].inputs[0].default_value = 1.0 if on else 0.0
+    sun = bpy.data.objects.get("sun")
+    if sun:
+        sun.data.energy = 1.6 if on else 6.2
+        sun.data.color = (1.0, 0.62, 0.34) if on else (1.0, 0.9, 0.76)
+    for o in bpy.data.objects:      # dimmer room fills so the sunlight on the floor stands out
+        if o.type == "LIGHT" and o.name.startswith("fill"):
+            o.data.energy = o.data["day"] * (0.45 if on else 1.0) if "day" in o.data else o.data.energy
+
+
 def build_world():
     sc = bpy.context.scene
     w = bpy.data.worlds.new("sky")
@@ -1472,7 +1491,23 @@ def build_world():
     seen = _math(nt, "MAXIMUM", lp.outputs["Is Camera Ray"], lp.outputs["Is Glossy Ray"])
     blue = _mix(nt, seen, sky.outputs[0], _mix(nt, 1.0, sky.outputs[0], (0.66, 0.88, 1.25), "MULTIPLY"))
     col = _mix(nt, _math(nt, "MULTIPLY", cf, 0.95), blue, shade)
-    nt.links.new(col, nt.nodes["Background"].inputs[0])
+    # showroom-only golden hour: a warm multiply on the sky (GOLDEN["warm"]), off for every other view
+    # (a late-afternoon sky: bright peach at the horizon to a dusty violet overhead, warming the light it casts too)
+    dusk = _ramp(nt, sep.outputs["Z"], ((0.0, (1.0, 0.58, 0.27)), (0.06, (0.72, 0.4, 0.21)), (0.2, (0.36, 0.26, 0.21)),
+                                        (0.6, (0.145, 0.14, 0.18))))
+    dusk = _mix(nt, _math(nt, "MULTIPLY", cf, 0.7), dusk, _mix(nt, 1.0, dusk, (1.0, 0.8, 0.66), "MULTIPLY"))
+    up = nt.nodes.new("ShaderNodeVectorMath")      # ramps stop at 1.0; scale up to sky brightness
+    up.operation = "SCALE"
+    up.inputs["Scale"].default_value = 3.6
+    nt.links.new(dusk, up.inputs[0])
+    dusk = up.outputs["Vector"]
+    warm = nt.nodes.new("ShaderNodeMix")
+    warm.data_type = "RGBA"
+    warm.inputs[0].default_value = 0.0
+    nt.links.new(col, warm.inputs[6])
+    nt.links.new(dusk, warm.inputs[7])
+    GOLDEN["warm"] = warm
+    nt.links.new(warm.outputs[2], nt.nodes["Background"].inputs[0])
     nt.nodes["Background"].inputs["Strength"].default_value = 0.19
     sun = bpy.data.lights.new("sun", "SUN")
     sun.energy = 6.2
@@ -2875,16 +2910,16 @@ def counter(x0, y0, x1, y1, h=1.05):
 
 
 def showroom_floor(x0, y0, x1, y1, z):
-    m = noise_mat("show_floor", (0.03, 0.032, 0.036), (0.075, 0.074, 0.078), 2.5, 0.13, macro=0.4)
+    m = noise_mat("show_floor", (0.17, 0.16, 0.15), (0.27, 0.26, 0.24), 2.5, 0.16, macro=0.4)
     box("show_floor", (x0, y0, z), (x1, y1, z + 0.004), m)
 
 
-def golden_sun(energy=11.0, el=13.0, az=-150.0):
+def golden_sun(energy=34.0, el=16.0, az=-148.0):
     """Low warm sun through the front glass (showroom views only; the lot keeps the shared midday sun)."""
     ld = bpy.data.lights.new("golden_sun", "SUN")
     ld.energy = energy
-    ld.color = (1.0, 0.6, 0.3)
-    ld.angle = math.radians(1.0)
+    ld.color = (1.0, 0.48, 0.17)
+    ld.angle = math.radians(0.6)    # crisp long light patches on the floor
     e, a = math.radians(el), math.radians(az)
     v = Vector((math.sin(a) * math.cos(e), math.cos(a) * math.cos(e), math.sin(e)))
     lo = bpy.data.objects.new("golden_sun", ld)
@@ -2984,6 +3019,12 @@ def setup_render():
     sc.cycles.device = "CPU"
     sc.cycles.samples = SAMPLES
     sc.cycles.use_denoising = True
+    # keep detail through the denoiser: OIDN guided by albedo and normal passes, accurate prefilter
+    sc.cycles.denoiser = "OPENIMAGEDENOISE"
+    sc.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"
+    sc.cycles.denoising_prefilter = "ACCURATE"
+    sc.cycles.use_adaptive_sampling = True
+    sc.cycles.adaptive_threshold = 0.015
     sc.cycles.max_bounces = 6
     sc.cycles.transmission_bounces = 6
     sc.cycles.transparent_max_bounces = 16
@@ -2991,7 +3032,7 @@ def setup_render():
     sc.cycles.caustics_refractive = False
     sc.render.resolution_x, sc.render.resolution_y = RES
     sc.render.image_settings.file_format = "JPEG"
-    sc.render.image_settings.quality = 88
+    sc.render.image_settings.quality = 92
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Punchy"
     sc.view_settings.exposure = 0.0
@@ -3016,7 +3057,7 @@ VIEWS = {
     "showroom_t1": ((-7.25, 11.4, 1.65), (-7.25, -10.0, 1.3), 18, 0.0),
     "office_t1": ((-3.5, 5.4, 1.6), (-9.0, -1.0, 1.3), 18, 0.0),
     "garage_t1": ((11.0, -12.0, 1.7), (11.0, 2.0, 1.6), 18, -0.5),
-    "desk_t1": ((-7.9, 5.9, 1.35), (-7.9, -1.0, 1.2), 24, 0.0),
+    "desk_t1": ((-7.9, 5.25, 1.3), (-7.9, -1.0, 1.05), 24, 0.0),     # seated at the desk (desk_seat)
     "dealdesk_t1": ((-4.3, 5.6, 1.35), (-9.5, -1.0, 0.9), 20, 0.0),
     "lot_t2": ((-14.5, -46.0, 6.46), (-10.34, -26.44, 5.06), 50, 0.2),
     "showroom_t2": ((-2.0, 11.6, 1.65), (-2.0, -10.0, 1.3), 18, -0.2),
@@ -3025,6 +3066,18 @@ VIEWS = {
     "desk_t2": ((4.7, 9.6, 1.25), (4.7, 12.0, 1.05), 24, -0.2),
     "dealdesk_t2": ((-8.6, 1.6, 1.3), (-4.0, 12.0, 0.9), 20, -0.2),
 }
+
+
+def desk_seat(on):
+    """desk_t1 is seen from the chair: hide the chair and what stands on the desk top (the game draws its own
+    desk, monitor and collectibles over the lower half of this view)."""
+    for o in TIER_COLLECTIONS["s1o"].all_objects:
+        bb = [o.matrix_world @ Vector(c) for c in o.bound_box]
+        c = sum(bb, Vector()) / 8
+        top = min(p.z for p in bb) > TZ + 0.74 and -9.8 < c.x < -6.2 and 3.4 < c.y < 4.7
+        seat = -8.5 < c.x < -7.3 and 4.6 < c.y < 5.7
+        if top or seat:
+            o.hide_render = on
 
 
 def render_view(cam, name, out):
@@ -3042,6 +3095,8 @@ def render_view(cam, name, out):
             sets.add("s1o")
     pos, tgt, lens, exp = VIEWS[key]
     show_sets(sets)
+    desk_seat(name == "desk_t1")
+    golden_hour(name.startswith("showroom"))
     cam.location = pos
     cam.data.lens = lens
     cam.data.clip_end = 5000
@@ -3085,6 +3140,7 @@ def build():
             ld.shape = "RECTANGLE"
             ld.size, ld.size_y = size
             ld.energy = e
+            ld["day"] = e
             ld.color = (1.0, 0.9, 0.78)
             lo = bpy.data.objects.new("fill", ld)
             lo.location = loc
@@ -3164,6 +3220,18 @@ def make_night():
     for o in bpy.data.objects:
         if o.type == "LIGHT" and o.name.startswith("fill"):
             o.data.energy *= 1.35
+    # the tier-1 carport gets its work lights on (two tubes under the corrugated roof)
+    global COL
+    COL = TIER_COLLECTIONS["s1"]
+    tube = mat("tube_lit", (1, 1, 1), emit=8, ecol=(0.95, 0.97, 1.0))
+    for x in (8.5, 13.5):
+        box("cp_tube", (x - 0.7, -4.1, 3.22), (x + 0.7, -3.95, 3.28), tube)
+        ld = bpy.data.lights.new("cp_light", "AREA")
+        ld.shape, ld.size, ld.size_y, ld.energy, ld.color = "RECTANGLE", 1.4, 0.3, 420, (0.95, 0.96, 1.0)
+        lo = bpy.data.objects.new("cp_light", ld)
+        lo.location = (x, -4.0, 3.18)
+        TIER_COLLECTIONS["s1"].objects.link(lo)
+    COL = None
 
 
 def main():

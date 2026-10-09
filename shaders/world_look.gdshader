@@ -6,7 +6,7 @@ shader_type canvas_item;
 uniform sampler2D night_tex : filter_linear, source_color;
 uniform float night : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 tint : source_color = vec4(1.0);     // dusk warmth (day -> sunset)
-uniform float bloom = 0.22;
+uniform float bloom = 0.14;        // additive glow on highlights only; the picture itself is never blurred
 uniform float vignette = 0.32;
 uniform float grade = 1.0;
 uniform vec2 texel = vec2(0.000625, 0.0011);       // 1 / render size
@@ -19,14 +19,15 @@ vec3 world_at(sampler2D day, vec2 uv) {
 
 void fragment() {
 	vec4 base = texture(TEXTURE, UV);
+	// the base image is sampled once at full resolution (no LOD bias); only the glow reads neighbours
 	vec3 c = world_at(TEXTURE, UV);
 	// bloom: thresholded highlights from a 12-tap ring at two radii
 	vec3 glow = vec3(0.0);
 	for (int i = 0; i < 6; i++) {
 		float a = float(i) * 1.0472;
 		vec2 o = vec2(cos(a), sin(a)) * texel;
-		glow += max(world_at(TEXTURE, UV + o * 5.0) - 0.72, 0.0);
-		glow += max(world_at(TEXTURE, UV + o * 12.0) - 0.72, 0.0) * 0.6;
+		glow += max(world_at(TEXTURE, UV + o * 5.0) - 0.8, 0.0);
+		glow += max(world_at(TEXTURE, UV + o * 12.0) - 0.8, 0.0) * 0.6;
 	}
 	c += glow / 9.6 * bloom * (1.0 + night * 1.5);
 	// grade: a touch of S-curve contrast, warm highlights, cool shadows, a little more saturation
