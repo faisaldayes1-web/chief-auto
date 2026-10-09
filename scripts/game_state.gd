@@ -1004,7 +1004,7 @@ func listing_count() -> int:
 
 # price ranges per house: [start lo, start hi, typical final lo, typical final hi]
 const AUCTION_DEAL := {
-	"autobidz": [0.25, 0.4, 0.7, 1.0],
+	"autobidz": [0.25, 0.4, 0.68, 0.95],
 	"salvage": [0.1, 0.2, 0.38, 0.6],
 	"dealer": [0.28, 0.4, 0.65, 0.88],
 	"exotic": [0.3, 0.45, 0.68, 0.92],
@@ -1022,7 +1022,7 @@ func bid_increment(l: Dictionary) -> int:
 
 
 ## One live auction: ends AUCTION_SECONDS (+/- a little) of auction time from `delay`.
-## The rival field's walk-away price is randomized; a quarter of lanes run hot and close 5-30% over value.
+## The rival field's walk-away price is randomized; about a sixth of lanes run hot and close 5-30% over value.
 func make_listing(house: String, delay := 0.0, avoid: Array = []) -> Dictionary:
 	var car := make_car(max_auction_base(), house)
 	for attempt in 4:
@@ -1033,13 +1033,13 @@ func make_listing(house: String, delay := 0.0, avoid: Array = []) -> Dictionary:
 	var d: Array = AUCTION_DEAL.get(house, AUCTION_DEAL.autobidz)
 	var start: int = int(round(v * randf_range(d[0], d[1]) / 100.0) * 100)
 	var final: int = int(v * randf_range(d[2], d[3]))
-	if randf() < 0.25:
+	if randf() < 0.2:
 		final = int(v * randf_range(1.05, 1.3))
 	final = max(final, start)
 	return {
 		"car": car, "current": start, "start": start, "house": house,
 		"leader": "", "rival": RIVALS.pick_random(), "rival_max": final,
-		"buy_now": int(round(v * randf_range(1.1, 1.35) / 100.0) * 100),
+		"buy_now": int(round(v * randf_range(1.08, 1.32) / 100.0) * 100),
 		"ends_at": auction_clock + delay + randf_range(AUCTION_SECONDS - 10.0, AUCTION_SECONDS + 10.0),
 		"next_ai": auction_clock + delay + randf_range(2.0, 6.0),
 		"bids": 0, "my_bid": 0, "watch": false, "feed_log": [],
