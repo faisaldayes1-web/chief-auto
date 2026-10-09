@@ -483,7 +483,7 @@ def bobble(skin, shirt, pants, hair=None, glasses=False, goatee=False, cap=None,
             torus("rim", (sx * 0.018, -0.045, hz + 0.008), 0.011, 0.0012, fr, rot=(D90, 0, 0))
         cyl("bridge", (0, -0.046, hz + 0.008), 0.001, 0.012, fr, rot=(0, D90, 0))
     if goatee:
-        sphere("goatee", (0, -0.038, hz - 0.03), 0.013, mat("gt", (0.08, 0.06, 0.05), 0.8), scale=(1, 0.6, 0.9))
+        sphere("goatee", (0, -0.041, hz - 0.033), 0.014, mat("gt", (0.08, 0.06, 0.05), 0.8), scale=(1, 0.6, 0.9))
     if extras:
         extras(hz)
     return base
@@ -885,12 +885,12 @@ def studio():
     sc.render.resolution_x = sc.render.resolution_y = RES
     sc.view_settings.view_transform = "AgX"
     sc.view_settings.look = "AgX - Medium High Contrast"
-    sc.view_settings.exposure = -0.2
+    sc.view_settings.exposure = float(os.environ.get("EXPOSURE", -1.3))
     w = bpy.data.worlds.new("w")
     sc.world = w
     w.use_nodes = True
     w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.55, 0.5, 0.45, 1)
-    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.5
+    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.3
     bpy.ops.mesh.primitive_plane_add(size=200, location=(0, 0, -0.0005))
     ground = bpy.context.object
     ground.name = "ground"

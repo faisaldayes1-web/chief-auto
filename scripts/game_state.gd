@@ -129,6 +129,19 @@ const DESK_ITEMS := [
 	{"id": "mug", "slot": "decor", "name": "\"#1 Closer\" mug", "price": 40, "desc": "Gift from yourself."},
 	{"id": "modelcar", "slot": "decor", "name": "Model Ferrano", "price": 900, "desc": "1:18 scale. Shelf display."},
 	{"id": "trophy", "slot": "decor", "name": "Salesperson of the Year", "price": 2500, "desc": "You bought it. Still counts."},
+	{"id": "bobble_marco", "slot": "decor", "name": "Marco bobblehead", "price": 120, "desc": "Nods at every offer. Just like the real one."},
+	{"id": "bobble_jeff", "slot": "decor", "name": "Jeff bobblehead", "price": 90, "desc": "Limited edition. Jeff ordered 400 of them."},
+	{"id": "bobble_surfer", "slot": "decor", "name": "Surfer bobblehead", "price": 75, "desc": "Hangs ten on your desk. Never shows up for work."},
+	{"id": "bobble_lifeguard", "slot": "decor", "name": "Lifeguard bobblehead", "price": 75, "desc": "Watches your margins. Blows the whistle on lowballers."},
+	{"id": "hula", "slot": "decor", "name": "Dashboard hula girl", "price": 60, "desc": "Rescued from a trade-in. Still dancing."},
+	{"id": "photo_marco", "slot": "decor", "name": "Framed Marco portrait", "price": 300, "desc": "Walnut frame. His eyes follow you around the office."},
+	{"id": "photo_lot", "slot": "decor", "name": "Framed dealership photo", "price": 250, "desc": "The lot on a good day. Proof it happens."},
+	{"id": "first_dollar", "slot": "decor", "name": "Framed first dollar", "price": 100, "desc": "Cost you a hundred. Worth a dollar. Worth a dollar. Priceless."},
+	{"id": "globe", "slot": "decor", "name": "Desk globe", "price": 350, "desc": "For planning the Chief Auto world takeover."},
+	{"id": "lamp", "slot": "decor", "name": "Banker's lamp", "price": 280, "desc": "Green glass. Makes every contract look legally binding."},
+	{"id": "polesign", "slot": "decor", "name": "Mini CHIEF AUTO pole sign", "price": 450, "desc": "The pole sign out front, in a size the city can't fine you for."},
+	{"id": "cradle", "slot": "decor", "name": "Newton's cradle", "price": 180, "desc": "Click. Click. Click. Customers hate it. You love it."},
+	{"id": "magazines", "slot": "decor", "name": "Car magazine stack", "price": 40, "desc": "Every issue since 2019. Never read one."},
 	{"id": "neon", "slot": "decor", "name": "Neon CHIEF sign", "price": 3500, "desc": "Pink neon on the wall."},
 	{"id": "aquarium", "slot": "decor", "name": "Saltwater aquarium", "price": 6000, "desc": "Three fish. All named Marco."},
 ]
@@ -239,6 +252,7 @@ var tutorial := 0                 # first-day coach: index of the current step, 
 var owned: Array = ["folding", "plastic", "crt"]
 var equipped := {"desk": "folding", "chair": "plastic", "monitor": "crt"}
 var decor_on: Array = []
+var desk_slots: Dictionary = {}   # desk slot -> decor id (see DESK_SLOTS)
 var upgrades: Array = []
 var ads_active: Array = []
 var staff: Array = []
@@ -316,6 +330,7 @@ func new_game() -> void:
 	owned = ["folding", "plastic", "crt"]
 	equipped = {"desk": "folding", "chair": "plastic", "monitor": "crt"}
 	decor_on = []
+	desk_slots = {}
 	upgrades = []
 	ads_active = []
 	dealership = 1
@@ -504,7 +519,32 @@ func has_upgrade(id: String) -> bool:
 
 
 func has_decor(id: String) -> bool:
-	return id in decor_on
+	return id in desk_slots.values()
+
+
+## Places on the desk you can put a collectible: back corners, front corners, the wall shelf.
+const DESK_SLOTS := ["lb", "rb", "lf", "rf", "shelf"]
+const DESK_SLOT_NAMES := {"lb": "Back left", "rb": "Back right", "lf": "Front left", "rf": "Front right", "shelf": "Wall shelf"}
+
+
+## Puts an item in a slot (taking it out of any other slot first). Empty id clears the slot.
+func place_decor(slot: String, id: String) -> void:
+	for s in desk_slots.keys():
+		if desk_slots[s] == id:
+			desk_slots.erase(s)
+	if id == "":
+		desk_slots.erase(slot)
+	else:
+		desk_slots[slot] = id
+	decor_on = desk_slots.values()
+
+
+## A newly bought collectible goes to the first free slot, if there is one.
+func auto_place(id: String) -> void:
+	for s in DESK_SLOTS:
+		if not desk_slots.has(s):
+			place_decor(s, id)
+			return
 
 
 func lot_capacity() -> int:
@@ -1082,14 +1122,14 @@ func legal_exposure() -> int:
 # ---------- save / load ----------
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
-	"stats", "seen_intro", "owned", "equipped", "decor_on", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
+	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
 	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt"]
 
 
 func save_game() -> void:
 	update_leaderboard("Closed down" if not bankrupt.is_empty() else "Open")
-	var data := {"version": 5}
+	var data := {"version": 6}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -1114,6 +1154,10 @@ func load_game() -> bool:
 			set(k, _fix_ints(data[k]))
 	reputation = float(reputation)
 	clock = float(clock)
+	if int(data.get("version", 1)) < 6:   # 6 put collectibles in desk slots; older saves place what was on the desk
+		desk_slots = {}
+		for id in decor_on.duplicate():
+			auto_place(id)
 	return true
 
 

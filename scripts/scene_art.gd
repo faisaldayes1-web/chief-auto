@@ -9,6 +9,8 @@ const SHOWROOM_FLOOR := 0.58   # where the showroom floor meets the back glass, 
 var mode := "lobby"
 var monitor_rect := Rect2()   # where the PC screen sits (desk mode), set in _compute()
 var podiums: Array = []       # floor spots for display cars (lobby mode), Vector2 centers
+var desk_view := false        # desk mode: pull back from the PC to show the whole desk and its collectible slots
+var desk_top := 0.0           # y of the desk's back edge (desk mode), set in _compute()
 
 
 func _ready() -> void:
@@ -30,10 +32,15 @@ func _compute() -> void:
 	var h := size.y
 	if mode == "desk":
 		var mon: String = Game.equipped.get("monitor", "crt")
-		if mon == "ultra":
+		if desk_view:
+			# pulled back: the monitor is a smaller thing in the middle of the desk
+			var mw: float = {"crt": 0.26, "lcd": 0.3, "dual": 0.28, "ultra": 0.44}[mon]
+			monitor_rect = Rect2(w * (0.5 - mw / 2), h * 0.1, w * mw, h * (0.3 if mon == "crt" else 0.32))
+		elif mon == "ultra":
 			monitor_rect = Rect2(w * 0.05, h * 0.04, w * 0.9, h * 0.76)
 		else:
 			monitor_rect = Rect2(w * 0.15, h * 0.04, w * 0.7, h * 0.76)
+		desk_top = monitor_rect.end.y + h * (0.1 if desk_view else 0.07)
 	elif mode == "lobby":
 		podiums = []
 		var n: int = max(1, Game.lot_capacity())
@@ -154,24 +161,14 @@ func _draw_desk() -> void:
 	var h := size.y
 	_cover(_tex("desk"))
 	var m := monitor_rect
-	if m.position.x > w * 0.1:
+	if desk_view or m.position.x > w * 0.1:
 		# right wall shelf
-		var sx := m.end.x + w * 0.015
-		draw_rect(Rect2(sx, h * 0.36, w - sx - w * 0.01, 8), Color("6b4a2f"))
-		if Game.has_decor("trophy"):
-			draw_rect(Rect2(sx + 20, h * 0.36 - 14, 30, 14), Color("8a6a2a"))
-			draw_colored_polygon(PackedVector2Array([Vector2(sx + 22, h * 0.36 - 14), Vector2(sx + 48, h * 0.36 - 14), Vector2(sx + 54, h * 0.36 - 56), Vector2(sx + 16, h * 0.36 - 56)]), Color("e8b64c"))
-		if Game.has_decor("modelcar"):
-			draw_set_transform(Vector2(sx + 6, h * 0.36 - 30), 0, Vector2(0.4, 0.4))
-			CarArt.draw_car(self, {"cls": "exotic", "id": 3, "color": "c0392b", "parts": {}})
-			draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
-	if Game.has_decor("neon"):
-		var glow := Color(1.0, 0.25, 0.45)
-		_text(Vector2(w * 0.02, h * 0.72), "CHIEF", 34, Color(glow, 0.35))
-		_text(Vector2(w * 0.02 + 1, h * 0.72 - 1), "CHIEF", 34, glow.lightened(0.4))
+		var sr := shelf_rect()
+		draw_rect(sr, Color("6b4a2f"))
+		draw_rect(Rect2(sr.position + Vector2(0, sr.size.y), Vector2(sr.size.x, 4)), Color(0, 0, 0, 0.25))
 	# desk surface
 	var desk: String = Game.equipped.get("desk", "folding")
-	var top := m.end.y + h * 0.07
+	var top := desk_top
 	var col: Color = {"folding": Color("8c8f94"), "oak": Color("8a5a35"), "glass": Color(0.75, 0.88, 0.95, 0.55), "carbon": Color("1c1c1e")}[desk]
 	draw_rect(Rect2(0, top, w, h - top), col)
 	draw_rect(Rect2(0, top, w, 5), col.lightened(0.25))
@@ -214,23 +211,17 @@ func _draw_desk() -> void:
 	for r in 3:
 		for k in 14:
 			draw_rect(Rect2(m.get_center().x - 152 + k * 22.5, top + 22 + r * 10, 19, 7), Color("3d4046"))
-	# desk decor
-	if Game.has_decor("plant"):
-		_plant(Vector2(w * 0.06, top + 40), 1.0)
-	if Game.has_decor("mug"):
-		var mx := m.get_center().x + 200
-		draw_rect(Rect2(mx, top + 6, 26, 32), Color("f2f2f2"))
-		draw_arc(Vector2(mx + 28, top + 20), 8, -PI / 2, PI / 2, 10, Color("f2f2f2"), 4.0)
-		_text(Vector2(mx + 2, top + 28), "#1", 12, Color("c0392b"))
-	if Game.has_decor("aquarium"):
-		var ax := w * 0.83
-		draw_rect(Rect2(ax, top - 70, 150, 76), Color(0.2, 0.55, 0.8, 0.6))
-		draw_rect(Rect2(ax, top - 70, 150, 76), Color(0.8, 0.9, 1.0, 0.6), false, 2.0)
-		var t := Time.get_ticks_msec() / 1000.0
-		for i in 3:
-			var fx := ax + 20 + fmod(t * (18 + i * 7) + i * 40, 110)
-			var fy := top - 50 + i * 18
-			draw_colored_polygon(PackedVector2Array([Vector2(fx, fy), Vector2(fx + 12, fy - 5), Vector2(fx + 12, fy + 5)]), Color(["ff7f27", "ffd23f", "e8505b"][i]))
+	# collectibles in their slots, back row first so the front ones overlap them
+	for slot in Game.DESK_SLOTS:
+		var id: String = Game.desk_slots.get(slot, "")
+		var tex := prop_tex(id)
+		if tex == null:
+			continue
+		var r := slot_rect(slot)
+		if r.size.x <= 0:
+			continue
+		_ellipse(Vector2(r.get_center().x, r.end.y - r.size.y * 0.03), r.size.x * 0.32, r.size.y * 0.04, Color(0, 0, 0, 0.25))
+		draw_texture_rect(tex, r, false)
 	# chair back in the corner
 	var chair: String = Game.equipped.get("chair", "plastic")
 	var ccol: Color = {"plastic": Color("d9d9d9"), "office": Color("2c3e50"), "leather": Color("5a321f"), "racing": Color("111111")}[chair]
@@ -245,6 +236,75 @@ func _draw_desk() -> void:
 
 
 # ---------- service bay ----------
+
+## Wall shelf to the right of the monitor (desk mode).
+func shelf_rect() -> Rect2:
+	var sx := monitor_rect.end.x + size.x * 0.03
+	var y := size.y * (0.3 if desk_view else 0.36)
+	return Rect2(sx, y, size.x - sx - size.x * 0.01, 8)
+
+
+var _props := {}
+
+
+## The product render for a shop item (assets/props/<id>.png), or null.
+func prop_tex(id: String) -> Texture2D:
+	if id == "":
+		return null
+	if not _props.has(id):
+		var p := "res://assets/props/%s.png" % id
+		_props[id] = load(p) if ResourceLoader.exists(p) else null
+	return _props[id]
+
+
+## Where a slot's item is drawn: a square the size of the 256px render, whose bottom (the item's base sits at
+## 244/256) rests on the desk. Back slots are smaller (further away). At the PC the front slots shrink to fit
+## below the screen and a slot that would cover the PC window gets an empty rect.
+func slot_rect(slot: String) -> Rect2:
+	var w := size.x
+	var h := size.y
+	var m := monitor_rect
+	var top := desk_top
+	var base := Vector2.ZERO
+	var px := 0.0
+	var desk_scale: float = {"folding": 0.92, "oak": 1.0, "glass": 1.0, "carbon": 1.06}.get(Game.equipped.get("desk", "folding"), 1.0)
+	if slot == "shelf":
+		var sr := shelf_rect()
+		if sr.size.x < 40:
+			return Rect2()
+		base = Vector2(sr.get_center().x, sr.position.y)
+		px = min(h * 0.24, sr.size.x * 0.9)
+	elif desk_view:
+		var back := slot.ends_with("b")
+		var left := slot.begins_with("l")
+		var fx: float = (0.2 if back else 0.11) * desk_scale
+		base = Vector2(w * (fx if left else 1.0 - fx), top + (h - top) * (0.22 if back else 0.86))
+		px = h * (0.26 if back else 0.36)
+	else:
+		# at the PC only the strip of desk under the screen shows
+		var back := slot.ends_with("b")
+		var left := slot.begins_with("l")
+		var room_l := m.position.x - 12
+		var free_w: float = room_l
+		if free_w < 70:
+			if back:
+				return Rect2()
+			base = Vector2(w * (0.06 if left else 0.94), h - 2)
+			px = min(h - top + 30, 120)
+		else:
+			base = Vector2(free_w * (0.5 if back else 0.4) if left else w - free_w * (0.5 if back else 0.4), top + (h - top) * (0.25 if back else 0.95))
+			px = min(free_w * (0.95 if back else 1.15), h * (0.2 if back else 0.27))
+	px *= desk_scale if slot != "shelf" else 1.0
+	var r := Rect2(base.x - px / 2, base.y - px * 244.0 / 256.0, px, px)
+	if not desk_view and slot != "shelf" and r.intersects(m.grow(10)) and r.position.x < m.end.x and r.end.x > m.position.x:
+		# never cover the PC window: squeeze it into the gap beside the screen instead
+		var gap: float = (m.position.x - 14) if r.get_center().x < m.get_center().x else (w - m.end.x - 14)
+		if gap < 36:
+			return Rect2()
+		var k := gap / r.size.x
+		r = Rect2(base.x - gap / 2, base.y - r.size.y * k * 244.0 / 256.0, gap, r.size.y * k)
+	return r
+
 
 func _draw_garage() -> void:
 	_cover(_tex("garage"), 0.25)
