@@ -768,8 +768,11 @@ func _lot_traffic(yard: Control, lot: Dictionary) -> void:
 		return
 	var lanes: Array = res.data.get("lanes", []).filter(func(l): return l.size() > 4)
 	var models: Array = lot.get("cars", {}).keys()
-	if lanes.is_empty() or models.is_empty():
+	if models.is_empty():
 		return
+	# frontage passer: when PCH is off-frame or under the left menu, a car crosses the lot's front apron instead
+	var fv: float = FRONTAGE_V.get(Game.world_suffix(), 0.68)
+	var frontage := [[[1.08, fv, 0.026], [0.62, fv, 0.026], [0.16, fv, 0.026]], [[0.16, fv - 0.012, 0.025], [1.08, fv - 0.012, 0.025]]]
 	var road := Control.new()
 	road.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	road.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -782,7 +785,9 @@ func _lot_traffic(yard: Control, lot: Dictionary) -> void:
 	clock.autostart = true
 	road.add_child(clock)
 	var send := func():
-		var lane: Array = lanes.pick_random()
+		var lane: Array = _visible_lane(lanes.pick_random()) if not lanes.is_empty() else []
+		if lane.size() < 5:
+			lane = frontage.pick_random()
 		var art := CarArt.new()
 		art.quarter = true
 		art.set_car({"model": models.pick_random(), "color": Color.from_hsv(randf(), randf_range(0.0, 0.7), randf_range(0.25, 0.95))})
@@ -807,6 +812,27 @@ func _lot_traffic(yard: Control, lot: Dictionary) -> void:
 		tw.tween_callback(art.queue_free)
 		clock.start(randf_range(7.0, 16.0))
 	clock.timeout.connect(send)
+
+
+## Where the frontage passer drives (image-fraction v) per lot render.
+const FRONTAGE_V := {"_t1": 0.66, "_t2": 0.675, "": 0.695}
+
+
+## The part of a projected lane that is in the open frame (right of the left menu, on screen); [] if too little shows.
+func _visible_lane(lane: Array) -> Array:
+	var cover := _bg_cover_rect()
+	var vp := get_viewport().get_visible_rect().size
+	var left := 300.0
+	var out := []
+	for pt in lane:
+		var x: float = cover.position.x + float(pt[0]) * cover.size.x
+		var y: float = cover.position.y + float(pt[1]) * cover.size.y
+		if x > left and x < vp.x + 60.0 and y > 80.0 and y < vp.y - 70.0:
+			out.append(pt)
+	var span := 0.0
+	if out.size() > 1:
+		span = absf(float(out[-1][0]) - float(out[0][0])) * cover.size.x
+	return out if span > vp.x * 0.3 else []
 
 
 static func _v2(a: Array) -> Vector2:

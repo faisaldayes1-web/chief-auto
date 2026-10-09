@@ -70,9 +70,32 @@ func _compute() -> void:
 				podiums.append(r.position + _lerp2(a.ground, b.ground, t) * r.size)
 				podium_targets.append(r.position + _lerp2(a.target, b.target, t) * r.size)
 			car_w = lerpf(a.frame_w, b.frame_w, 0.5) * r.size.x
+			_fit_row(w)
 		else:
 			for i in per_row:
 				podiums.append(Vector2(w * (i + 0.5) / per_row, h * 0.62))   # back of the showroom floor, sized to match the render perspective
+
+
+## Shrink the display row about the screen centre so the outer cars (body and windshield price) stay in frame.
+func _fit_row(w: float) -> void:
+	if podium_targets.is_empty():
+		return
+	var cx := w * 0.5
+	var margin := 14.0
+	var half_body := car_w * 0.43   # the car body spans about 0.15-0.92 of its sprite frame
+	var need := 0.0
+	for t in podium_targets:
+		need = maxf(need, absf(t.x - cx) + half_body)
+	var s := (cx - margin) / need if need > 0.0 else 1.0
+	if s >= 1.0:
+		return
+	for i in podiums.size():
+		var g: Vector2 = podiums[i]
+		var t: Vector2 = podium_targets[i]
+		var g2 := Vector2(cx + (g.x - cx) * s, g.y)
+		podiums[i] = g2
+		podium_targets[i] = g2 + (t - g) * s
+	car_w *= s
 
 
 func _draw() -> void:
