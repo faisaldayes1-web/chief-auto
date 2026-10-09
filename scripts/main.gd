@@ -321,6 +321,8 @@ func _start_game() -> void:
 		if Game.debug_level > 0:
 			Game.level = Game.debug_level
 			Game.money += 50000
+		if Game.debug_tier > 0:
+			Game.dealership = clampi(Game.debug_tier, 1, 3)
 		for l in Game.listings.slice(0, 3):
 			Game.add_car(l.car, int(Game.value(l.car) * 0.6))
 		lobby.append(Game.make_customer())
@@ -1730,7 +1732,7 @@ func _tab_desk(inner: Control) -> void:
 	sale.add_child(UI.label("Make the office yours. Changes show on your desk right away, and bigger monitors show more auction listings.", 12, Color(0.3, 0.24, 0.05)))
 	var list := UI.vbox(8)
 	site.body.add_child(UI.scroll(list))
-	var slots := {"desk": "Desks", "chair": "Chairs", "monitor": "Monitors", "decor": "Decor"}
+	var slots := {"decor": "Desk collectibles", "desk": "Desks", "chair": "Chairs", "monitor": "Monitors"}
 	for slot in slots:
 		var hd := UI.hbox(10)
 		hd.add_child(UI.label(slots[slot], 16, INK, true))
