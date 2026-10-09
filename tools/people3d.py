@@ -271,11 +271,12 @@ def studio(res):
     sc.world = w
     w.use_nodes = True
     w.node_tree.nodes["Background"].inputs["Color"].default_value = (0.55, 0.5, 0.45, 1)
-    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.5
-    # soft, large warm key (golden hour), cool rim, soft fill
-    for loc, energy, size, col in (((2.2, -3.0, 2.8), 700, 4.5, (1.0, 0.86, 0.72)),
+    w.node_tree.nodes["Background"].inputs["Strength"].default_value = 0.32
+    # warm key (golden hour) high and to the figure's left, small enough to throw real form shadows, a cool rim and a
+    # weak soft fill so the shadow side keeps some detail
+    for loc, energy, size, col in (((2.1, -2.8, 3.4), 1250, 2.0, (1.0, 0.86, 0.72)),
                                    ((-2.5, 2.0, 2.6), 450, 1.5, (0.65, 0.78, 1.0)),
-                                   ((-2.5, -2.5, 1.5), 200, 4.0, (1, 0.97, 0.95))):
+                                   ((-2.5, -2.5, 1.5), 120, 4.0, (1, 0.97, 0.95))):
         ld = bpy.data.lights.new("l", "AREA")
         ld.energy = energy
         ld.size = size
@@ -289,6 +290,39 @@ def studio(res):
     sc.collection.objects.link(co)
     sc.camera = co
     return co
+
+
+def ground_shadow(meshes, radius=1.3):
+    """A shadow-catcher disc under the feet (Cycles writes only the shadow it receives into the alpha channel, the
+    film being transparent): the figure gets a soft contact shadow baked into its PNG."""
+    import bmesh
+    dg = bpy.context.evaluated_depsgraph_get()
+    floor = 10.0
+    cx = cy = 0.0
+    n = 0
+    for ob in meshes:
+        ev = ob.evaluated_get(dg)
+        me = ev.to_mesh()
+        mw = ob.matrix_world
+        for v in me.vertices:
+            w = mw @ v.co
+            floor = min(floor, w.z)
+            cx += w.x
+            cy += w.y
+            n += 1
+        ev.to_mesh_clear()
+    me = bpy.data.meshes.new("ground")
+    bm = bmesh.new()
+    bmesh.ops.create_circle(bm, cap_ends=True, radius=radius, segments=48)
+    bm.to_mesh(me)
+    bm.free()
+    ob = bpy.data.objects.new("ground", me)
+    ob.location = (cx / max(n, 1), cy / max(n, 1), floor - 0.002)
+    ob.is_shadow_catcher = True
+    ob.visible_glossy = False
+    ob.visible_diffuse = False
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
 
 
 def look(cam, pos, target, lens):
@@ -883,6 +917,9 @@ def do_avatar(folder, out, pid, staff=None):
     if staff and staff.get("watch"):
         add_watch(arm)
     cam = studio((520, 1100))
+    ground = ground_shadow(meshes)
+    if PARTS == ["hero"]:
+        ground.hide_render = True
     fwd, pel = facing(arm)
     side = fwd.cross(Vector((0, 0, 1))).normalized()
     hz = head_pos(arm).z
