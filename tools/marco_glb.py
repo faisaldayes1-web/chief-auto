@@ -1,7 +1,7 @@
 """Marco from his 3D model (Faisal's Tripo scan, /mnt/project-files/human+figure+3d+model.glb).
 
 The GLB is a Tripo turnaround sheet: three copies of the full standing figure side by side along X (front at
-x < -0.145, profile in the middle, three-quarter on the right), 0.63 m tall, one textured mesh, no rig. We keep the
+x < -0.145, profile in the middle, three-quarter on the right), 0.63 m tall, one textured mesh, no rig (tools/marco_rig.py skins and poses it). We keep the
 front copy, scale it to 1.78 m, and render every Marco picture from it (body, hero, portrait, faces, dialogue).
 
 Steps:
@@ -20,7 +20,11 @@ import os
 import sys
 
 import bpy
+import numpy as np
 from mathutils import Vector
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import marco_rig  # noqa: E402  proximity-weighted skinning: arms down / hand at the pocket, head tilt, brows, smile
 
 GLB = "/mnt/project-files/human+figure+3d+model.glb"
 OUT = sys.argv[1]
@@ -46,8 +50,24 @@ bm.free()
 ob.location = (0, 0, 0)
 dec = ob.modifiers.new("dec", "DECIMATE")
 dec.ratio = 0.35
+bpy.context.view_layer.objects.active = ob
+bpy.ops.object.modifier_apply(modifier="dec")
 for p in ob.data.polygons:
     p.use_smooth = True
+_BASE = np.empty(len(ob.data.vertices) * 3)
+ob.data.vertices.foreach_get("co", _BASE)
+_BASE = _BASE.reshape(-1, 3)
+
+
+def set_pose(arms, mood="neutral", **head):
+    """Poses the scan from its A-pose: arms {side: directions} (marco_rig.relaxed / pocket), mood, head angles."""
+    co = marco_rig.pose(marco_rig.expression(_BASE, mood), arms, **head)
+    ob.data.vertices.foreach_set("co", co.ravel())
+    ob.data.update()
+
+
+RELAXED = {1: marco_rig.relaxed(1), -1: marco_rig.relaxed(-1)}
+HERO = {1: marco_rig.pocket(1), -1: marco_rig.relaxed(-1)}
 sc = bpy.context.scene
 sc.render.engine = "CYCLES"
 sc.cycles.device = "CPU"
@@ -106,12 +126,21 @@ sun.energy, sun.color, sun.angle = 1.6, (1.0, 0.9, 0.76), math.radians(3)
 so = bpy.data.objects.new("sun", sun)
 so.rotation_euler = (math.radians(40), 0, math.radians(-150))
 sc.collection.objects.link(so)
-# full body: eye-level-ish camera, slight three-quarter (people3d.py's framing)
+# full body: eye-level-ish camera, slight three-quarter (people3d.py's framing); arms relaxed at his sides
+set_pose(RELAXED, head_roll=2.5)
 shot("marco_body.png", (680, 1100), 2.05, 0.93, 13, ortho_up=0.35)
 ground.hide_render = True
-# hero: head to mid-thigh, slight three-quarter
+# hero: head to mid-thigh, slight three-quarter, one hand at his pocket, head a touch tilted
+set_pose(HERO, head_roll=3.5, head_pitch=1.5)
 shot("marco_hero.png", (1100, 1500), 1.32, TOP + 0.03 - 0.66, 15)
 # portrait: head and shoulders, face centred, same span as people3d.py portraits
+set_pose(RELAXED, head_roll=2.5)
 shot("marco_portrait.png", (720, 900), 0.62, TOP + 0.05 - 0.31, 10)
-# face: the head (the scan has no rig, so all three moods use this render)
-shot("marco_face_neutral.png", (384, 384), 0.34, TOP - 0.13, 10)
+# faces: neutral; happy = chin up, mouth corners lifted, warmer key; angry = brows down and knit, head down, cooler key
+key = [o for o in sc.objects if o.type == "LIGHT" and o.data.type == "AREA"][0]
+for mood, head, col, energy in (("neutral", dict(head_roll=2.5), (1.0, 0.9, 0.76), 1250),
+                                ("happy", dict(head_roll=4.0, head_pitch=5.0), (1.0, 0.84, 0.64), 1400),
+                                ("angry", dict(head_roll=-1.0, head_pitch=-7.0, head_yaw=-3.0), (0.9, 0.9, 0.95), 1100)):
+    set_pose(RELAXED, mood, **head)
+    key.data.color, key.data.energy = col, energy
+    shot("marco_face_%s.png" % mood, (384, 384), 0.34, TOP - 0.13 - (0.01 if mood == "angry" else 0.0), 10)
