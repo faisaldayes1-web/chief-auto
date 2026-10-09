@@ -2963,7 +2963,18 @@ func _build_lobby(stage: SceneArt) -> void:
 		pat.add_theme_stylebox_override("fill", UI.box(pcol, Color.TRANSPARENT, 3, 0, 0))
 		pat.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(pat)
-		people.append([btn, name_tag, bubble, pat, c])
+		# the name tag and bubble sit above the button's rect; give them their own hit area so
+		# "tap to help" actually opens the conversation
+		var head_hit := Button.new()
+		head_hit.flat = true
+		head_hit.focus_mode = Control.FOCUS_NONE
+		head_hit.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		for st in ["normal", "hover", "pressed"]:
+			head_hit.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		head_hit.pressed.connect(_open_customer.bind(c))
+		btn.add_child(head_hit)
+		btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		people.append([btn, name_tag, bubble, pat, c, p, head_hit])
 	var info := UI.panel(UI.DIALOG_NAVY, UI.DIALOG_RIM, 12)
 	stage.add_child(info)
 	var iv := UI.vbox(4)
@@ -3021,40 +3032,75 @@ func _build_lobby(stage: SceneArt) -> void:
 			tag.pivot_offset = tag.get_combined_minimum_size() / 2.0
 			tag.position = Vector2(cw * 0.52, fh * 0.32) - tag.get_combined_minimum_size() / 2.0
 			shadows.append([ground, Vector2(cw * 0.34, 0), Vector2(0, fh * 0.075)])
+		# clear floor spots: the gaps between the display cars first, then open marble in the
+		# middle of the room (never the lounge sofa on the right or the counter on the left)
+		var shown_pods: Array = pods.slice(0, max(1, displays.size()))
+		var xs := []
+		for k in range(shown_pods.size() - 1):
+			xs.append((shown_pods[k].x + shown_pods[k + 1].x) / 2.0)
+		for f in [0.5, 0.3, 0.62, 0.2, 0.42]:
+			var ok := true
+			for x in xs:
+				if abs(x - w * f) < w * 0.09:
+					ok = false
+			if ok:
+				xs.append(w * f)
 		for i in people.size():
 			var pr: Array = people[i]
 			# stand on the marble at slightly different depths; size follows the camera's perspective
 			var feet: float = h * (0.74 + 0.035 * (i % 2))
 			var ph: float = stage.person_height(feet)
 			var pw: float = ph * 0.42
-			pr[0].size = Vector2(pw, ph)
-			# stand in the gaps between the display cars so nobody hides a car or its price tag
-			var gaps := []
-			var shown_pods: Array = pods.slice(0, max(1, displays.size()))
-			for k in range(shown_pods.size() - 1):
-				gaps.append((shown_pods[k].x + shown_pods[k + 1].x) / 2.0)
-			gaps.append(max(pw * 0.6, shown_pods[0].x - w * 0.14) if shown_pods.size() > 0 else w * 0.1)
-			gaps.append(w * 0.62)
-			gaps.append(w * 0.08)
-			var gx: float = gaps[i % gaps.size()]
+			var gx: float = clamp(xs[i % xs.size()], w * 0.17, w * 0.66)
 			var target := Vector2(gx - pw / 2.0, feet - ph)
 			var cust: Dictionary = pr[4]
-			if not cust.get("entered", false):
-				# new arrivals walk in from the front door on the right
-				cust.entered = true
-				pr[0].position = Vector2(w * 0.92, target.y)
-				pr[0].modulate.a = 0.0
-				var tw: Tween = pr[0].create_tween().set_parallel()
-				tw.tween_property(pr[0], "position", target, 1.4).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-				tw.tween_property(pr[0], "modulate:a", 1.0, 0.5)
-			else:
-				pr[0].position = target
+			var btn: Button = pr[0]
+			var fig: Control = pr[5]
 			pr[1].position = Vector2(-40, -22)
 			pr[1].size = Vector2(pw + 80, 20)
 			pr[2].position = Vector2(-30, -66)
 			pr[2].size = Vector2(pw + 60, 0)
 			pr[3].position = Vector2(pw * 0.1, 0)
 			pr[3].size = Vector2(pw * 0.8, 7)
+			pr[6].position = Vector2(-30, -70)
+			pr[6].size = Vector2(pw + 60, 70)
+			if not cust.get("entered", false):
+				# new arrivals come in through the glass doors at the back and walk forward to
+				# their spot between the cars, bobbing and swaying, then settle into idle
+				cust.entered = true
+				var start_feet: float = h * 0.635
+				var start := Vector2(w * 0.5 + (w * 0.08 if gx >= w * 0.5 else -w * 0.08), start_feet)
+				var dir: float = sign(gx - start.x)
+				fig.pivot_offset = Vector2(pw / 2.0, ph)
+				fig.scale.x = -1.0 if dir < 0 else 1.0
+				for k in [1, 2, 3]:
+					pr[k].modulate.a = 0.0
+				btn.modulate.a = 0.0
+				var walk := func(t: float):
+					var fy: float = lerp(start_feet, feet, t)
+					var hh: float = stage.person_height(fy)
+					var ww: float = hh * 0.42
+					var fx: float = lerp(start.x, gx, t)
+					var bob: float = abs(sin(t * PI * 7.0)) * hh * 0.025 * (1.0 - t * t)
+					btn.size = Vector2(ww, hh)
+					btn.position = Vector2(fx - ww / 2.0, fy - hh - bob)
+					fig.pivot_offset = Vector2(ww / 2.0, hh)
+					fig.rotation = sin(t * PI * 7.0) * 0.045 * (1.0 - t)
+					btn.modulate.a = clamp(t * 5.0, 0.0, 1.0)
+				walk.call(0.0)
+				var tw: Tween = btn.create_tween()
+				tw.tween_method(walk, 0.0, 1.0, 2.0)
+				tw.tween_callback(func():
+					fig.rotation = 0.0
+					fig.scale.x = 1.0
+					btn.size = Vector2(pw, ph)
+					btn.position = target)
+				tw.set_parallel(true)
+				for k in [1, 2, 3]:
+					tw.tween_property(pr[k], "modulate:a", 1.0, 0.35)
+			else:
+				btn.size = Vector2(pw, ph)
+				btn.position = target
 			shadows.append([target + Vector2(pw / 2.0, ph * 0.985), Vector2(pw * 0.42, 0), Vector2(0, pw * 0.09)])
 		floor_fx.set_meta("pads", shadows)
 		floor_fx.queue_redraw()
