@@ -31,6 +31,7 @@ var auction_timer := 0.0
 var rival_timer := 0.0
 var auction_view: Dictionary = {}
 var pc_tab := "auction"
+var desk_look := false   # Office PC: pulled back to look at (and arrange) the desk
 
 # Garage
 var selected_car_id := -1
@@ -795,6 +796,10 @@ const LANES := {
 
 func _screen_pc() -> void:
 	var stage := _stage("desk")
+	if desk_look:
+		stage.desk_view = true
+		_desk_overlay(stage)
+		return
 	var win := UI.panel(Color(0.93, 0.94, 0.96, 1.0), Color(0.1, 0.1, 0.1), 0)
 	win.clip_contents = true
 	stage.add_child(win)
@@ -858,6 +863,14 @@ func _screen_pc() -> void:
 	v.add_child(body)
 	var inner := UI.vbox(0)
 	body.add_child(inner)
+	var look := _glass_btn("Look at desk", func():
+		desk_look = true
+		show_screen("pc"))
+	stage.add_child(look)
+	var place_look := func():
+		look.position = Vector2(stage.size.x - look.size.x - 16, stage.size.y - look.size.y - 14)
+	stage.resized.connect(place_look)
+	place_look.call_deferred()
 	match pc_tab:
 		"auction": _tab_auction(inner)
 		"desk": _tab_desk(inner)
@@ -1186,9 +1199,160 @@ func _open_listing(l: Dictionary) -> void:
 	_screen_pc_frame_then(func(inner: Control): _listing_detail(inner, l))
 
 
+## A small smoked-glass button for floating over scene art.
+func _glass_btn(text: String, cb: Callable, min_w := 0) -> Button:
+	var b := UI.button(text, cb, min_w, 40)
+	b.add_theme_font_size_override("font_size", 15)
+	for st in ["normal", "hover", "pressed"]:
+		var sb := UI.box(Color(0.05, 0.06, 0.08, {"normal": 0.7, "hover": 0.82, "pressed": 0.9}[st]), Color(1, 0.85, 0.6, 0.45), 10, 1, 14)
+		b.add_theme_stylebox_override(st, sb)
+	return b
+
+
+## Prop render for a shop item, or null when it has not been rendered.
+func _prop_tex(id: String) -> Texture2D:
+	var p := "res://assets/props/%s.png" % id
+	return load(p) if ResourceLoader.exists(p) else null
+
+
+## "Look at desk": the browser goes away and the desk shows whole, with a hotspot on every collectible slot.
+func _desk_overlay(stage: SceneArt) -> void:
+	var spots: Array = []
+	for slot in Game.DESK_SLOTS:
+		var b := Button.new()
+		b.flat = true
+		b.focus_mode = Control.FOCUS_NONE
+		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		b.tooltip_text = Game.DESK_SLOT_NAMES[slot]
+		var empty: bool = not Game.desk_slots.has(slot)
+		var hover := UI.box(Color(1, 0.85, 0.6, 0.12), Color(1, 0.85, 0.6, 0.8), 12, 2, 0)
+		var normal := UI.box(Color(0.05, 0.06, 0.08, 0.25) if empty else Color.TRANSPARENT, Color(1, 0.85, 0.6, 0.55) if empty else Color.TRANSPARENT, 12, 2 if empty else 0, 0)
+		b.add_theme_stylebox_override("normal", normal)
+		b.add_theme_stylebox_override("hover", hover)
+		b.add_theme_stylebox_override("pressed", hover)
+		if empty:
+			b.text = "+  " + Game.DESK_SLOT_NAMES[slot]
+			b.add_theme_font_size_override("font_size", 13)
+			b.add_theme_color_override("font_color", Color(1, 0.92, 0.8))
+		b.pressed.connect(_desk_picker.bind(stage, slot))
+		stage.add_child(b)
+		spots.append([slot, b])
+	var bar := UI.hbox(10)
+	stage.add_child(bar)
+	bar.add_child(_glass_btn("‹ Back to PC", func():
+		desk_look = false
+		show_screen("pc")))
+	var hint := _glass_panel()
+	var hl := UI.label("My desk · tap a spot to put something there. Desk, chair and monitor come from DeskDepot.", 14, UI.TEXT)
+	hint.add_child(hl)
+	bar.add_child(hint)
+	var place := func():
+		stage._compute()
+		bar.position = Vector2(16, 14)
+		for sp in spots:
+			var r: Rect2 = stage.slot_rect(sp[0])
+			var empty: bool = not Game.desk_slots.has(sp[0])
+			if empty:
+				# an empty slot is a dashed-looking tile where the item's base would sit
+				var tw: float = max(r.size.x * 0.8, 120.0)
+				r = Rect2(r.get_center().x - tw / 2, r.end.y - r.size.y * 0.3, tw, max(r.size.y * 0.26, 40.0))
+			else:
+				r = r.grow(-r.size.x * 0.12)
+			sp[1].position = r.position
+			sp[1].size = r.size
+	stage.resized.connect(place)
+	place.call_deferred()
+
+
+## Glass picker for one desk slot: every collectible you own (with its picture), plus Clear.
+func _desk_picker(stage: SceneArt, slot: String) -> void:
+	var old := stage.get_node_or_null("picker")
+	if old:
+		old.queue_free()
+	var dim := ColorRect.new()
+	dim.name = "picker"
+	dim.color = Color(0, 0, 0, 0.35)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed:
+			dim.queue_free())
+	stage.add_child(dim)
+	var p := _glass_panel()
+	p.custom_minimum_size = Vector2(640, 0)
+	dim.add_child(p)
+	var v := UI.vbox(10)
+	p.add_child(v)
+	var hd := UI.hbox(10)
+	hd.add_child(UI.label(Game.DESK_SLOT_NAMES[slot], 20, UI.GOLD, true))
+	hd.add_child(UI.spacer())
+	var cur: String = Game.desk_slots.get(slot, "")
+	var clear := _glass_btn("Clear", func():
+		Game.place_decor(slot, "")
+		Game.save_game()
+		show_screen("pc"))
+	clear.disabled = cur == ""
+	hd.add_child(clear)
+	hd.add_child(_glass_btn("✕", func(): dim.queue_free()))
+	v.add_child(hd)
+	var grid := GridContainer.new()
+	grid.columns = 5
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 8)
+	var n := 0
+	for it in Game.DESK_ITEMS:
+		if it.slot != "decor" or not (it.id in Game.owned):
+			continue
+		n += 1
+		var where := ""
+		for s in Game.desk_slots:
+			if Game.desk_slots[s] == it.id:
+				where = s
+		var b := Button.new()
+		b.custom_minimum_size = Vector2(112, 132)
+		b.focus_mode = Control.FOCUS_NONE
+		b.tooltip_text = it.name + ("" if where == "" else "  (now: %s)" % Game.DESK_SLOT_NAMES[where])
+		var on := where == slot
+		for st in ["normal", "hover", "pressed"]:
+			var a := 0.08 if st == "normal" else 0.16
+			b.add_theme_stylebox_override(st, UI.box(Color(1, 0.9, 0.75, a), UI.GOLD if on else Color(1, 1, 1, 0.15), 10, 2 if on else 1, 6))
+		var bv := UI.vbox(2)
+		bv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bv.set_anchors_preset(Control.PRESET_FULL_RECT)
+		b.add_child(bv)
+		var t := TextureRect.new()
+		t.texture = _prop_tex(it.id)
+		t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		t.custom_minimum_size = Vector2(100, 96)
+		t.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bv.add_child(t)
+		var l := UI.label(it.name, 11, UI.TEXT)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		l.custom_minimum_size.x = 104
+		bv.add_child(l)
+		b.pressed.connect(func():
+			Game.place_decor(slot, it.id)
+			Game.save_game()
+			show_screen("pc"))
+		grid.add_child(b)
+	if n == 0:
+		v.add_child(UI.para("You don't own any desk collectibles yet. Bobbleheads, frames and more are on DeskDepot under Decor.", 15, UI.MUTED))
+	else:
+		v.add_child(UI.scroll(grid) if n > 10 else grid)
+		if n > 10:
+			v.get_child(v.get_child_count() - 1).custom_minimum_size.y = 290
+	var centre := func():
+		p.position = (dim.size - p.size) / 2
+	p.resized.connect(centre)
+	dim.resized.connect(centre)
+	centre.call_deferred()
+
+
 func _screen_pc_frame_then(fill: Callable) -> void:
 	# Rebuild the PC screen and swap the browser body for a detail page.
 	pc_tab = "auction"
+	desk_look = false
 	show_screen("pc")
 	var stage: SceneArt = content.get_child(0)
 	var win: PanelContainer = stage.get_child(0)
@@ -2624,17 +2788,45 @@ func _build_lobby(stage: SceneArt) -> void:
 		ch.queue_free()
 	var displays := []
 	var shown: Array = Game.cars.slice(0, 4)
+	# contact shadows under cars and people, drawn on the polished floor before any sprite
+	var floor_fx := Control.new()
+	floor_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	floor_fx.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.add_child(floor_fx)
 	for car in shown:
 		var box := Control.new()
 		stage.add_child(box)
+		# a faint mirror image on the polished floor, fading out below the tyres
+		var refl := CarArt.new()
+		refl.quarter = true
+		refl.set_car(car)
+		refl.scale = Vector2(1, -1)
+		refl.material = _floor_reflection_material()
+		refl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(refl)
 		var art := _car_art(car, Vector2.ZERO)
 		art.quarter = true
 		art.set_car(car)
 		box.add_child(art)
-		var tag := UI.button("%s\n%s" % [car.model, Game.money_str(car.get("sticker", 0))], _price_popup.bind(car), 0, 46)
-		tag.add_theme_font_size_override("font_size", 14)
+		var hit := Button.new()
+		hit.flat = true
+		hit.focus_mode = Control.FOCUS_NONE
+		for st in ["normal", "hover", "pressed"]:
+			hit.add_theme_stylebox_override(st, StyleBoxEmpty.new())
+		hit.tooltip_text = "%d %s · click to set the price" % [car.year, car.model]
+		hit.pressed.connect(_price_popup.bind(car))
+		box.add_child(hit)
+		# dealer-style windshield price, as on the lot
+		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 22, Color("ffe14a"), true)
+		tag.add_theme_constant_override("outline_size", 7)
+		tag.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.02, 0.95))
+		tag.add_theme_constant_override("shadow_offset_x", 2)
+		tag.add_theme_constant_override("shadow_offset_y", 3)
+		tag.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.45))
+		tag.rotation_degrees = -5.0
+		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(tag)
-		displays.append([box, art, tag])
+		displays.append([box, art, tag, refl, hit])
 	var people := []
 	for c in lobby:
 		var btn := Button.new()
@@ -2682,7 +2874,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		pat.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(pat)
 		people.append([btn, name_tag, bubble, pat, c])
-	var info := UI.panel(Color(0.03, 0.05, 0.1, 0.85), UI.GOLD_DIM, 12)
+	var info := UI.panel(UI.DIALOG_NAVY, UI.DIALOG_RIM, 12)
 	stage.add_child(info)
 	var iv := UI.vbox(4)
 	info.add_child(iv)
@@ -2693,7 +2885,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		iv.add_child(UI.label("No cars to show. Customers will leave.", 14, UI.BAD))
 	elif Game.cars.size() > 4:
 		iv.add_child(UI.label("+%d more cars outside on the lot" % (Game.cars.size() - 4), 14, UI.MUTED))
-	iv.add_child(UI.label("Tap a price tag to change a sticker price.", 13, UI.MUTED))
+	iv.add_child(UI.label("Click a car to change its sticker price.", 13, UI.MUTED))
 	iv.add_child(UI.rule(UI.GOLD_DIM))
 	iv.add_child(UI.label("ON THE FLOOR", 13, UI.GOLD, true))
 	for st in Game.staff:
@@ -2714,6 +2906,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		var w := stage.size.x
 		var h := stage.size.y
 		var pods: Array = stage.podiums
+		var shadows := []
 		for i in displays.size():
 			var d: Array = displays[i]
 			var c: Vector2 = pods[i] if i < pods.size() else Vector2(w * 0.5, h * 0.62)
@@ -2721,10 +2914,20 @@ func _build_lobby(stage: SceneArt) -> void:
 			# the 3/4 render is 16:9 with the tyres near its bottom edge
 			d[0].position = Vector2(c.x - cw / 2, c.y - cw * 0.5)
 			d[0].size = Vector2(cw, cw * 0.58 + 50)
+			var fh: float = cw * 0.5625
 			d[1].position = Vector2(0, cw * 0.06)
-			d[1].size = Vector2(cw, cw * 0.5625)
-			d[2].position = Vector2(cw * 0.2, cw * 0.58)
-			d[2].size = Vector2(cw * 0.6, 46)
+			d[1].size = Vector2(cw, fh)
+			# mirrored about the tyre contact line (about 0.8 of the frame)
+			d[3].size = Vector2(cw, fh)
+			d[3].position = Vector2(0, cw * 0.06 + fh * 1.6)
+			d[4].position = Vector2(cw * 0.15, cw * 0.06 + fh * 0.22)
+			d[4].size = Vector2(cw * 0.77, fh * 0.58)
+			var tag: Label = d[2]
+			tag.add_theme_font_size_override("font_size", clampi(roundi(cw * 0.085), 16, 30))
+			tag.reset_size()
+			tag.pivot_offset = tag.get_combined_minimum_size() / 2.0
+			tag.position = Vector2(cw * 0.52, cw * 0.06 + fh * 0.32) - tag.get_combined_minimum_size() / 2.0
+			shadows.append([d[0].position + Vector2(cw * 0.52, cw * 0.06 + fh * 0.79), Vector2(cw * 0.36, 0), Vector2(0, fh * 0.07)])
 		for i in people.size():
 			var pr: Array = people[i]
 			# stand on the marble at slightly different depths; size follows the camera's perspective
@@ -2759,10 +2962,39 @@ func _build_lobby(stage: SceneArt) -> void:
 			pr[2].size = Vector2(pw + 60, 0)
 			pr[3].position = Vector2(pw * 0.1, 0)
 			pr[3].size = Vector2(pw * 0.8, 7)
+			shadows.append([target + Vector2(pw / 2.0, ph * 0.985), Vector2(pw * 0.42, 0), Vector2(0, pw * 0.09)])
+		floor_fx.set_meta("pads", shadows)
+		floor_fx.queue_redraw()
 		info.position = Vector2(w - 360, 12)
 		info.size = Vector2(348, 0)
+	floor_fx.draw.connect(func():
+		for pad in floor_fx.get_meta("pads", []):
+			_shadow_pad(floor_fx, pad[0], pad[1], pad[2]))
 	stage.resized.connect(place)
 	place.call_deferred()
+
+
+## A soft contact shadow: stacked translucent ellipses (centre, half-axis vectors) on any canvas item.
+static func _shadow_pad(ci: CanvasItem, c: Vector2, ax: Vector2, ay: Vector2, alpha := 0.11, rings := 5) -> void:
+	for k in rings:
+		var poly := PackedVector2Array()
+		for j in 28:
+			var a := TAU * j / 28.0
+			poly.append(c + (ax * cos(a) + ay * sin(a)) * (1.3 - k * 0.1))
+		ci.draw_colored_polygon(poly, Color(0, 0, 0, alpha))
+
+
+static var _refl_mat: ShaderMaterial
+
+
+## Fades a vertically flipped sprite into the floor: strongest at the tyres, gone a third of the way down.
+static func _floor_reflection_material() -> ShaderMaterial:
+	if _refl_mat == null:
+		var sh := Shader.new()
+		sh.code = "shader_type canvas_item;\nvoid fragment() { vec4 c = texture(TEXTURE, UV) * COLOR; c.a *= 0.2 * smoothstep(0.45, 0.85, UV.y); COLOR = c; }"
+		_refl_mat = ShaderMaterial.new()
+		_refl_mat.shader = sh
+	return _refl_mat
 
 
 func _price_popup(car: Dictionary) -> void:
@@ -3912,8 +4144,15 @@ func _unlock_text() -> String:
 
 func _screen_marco() -> void:
 	set_bg("office", 0.15)
-	# Marco stands in the middle of his office, between the two panels
+	# Marco himself (the render of him in his office) fills the screen; he stands in the gap between the two panels
+	var office := "res://assets/people/marco_office.jpg"
+	var real := ResourceLoader.exists(office)
+	if real:
+		bg.texture = load(office)
+		bg.modulate = Color.WHITE
+		dim.color = Color(0, 0, 0, 0.08)
 	var stage := Control.new()
+	stage.visible = not real
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(stage)
 	var hero := "res://assets/people/marco_hero.png"
