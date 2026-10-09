@@ -277,6 +277,7 @@ var bankrupt := {}                # set when the bills can't be paid; the dealer
 var debug_day := 0
 var debug_level := 0
 var debug_screen := ""
+var debug_desk := false           # &desk=1: a furnished desk with collectibles (screenshots of the desk view)
 var debug_broke := false          # &broke: start deep in the red (tests the closing-down screen)
 var debug := false                # ?debug in the web build: start with cars and a customer (testing)
 
@@ -292,6 +293,7 @@ func _ready() -> void:
 			seed(int(query.substr(at + 5)))
 		debug = query.find("debug") >= 0
 		debug_broke = query.find("broke") >= 0
+		debug_desk = query.find("desk=1") >= 0
 		var dd := query.find("day=")
 		if dd >= 0:
 			debug_day = int(query.substr(dd + 4).split("&")[0])
@@ -537,6 +539,18 @@ func place_decor(slot: String, id: String) -> void:
 	else:
 		desk_slots[slot] = id
 	decor_on = desk_slots.values()
+
+
+## &desk=1: owns a mid-range desk setup and a shelf of collectibles.
+func debug_furnish() -> void:
+	debug_desk = false
+	for id in ["oak", "leather", "lcd", "bobble_marco", "photo_marco", "globe", "modelcar", "trophy", "mug", "bobble_surfer", "hula", "lamp", "plant", "cradle"]:
+		if not id in owned:
+			owned.append(id)
+	equipped = {"desk": "oak", "chair": "leather", "monitor": "lcd"}
+	desk_slots = {}
+	for id in ["bobble_marco", "photo_marco", "modelcar", "globe", "trophy"]:
+		auto_place(id)
 
 
 ## A newly bought collectible goes to the first free slot, if there is one.

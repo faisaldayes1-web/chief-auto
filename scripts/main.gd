@@ -795,6 +795,8 @@ const LANES := {
 
 
 func _screen_pc() -> void:
+	if Game.debug_desk:
+		Game.debug_furnish()
 	var stage := _stage("desk")
 	if desk_look:
 		stage.desk_view = true
@@ -2996,24 +2998,27 @@ func _build_lobby(stage: SceneArt) -> void:
 		for i in displays.size():
 			var d: Array = displays[i]
 			var c: Vector2 = pods[i] if i < pods.size() else Vector2(w * 0.5, h * 0.62)
-			var cw: float = min(340.0, w / max(1, pods.size()) - 16)
-			# the 3/4 render is 16:9 with the tyres near its bottom edge
-			d[0].position = Vector2(c.x - cw / 2, c.y - cw * 0.5)
-			d[0].size = Vector2(cw, cw * 0.58 + 50)
+			var cw: float = stage.car_w if stage.car_w > 0.0 else min(340.0, w / max(1, pods.size()) - 16)
 			var fh: float = cw * 0.5625
-			d[1].position = Vector2(0, cw * 0.06)
+			# the frame centre: from the render's camera when it was exported, else just above the floor spot
+			var centre: Vector2 = stage.podium_targets[i] if i < stage.podium_targets.size() else c - Vector2(0, fh * 0.29)
+			var ground: Vector2 = c if i < stage.podium_targets.size() else centre + Vector2(0, fh * 0.29)
+			d[0].position = centre - Vector2(cw / 2.0, fh / 2.0)
+			d[0].size = Vector2(cw, fh)
+			d[1].position = Vector2.ZERO
 			d[1].size = Vector2(cw, fh)
-			# mirrored about the tyre contact line (about 0.8 of the frame)
+			# mirrored about the tyre contact line
+			var contact: float = ground.y - d[0].position.y
 			d[3].size = Vector2(cw, fh)
-			d[3].position = Vector2(0, cw * 0.06 + fh * 1.6)
-			d[4].position = Vector2(cw * 0.15, cw * 0.06 + fh * 0.22)
+			d[3].position = Vector2(0, contact * 2.0)
+			d[4].position = Vector2(cw * 0.15, fh * 0.22)
 			d[4].size = Vector2(cw * 0.77, fh * 0.58)
 			var tag: Label = d[2]
 			tag.add_theme_font_size_override("font_size", clampi(roundi(cw * 0.085), 16, 30))
 			tag.reset_size()
 			tag.pivot_offset = tag.get_combined_minimum_size() / 2.0
-			tag.position = Vector2(cw * 0.52, cw * 0.06 + fh * 0.32) - tag.get_combined_minimum_size() / 2.0
-			shadows.append([d[0].position + Vector2(cw * 0.52, cw * 0.06 + fh * 0.79), Vector2(cw * 0.36, 0), Vector2(0, fh * 0.07)])
+			tag.position = Vector2(cw * 0.52, fh * 0.32) - tag.get_combined_minimum_size() / 2.0
+			shadows.append([ground, Vector2(cw * 0.34, 0), Vector2(0, fh * 0.075)])
 		for i in people.size():
 			var pr: Array = people[i]
 			# stand on the marble at slightly different depths; size follows the camera's perspective

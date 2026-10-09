@@ -8,7 +8,10 @@ const SHOWROOM_EYE := 0.48     # camera eye level in the showroom render (tools/
 const SHOWROOM_FLOOR := 0.58   # where the showroom floor meets the back glass, as a fraction of the render height
 var mode := "lobby"
 var monitor_rect := Rect2()   # where the PC screen sits (desk mode), set in _compute()
-var podiums: Array = []       # floor spots for display cars (lobby mode), Vector2 centers
+var podiums: Array = []       # floor spots for display cars (lobby mode), Vector2 ground points
+var podium_targets: Array = [] # sprite frame centres for those cars (lobby mode)
+var car_w := 0.0               # display car sprite frame width in pixels (lobby mode), 0 = let the caller choose
+var _spots := {}
 var desk_view := false        # desk mode: pull back from the PC to show the whole desk and its collectible slots
 var desk_top := 0.0           # y of the desk's back edge (desk mode), set in _compute()
 
@@ -43,10 +46,27 @@ func _compute() -> void:
 		desk_top = monitor_rect.end.y + h * (0.1 if desk_view else 0.07)
 	elif mode == "lobby":
 		podiums = []
+		podium_targets = []
+		car_w = 0.0
 		var n: int = max(1, Game.lot_capacity())
 		var per_row: int = min(n, 4)
-		for i in per_row:
-			podiums.append(Vector2(w * (i + 0.5) / per_row, h * 0.62))   # back of the showroom floor, sized to match the render perspective
+		var sp := showroom_spots()
+		var tex := _tex("showroom")
+		if not sp.is_empty() and tex != null:
+			# the display row exported with the render (tools/dealership3d.py export_showroom)
+			var r := cover_rect(tex)
+			var a: Dictionary = sp.row[0]
+			var b: Dictionary = sp.row[1]
+			for i in per_row:
+				var t: float = 0.5 if per_row == 1 else float(i) / (per_row - 1)
+				if per_row == 2:
+					t = 0.2 + 0.6 * t
+				podiums.append(r.position + _lerp2(a.ground, b.ground, t) * r.size)
+				podium_targets.append(r.position + _lerp2(a.target, b.target, t) * r.size)
+			car_w = lerpf(a.frame_w, b.frame_w, 0.5) * r.size.x
+		else:
+			for i in per_row:
+				podiums.append(Vector2(w * (i + 0.5) / per_row, h * 0.62))   # back of the showroom floor, sized to match the render perspective
 
 
 func _draw() -> void:
@@ -69,6 +89,21 @@ func _tex(view: String) -> Texture2D:
 	return _texs[key]
 
 
+static func _lerp2(a: Array, b: Array, t: float) -> Vector2:
+	return Vector2(lerpf(a[0], b[0], t), lerpf(a[1], b[1], t))
+
+
+## This tier's showroom camera data (assets/world/showroom*.json): horizon, floor line and the display row.
+func showroom_spots() -> Dictionary:
+	var key: String = "showroom" + Game.world_suffix()
+	if not _spots.has(key):
+		var path := "res://assets/world/%s.json" % key
+		var res = load(path) if ResourceLoader.exists(path) else null
+		var d = res.data if res is JSON else null
+		_spots[key] = d if d is Dictionary else {}
+	return _spots[key]
+
+
 func cover_rect(tex: Texture2D) -> Rect2:
 	var ts := tex.get_size()
 	var sc: float = max(size.x / ts.x, size.y / ts.y)
@@ -80,7 +115,7 @@ func cover_rect(tex: Texture2D) -> Rect2:
 ## (the camera is at eye level, so a 1.75 m person's head lands just above the horizon line).
 func person_height(feet_y: float) -> float:
 	var r := cover_rect(_tex("showroom"))
-	var eye := r.position.y + r.size.y * SHOWROOM_EYE
+	var eye := r.position.y + r.size.y * float(showroom_spots().get("eye", SHOWROOM_EYE))
 	return max(40.0, (feet_y - eye) * 1.06)
 
 
@@ -127,7 +162,7 @@ func _draw_lobby() -> void:
 	var h := size.y
 	# the showroom render, bottom-aligned so the marble floor is always in view
 	var dst := _cover(_tex("showroom"))
-	var horizon := dst.position.y + dst.size.y * SHOWROOM_FLOOR
+	var horizon := dst.position.y + dst.size.y * float(showroom_spots().get("floor", SHOWROOM_FLOOR))
 	# upgrades
 	if Game.has_upgrade("coffee"):
 		draw_rect(Rect2(w * 0.005, horizon - 70, w * 0.09, 70), Color("2b2b2f"))
@@ -203,6 +238,11 @@ func _draw_desk() -> void:
 	if mon == "crt":
 		draw_rect(m.grow(bezel), Color(0, 0, 0, 0.2), false, 3.0)
 		_text(Vector2(m.get_center().x - 30, m.end.y + bezel - 5), "TEWTRON", 12, Color("6a6450"))
+	if desk_view:
+		# the PC is on: a dim desktop with the logo while you look at the desk
+		var g := m.grow(-2)
+		_vgrad(g, Color("1d3550"), Color("0b1522"))
+		_text(Vector2(g.get_center().x - 58, g.get_center().y + 8), "CHIEF AUTO", 22, Color(1, 0.85, 0.6, 0.55))
 	# stand
 	draw_rect(Rect2(m.get_center().x - 18, m.end.y + bezel, 36, top - m.end.y - bezel), bezel_col.darkened(0.2))
 	draw_rect(Rect2(m.get_center().x - 70, top - 8, 140, 10), bezel_col.darkened(0.3))
@@ -220,8 +260,11 @@ func _draw_desk() -> void:
 		var r := slot_rect(slot)
 		if r.size.x <= 0:
 			continue
-		_ellipse(Vector2(r.get_center().x, r.end.y - r.size.y * 0.03), r.size.x * 0.32, r.size.y * 0.04, Color(0, 0, 0, 0.25))
-		draw_texture_rect(tex, r, false)
+		draw_texture_rect(tex, r, false, Color(0.96, 0.93, 0.88) if desk_view else Color(0.9, 0.87, 0.82))
+	if desk_view:
+		# front edge of the desk, so it reads as a top seen from the chair
+		draw_rect(Rect2(0, h - h * 0.035, w, h * 0.035), col.darkened(0.35))
+		draw_rect(Rect2(0, h - h * 0.035, w, 2), col.lightened(0.2))
 	# chair back in the corner
 	var chair: String = Game.equipped.get("chair", "plastic")
 	var ccol: Color = {"plastic": Color("d9d9d9"), "office": Color("2c3e50"), "leather": Color("5a321f"), "racing": Color("111111")}[chair]
@@ -245,6 +288,9 @@ func shelf_rect() -> Rect2:
 
 
 var _props := {}
+## Renders are all framed to the same size; small things are drawn smaller on the desk.
+const PROP_SCALE := {"mug": 0.6, "magazines": 0.7, "cradle": 0.75, "hula": 0.7, "bobble_marco": 0.8, "bobble_jeff": 0.8,
+	"bobble_surfer": 0.8, "bobble_lifeguard": 0.8, "first_dollar": 0.75, "modelcar": 0.95, "aquarium": 1.15, "lamp": 1.1}
 
 
 ## The product render for a shop item (assets/props/<id>.png), or null.
@@ -279,7 +325,7 @@ func slot_rect(slot: String) -> Rect2:
 		var left := slot.begins_with("l")
 		var fx: float = (0.2 if back else 0.11) * desk_scale
 		base = Vector2(w * (fx if left else 1.0 - fx), top + (h - top) * (0.22 if back else 0.86))
-		px = h * (0.26 if back else 0.36)
+		px = h * (0.34 if back else 0.46)
 	else:
 		# at the PC only the strip of desk under the screen shows
 		var back := slot.ends_with("b")
@@ -295,6 +341,7 @@ func slot_rect(slot: String) -> Rect2:
 			base = Vector2(free_w * (0.5 if back else 0.4) if left else w - free_w * (0.5 if back else 0.4), top + (h - top) * (0.25 if back else 0.95))
 			px = min(free_w * (0.95 if back else 1.15), h * (0.2 if back else 0.27))
 	px *= desk_scale if slot != "shelf" else 1.0
+	px *= PROP_SCALE.get(Game.desk_slots.get(slot, ""), 1.0)
 	var r := Rect2(base.x - px / 2, base.y - px * 244.0 / 256.0, px, px)
 	if not desk_view and slot != "shelf" and r.intersects(m.grow(10)) and r.position.x < m.end.x and r.end.x > m.position.x:
 		# never cover the PC window: squeeze it into the gap beside the screen instead
