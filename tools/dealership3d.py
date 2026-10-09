@@ -20,7 +20,7 @@ import bmesh  # bpy must load first
 from mathutils import Matrix, Vector
 
 SAMPLES = int(os.environ.get("SAMPLES", 96))
-RES = (640, 360) if os.environ.get("PREVIEW") else (1600, 900)
+RES = (640, 360) if os.environ.get("PREVIEW") else ((1920, 1080) if os.environ.get("HD") else (1600, 900))
 TIER_COLLECTIONS = {}
 
 
@@ -2383,7 +2383,7 @@ def car_dims():
 
 
 # Tier 1 sales office: a small stucco box at the back of the lot, front facing the street (-y)
-OX0, OX1, OY0, OY1, OH = -12.0, -2.0, -1.0, 7.0, 4.2
+OX0, OX1, OY0, OY1, OH = -16.0, 1.5, -1.0, 12.0, 4.2
 TZ = 0.05   # floor height inside
 
 
@@ -2434,6 +2434,7 @@ def build_site1():
     for x in (-10.5, -7.0, -3.5):
         cyl("o_soffit_light", (x, OY0 - 0.8, OH - 0.02), 0.12, 0.03, mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68)), verts=12)
     box("o_curb_slab", (OX0 - 1.4, OY0 - 1.6, 0), (OX1 + 1.4, OY0, 0.1), noise_mat("walk1", (0.55, 0.53, 0.5), (0.65, 0.63, 0.6), 8, 0.8))
+    COL = tier_collection("s1o")    # the sales office furniture (office/desk views only; the showroom view shows the lounge)
     # inside: carpet, a desk facing the windows, PC, filing cabinet, whiteboard with goals, poster, plant
     carpet = noise_mat("carpet", (0.3, 0.26, 0.22), (0.37, 0.32, 0.26), 220, 0.95, bump=0.3)
     box("o_carpet", (OX0 + 0.2, OY0 + 0.2, TZ), (OX1 - 0.2, OY1 - 0.2, TZ + 0.01), carpet)
@@ -2458,9 +2459,11 @@ def build_site1():
     box("o_poster", (OX1 - 0.23, 2.0, 1.4), (OX1 - 0.2, 4.0, 2.4), mat("poster", (0.1, 0.12, 0.18), emit=0.15, ecol=(0.6, 0.2, 0.15)))
     planter(-2.8, 6.3)
     build_office_t1()
+    COL = TIER_COLLECTIONS["s1"]
     tube = mat("tube_lit", (1, 1, 1), emit=8, ecol=(0.95, 0.97, 1.0))
-    for x in (-9.5, -4.5):
-        box("o_light", (x - 0.6, 2.8, OH - 0.62), (x + 0.6, 3.4, OH - 0.6), tube)
+    for x in (-13.0, -9.5, -6.0, -2.5):
+        for y in (2.8, 8.0):
+            box("o_light", (x - 0.6, y, OH - 0.62), (x + 0.6, y + 0.6, OH - 0.6), tube)
     # bunting strung between poles at the ends of the block wall and the office roof, all behind the stalls (the
     # game draws the parked cars over the render, so nothing may stand between the lot camera and a stall)
     top = [flag_pole(x, y, h) for x, y, h in ((-21.6, -1.9, 7.2), (5.5, -1.9, 7.2))]
@@ -2471,8 +2474,8 @@ def build_site1():
     light_pole(-20.2, -8.0, 7.5, ((1, 0),))
     light_pole(3.2, -1.6, 7.5, ((0, -1),))
     palm((-20.5, -0.6, 0), h=10.5, seed=91)
-    palm((-16.0, 3.0, 0), h=9.0, seed=93, kind="fan")
-    palm((-0.8, 7.5, 0), h=9.6, seed=94, kind="fan")
+    palm((-17.6, 3.0, 0), h=9.0, seed=93, kind="fan")
+    palm((3.2, 8.5, 0), h=9.6, seed=94, kind="fan")
     palm((19.5, -2.0, 0), h=9.0, seed=92, kind="fan")
     for x in (-20.6, -19.2, -21.2):
         shrub(x, -1.2 + (x + 20) * 0.6, 0.7, 0.9)
@@ -2737,6 +2740,235 @@ def build_deal_props():
     COL = None
 
 
+# ---------------------------------------------------------------- showroom sets (showroom views only)
+
+def screen_image(seed):
+    """A blue holographic spec screen: a glowing car wireframe over a grid, with spec bars."""
+    def draw(img, ss):
+        from PIL import Image, ImageDraw, ImageFilter
+        W, H = img.size
+        d = ImageDraw.Draw(img)
+        for yy in range(H):
+            t = yy / H
+            d.line([(0, yy), (W, yy)], fill=(int(6 + 10 * t), int(16 + 22 * t), int(40 + 40 * t), 255))
+        for gx in range(0, W, 28 * ss):
+            d.line([(gx, 0), (gx, H)], fill=(30, 70, 120, 255), width=ss)
+        for gy in range(0, H, 28 * ss):
+            d.line([(0, gy), (W, gy)], fill=(30, 70, 120, 255), width=ss)
+        glow = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        g = ImageDraw.Draw(glow)
+        rnd = random.Random(seed)
+        cx, base, L = W * 0.42, H * 0.7, W * 0.62
+        roof = rnd.uniform(0.2, 0.3)
+        prof = [(-0.5, 0.0), (-0.5, 0.16), (-0.42, 0.22), (-0.2, 0.26), (-0.08, 0.26 + roof), (0.18, 0.26 + roof),
+                (0.3, 0.28), (0.48, 0.22), (0.5, 0.1), (0.5, 0.0)]
+        pts = [(cx + x * L, base - y * L) for x, y in prof]
+        for off in (0.0, 0.035):
+            q = [(x + off * L, y - off * L * 0.6) for x, y in pts]
+            g.line(q + [q[0]], fill=(90, 210, 255, 255), width=3 * ss)
+        for x, y in pts[1:-1]:
+            g.line([(x, y), (x + 0.035 * L, y - 0.021 * L)], fill=(90, 210, 255, 200), width=2 * ss)
+        for wx in (-0.3, 0.32):
+            r = 0.09 * L
+            g.ellipse([cx + wx * L - r, base - r, cx + wx * L + r, base + r], outline=(140, 230, 255, 255), width=3 * ss)
+        for k in range(4):
+            y = H * (0.12 + 0.07 * k)
+            g.rectangle([W * 0.76, y, W * (0.78 + rnd.uniform(0.06, 0.18)), y + 6 * ss], fill=(90, 210, 255, 230))
+        g.rectangle([W * 0.05, H * 0.08, W * 0.4, H * 0.08 + 10 * ss], fill=(220, 240, 255, 255))
+        img.alpha_composite(glow.filter(ImageFilter.GaussianBlur(6 * ss)))
+        img.alpha_composite(glow)
+    return _pil_image("spec_screen_%d" % seed, draw, (640, 360), bg=(6, 16, 40))
+
+
+def screen_mat(seed):
+    name = "spec_screen_m%d" % seed
+    if name in _mats:
+        return _mats[name]
+    m, nt, b = _node_mat(name)
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = screen_image(seed)
+    nt.links.new(_coords(nt, "UV"), tex.inputs["Vector"])
+    nt.links.new(tex.outputs["Color"], b.inputs["Base Color"])
+    nt.links.new(tex.outputs["Color"], b.inputs["Emission Color"])
+    b.inputs["Emission Strength"].default_value = 4.0
+    b.inputs["Roughness"].default_value = 0.08
+    _mats[name] = m
+    return m
+
+
+def wall_screen(x, y, z, w, h, axis, face, seed):
+    """A wall-mounted spec monitor; axis 'x' runs along x (on a y wall), face is +1/-1 toward the room."""
+    bez = mat("bezel", (0.02, 0.02, 0.025), rough=0.3)
+    if axis == "x":
+        box("screen_bezel", (x - w / 2 - 0.04, y, z - 0.04), (x + w / 2 + 0.04, y + 0.05 * face, z + h + 0.04), bez)
+        yy = y + 0.055 * face
+        vs = [(x - w / 2, yy, z), (x + w / 2, yy, z), (x + w / 2, yy, z + h), (x - w / 2, yy, z + h)]
+        if face > 0:
+            vs = [vs[1], vs[0], vs[3], vs[2]]
+    else:
+        box("screen_bezel", (x, y - w / 2 - 0.04, z - 0.04), (x + 0.05 * face, y + w / 2 + 0.04, z + h + 0.04), bez)
+        xx = x + 0.055 * face
+        vs = [(xx, y + w / 2, z), (xx, y - w / 2, z), (xx, y - w / 2, z + h), (xx, y + w / 2, z + h)]
+        if face < 0:
+            vs = [vs[1], vs[0], vs[3], vs[2]]
+    _uv_mesh("spec_screen", vs, [(0, 1, 2, 3)], [(0, 0), (1, 0), (1, 1), (0, 1)], screen_mat(seed))
+    # a cool glow on the wall around it
+    ld = bpy.data.lights.new("screen_glow", "AREA")
+    ld.size, ld.energy, ld.color = max(w, h), 60, (0.35, 0.65, 1.0)
+    lo = bpy.data.objects.new("screen_glow", ld)
+    lo.location = (x, y + 0.3 * face, z + h / 2) if axis == "x" else (x + 0.3 * face, y, z + h / 2)
+    lo.rotation_euler = (math.pi / 2 * face, 0, 0) if axis == "x" else (0, -math.pi / 2 * face, 0)
+    _link(lo)
+
+
+def totem_screen(x, y, seed):
+    """A free-standing spec monitor on a slim post, facing into the room (+y)."""
+    post = mat("alu", (0.08, 0.08, 0.09))
+    box("totem_base", (x - 0.35, y - 0.25, 0.05), (x + 0.35, y + 0.25, 0.1), post)
+    box("totem_post", (x - 0.05, y - 0.05, 0.1), (x + 0.05, y + 0.05, 2.0), post)
+    wall_screen(x, y + 0.06, 2.0, 1.9, 1.07, "x", 1, seed)
+
+
+def sofa(x, y, yaw, width, m, seats=True):
+    pivot = bpy.data.objects.new("sofa", None)
+    pivot.location = (x, y, 0.05)
+    pivot.rotation_euler.z = yaw
+    _link(pivot)
+    leg = mat("alu", (0.08, 0.08, 0.09))
+    w = width / 2
+    parts = [box("sofa_base", (-w, -0.45, 0.1), (w, 0.45, 0.42), m, bevel=0.06),
+             box("sofa_back", (-w, 0.22, 0.42), (w, 0.45, 0.85), m, bevel=0.07),
+             box("sofa_arm", (-w - 0.18, -0.45, 0.1), (-w, 0.45, 0.62), m, bevel=0.06),
+             box("sofa_arm", (w, -0.45, 0.1), (w + 0.18, 0.45, 0.62), m, bevel=0.06)]
+    n = max(1, round(width / 0.8))
+    for i in range(n):
+        a = -w + i * width / n
+        parts.append(box("sofa_cushion", (a + 0.02, -0.42, 0.42), (a + width / n - 0.02, 0.2, 0.55), m, bevel=0.05))
+    for sx in (-w - 0.1, w + 0.1):
+        for sy in (-0.38, 0.38):
+            parts.append(box("sofa_leg", (sx - 0.03, sy - 0.03, 0), (sx + 0.03, sy + 0.03, 0.1), leg))
+    for o in parts:
+        o.parent = pivot
+
+
+def lounge(x, y, yaw):
+    """Tan leather sofa and armchair round a low table on a rug (x, y is the table)."""
+    tan = noise_mat("tan_leather", (0.42, 0.22, 0.1), (0.55, 0.32, 0.16), 40, 0.42, bump=0.05)
+    c, s_ = math.cos(yaw), math.sin(yaw)
+    def at(dx, dy):
+        return x + dx * c - dy * s_, y + dx * s_ + dy * c
+    sofa(*at(0, 1.25), yaw, 2.2, tan)
+    sofa(*at(1.9, 0.1), yaw + math.pi / 2, 0.8, tan)
+    box("rug_show", (x - 2.0, y - 1.2, 0.05), (x + 2.0, y + 1.9, 0.062), mat("rug_show", (0.62, 0.58, 0.52), rough=0.95))
+    box("low_table", (x - 0.7, y - 0.35, 0.06), (x + 0.7, y + 0.35, 0.36), noise_mat("walnut_t", (0.18, 0.1, 0.05), (0.26, 0.15, 0.08), 6, 0.35, stretch=(1, 14, 1)), bevel=0.02)
+    box("low_table_top", (x - 0.72, y - 0.37, 0.36), (x + 0.72, y + 0.37, 0.38), mat("black_glass", (0.02, 0.02, 0.02), rough=0.08))
+    box("brochure", (x - 0.3, y - 0.15, 0.38), (x + 0.0, y + 0.08, 0.39), mat("brochure", (0.9, 0.88, 0.84), rough=0.4))
+
+
+def counter(x0, y0, x1, y1, h=1.05):
+    white = mat("counter_white", (0.92, 0.91, 0.88), rough=0.35)
+    box("counter", (x0, y0, 0.05), (x1, y1, h), white, bevel=0.03)
+    box("counter_top", (x0 - 0.05, y0 - 0.05, h), (x1 + 0.05, y1 + 0.05, h + 0.05), noise_mat("oak_top", (0.36, 0.22, 0.12), (0.48, 0.32, 0.18), 6, 0.35, stretch=(1, 14, 1)))
+    box("counter_glow", (x0, y0 - 0.01, 0.08), (x1, y0, 0.12), mat("led_strip", (1, 1, 1), emit=6, ecol=(1.0, 0.8, 0.55)))
+
+
+def showroom_floor(x0, y0, x1, y1, z):
+    m = noise_mat("show_floor", (0.03, 0.032, 0.036), (0.075, 0.074, 0.078), 2.5, 0.13, macro=0.4)
+    box("show_floor", (x0, y0, z), (x1, y1, z + 0.004), m)
+
+
+def golden_sun(energy=11.0, el=13.0, az=-150.0):
+    """Low warm sun through the front glass (showroom views only; the lot keeps the shared midday sun)."""
+    ld = bpy.data.lights.new("golden_sun", "SUN")
+    ld.energy = energy
+    ld.color = (1.0, 0.6, 0.3)
+    ld.angle = math.radians(1.0)
+    e, a = math.radians(el), math.radians(az)
+    v = Vector((math.sin(a) * math.cos(e), math.cos(a) * math.cos(e), math.sin(e)))
+    lo = bpy.data.objects.new("golden_sun", ld)
+    lo.rotation_euler = (-v).to_track_quat("-Z", "Y").to_euler()
+    _link(lo)
+
+
+def build_showroom_sets():
+    global COL
+    # tier 3: the glass flagship (x -15..15, y 0..16), looking out the front glass at the lot and the coast
+    COL = tier_collection("show3")
+    showroom_floor(-15, 0, 15, 16, 0.05)
+    golden_sun()
+    lounge(-4.6, 11.6, 0.0)
+    for i, y in enumerate((2.2, 5.2, 8.2)):
+        wall_screen(-14.95, y, 1.9, 2.3, 1.3, "y", 1, 30 + i)
+    for i, y in enumerate((3.0, 6.0)):
+        wall_screen(14.95, y, 1.9, 2.3, 1.3, "y", -1, 40 + i)
+    planter(-14.0, 1.0)
+    planter(-6.5, 1.0)
+    planter(5.5, 1.0)
+    for i, x in enumerate((-12.5, 0.5, 11.5)):
+        totem_screen(x, 1.3, 70 + i)
+    # tier 2: the street showroom (x -10..6, y 0..12)
+    COL = tier_collection("show2")
+    showroom_floor(-10, 0, 6, 12, 0.05)
+    golden_sun()
+    lounge(-7.4, 5.6, 0.0)
+    wall_screen(-9.98, 5.0, 1.8, 2.0, 1.15, "y", 1, 50)
+    wall_screen(-9.98, 2.2, 1.8, 2.0, 1.15, "y", 1, 51)
+    planter(-9.2, 0.8)
+    # tier 1: the glass pavilion on the PCH lot (x -16..1.5, y -1..12)
+    COL = tier_collection("show1")
+    showroom_floor(OX0 + 0.2, OY0 + 0.2, OX1 - 0.2, OY1 - 0.2, TZ + 0.012)
+    golden_sun()
+    lounge(-11.2, 8.2, 0.0)
+    counter(-4.8, 8.4, -1.8, 9.2)
+    chair(-3.3, 9.9, math.pi, mat("leather_brown", (0.16, 0.08, 0.04), rough=0.35))
+    wall_screen(OX0 + 0.22, 2.6, 1.6, 2.0, 1.15, "y", 1, 60)
+    wall_screen(OX0 + 0.22, 5.6, 1.6, 2.0, 1.15, "y", 1, 61)
+    wall_screen(OX1 - 0.22, 4.0, 1.6, 2.0, 1.15, "y", -1, 62)
+    box("show1_back_feature", (-9.0, OY1 - 0.26, TZ), (-5.0, OY1 - 0.21, OH - 0.6), noise_mat("oak_feature", (0.32, 0.2, 0.11), (0.45, 0.3, 0.17), 6, 0.45, stretch=(1, 14, 1)))
+    text("show1_logo", "CHIEF AUTO", (-7.0, OY1 - 0.27, 2.4), 0.35, mat("gold", (0.85, 0.62, 0.22), rough=0.25, metal=1.0, emit=0.6, ecol=(1.0, 0.7, 0.3)), rot=(math.pi / 2, 0, math.pi))
+    planter(OX0 + 0.8, OY0 + 0.8)
+    planter(OX1 - 0.8, OY0 + 0.8)
+    COL = None
+
+
+# display row per showroom view: ground points of the leftmost and rightmost car (the game spaces its cars between)
+SHOW_ROWS = {
+    "showroom": ((-10.5, 4.5), (9.0, 4.5)),
+    "showroom_t2": ((-7.5, 4.6), (3.5, 4.6)),
+    "showroom_t1": ((-12.2, 2.6), (-2.3, 2.6)),
+}
+
+
+def export_showroom(view, cam, path):
+    """Screen positions for the game's showroom sprites (fractions of the image, u right, v down)."""
+    from bpy_extras.object_utils import world_to_camera_view
+    sc = bpy.context.scene
+    bpy.context.view_layer.update()
+    length, width, height = REF_CAR
+
+    def uv(p):
+        q = world_to_camera_view(sc, cam, Vector(p))
+        return q, [round(q.x, 5), round(1.0 - q.y, 5)]
+
+    pos = cam.location
+    fwd = (cam.matrix_world.to_quaternion() @ Vector((0, 0, -1)))
+    flat = Vector((fwd.x, fwd.y, 0)).normalized()
+    eye = uv(pos + flat * 200.0)[1][1]
+    row = []
+    for gx, gy in SHOW_ROWS[view]:
+        g = Vector((gx, gy, 0.05))
+        tq, t = uv(g + Vector((0, 0, 0.42 * height)))
+        ppm = (cam.data.lens / 36.0) / tq.z
+        row.append({"ground": uv(g)[1], "target": t, "frame_w": round(ppm * sprite_frame_m(length), 5),
+                    "ppm": round(ppm, 6)})
+    data = {"view": view, "eye": eye, "floor": uv(Vector((pos.x, 0.0 if view != "showroom_t1" else OY0, 0.05)))[1][1],
+            "row": row, "about": "eye: horizon line; floor: where the floor meets the front glass; row: the leftmost "
+            "and rightmost display car (ground point, sprite frame centre, frame width as a fraction of image width)."}
+    import json
+    with open(path, "w") as f:
+        json.dump(data, f, indent=1)
+
+
 def show_sets(keys):
     for k, c in TIER_COLLECTIONS.items():
         c.hide_render = k not in keys
@@ -2772,20 +3004,20 @@ VIEWS = {
     # name: (camera position, look-at target, lens mm, exposure). Names ending in _t1/_t2 are the smaller dealerships.
     # lot cameras: 50 mm like the car sprites, high enough to look down on the stalls at the sprites' angle
     "lot": ((-26.0, -56.0, 7.88), (-20.82, -36.68, 6.48), 50, 0.2),
-    "showroom": ((0.0, 0.8, 1.65), (0.0, 16.0, 1.45), 18, -0.3),
+    "showroom": ((-0.75, 15.2, 1.65), (-0.75, -10.0, 1.3), 18, -0.3),     # inside, looking out the front glass
     "office": ((-8.6, 9.6, 1.55), (-13.0, 15.5, 1.3), 18, -0.3),
     "garage": ((24.5, 0.9, 1.7), (24.5, 16.0, 1.6), 17, -0.2),
     "desk": ((11.5, 12.6, 1.25), (11.5, 16.0, 1.05), 24, -0.3),
     "dealdesk": ((-3.4, 4.3, 1.3), (1.5, 16.0, 0.9), 20, -0.3),
     "apartment": ((-12.5, 4.6, AZ0 + 1.6), (-3.0, 16.0, AZ0 + 1.2), 17, -0.2),
     "lot_t1": ((-10.5, -43.0, 5.68), (-10.5, -23.0, 4.28), 50, 0.2),
-    "showroom_t1": ((-1.0, -26.0, 1.65), (-1.0, -10.0, 1.45), 18, 0.0),   # customers browse outside on the lot
+    "showroom_t1": ((-7.25, 11.4, 1.65), (-7.25, -10.0, 1.3), 18, 0.0),
     "office_t1": ((-3.5, 5.4, 1.6), (-9.0, -1.0, 1.3), 18, 0.0),
     "garage_t1": ((11.0, -12.0, 1.7), (11.0, 2.0, 1.6), 18, -0.5),
     "desk_t1": ((-7.9, 5.9, 1.35), (-7.9, -1.0, 1.2), 24, 0.0),
     "dealdesk_t1": ((-4.3, 5.6, 1.35), (-9.5, -1.0, 0.9), 20, 0.0),
     "lot_t2": ((-14.5, -46.0, 6.46), (-10.34, -26.44, 5.06), 50, 0.2),
-    "showroom_t2": ((-2.0, 0.6, 1.65), (-2.0, 12.0, 1.45), 18, -0.2),
+    "showroom_t2": ((-2.0, 11.6, 1.65), (-2.0, -10.0, 1.3), 18, -0.2),
     "office_t2": ((-6.0, 8.6, 1.55), (-9.8, 12.0, 1.3), 18, -0.2),
     "garage_t2": ((9.6, 0.9, 1.7), (9.6, 12.0, 1.6), 17, -0.2),
     "desk_t2": ((4.7, 9.6, 1.25), (4.7, 12.0, 1.05), 24, -0.2),
@@ -2802,6 +3034,10 @@ def render_view(cam, name, out):
         sets = {"s" + tier}
         if name == "dealdesk":
             sets.add(9)
+        if name.startswith("showroom"):
+            sets.add("show" + tier)
+        elif tier == "1":
+            sets.add("s1o")
     pos, tgt, lens, exp = VIEWS[key]
     show_sets(sets)
     cam.location = pos
@@ -2812,6 +3048,8 @@ def render_view(cam, name, out):
     bpy.context.scene.render.filepath = os.path.join(out, "bg_%s.jpg" % name)
     if name in LOT_ROWS:
         export_stalls(name, cam, os.path.join(out, "stalls_%s.json" % name))
+    if name in SHOW_ROWS:
+        export_showroom(name, cam, os.path.join(out, "%s.json" % name))
     bpy.ops.render.render(write_still=True)
 
 
@@ -2829,10 +3067,11 @@ def build():
     build_site2()
     build_apartment_tiers()
     build_deal_props()
+    build_showroom_sets()
     # interior fill so rooms are not black against the bright sky, per dealership
     fills = {"s3": (((0, 8, 5.5), (28, 14), 2400), ((-11.5, 12.5, 5.5), (6, 6), 500),
                     ((24, 8, 5.8), (16, 14), 2600), ((-6, 9.5, AZ1 - 0.3), (16, 11), 1300)),
-             "s1": (((-7.0, 3.0, OH - 0.7), (9, 7), 700),),
+             "s1": (((-7.25, 5.5, OH - 0.7), (16, 12), 1500),),
              "s2": (((-2, 6, 4.8), (15, 11), 1500), ((-7.8, 10, 2.9), (4, 3.5), 250), ((9.6, 6, 4.4), (6, 11), 1200))}
     for key, rows in fills.items():
         for loc, size, e in rows:
