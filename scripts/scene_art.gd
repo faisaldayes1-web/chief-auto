@@ -55,8 +55,13 @@ func _compute() -> void:
 		if not sp.is_empty() and tex != null:
 			# the display row exported with the render (tools/dealership3d.py export_showroom)
 			var r := cover_rect(tex)
+			# left to right on screen (the camera looks down -y, so the exported row runs right to left)
 			var a: Dictionary = sp.row[0]
 			var b: Dictionary = sp.row[1]
+			if a.ground[0] > b.ground[0]:
+				var sw := a
+				a = b
+				b = sw
 			for i in per_row:
 				var t: float = 0.5 if per_row == 1 else float(i) / (per_row - 1)
 				if per_row == 2:

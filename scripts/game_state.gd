@@ -276,6 +276,7 @@ var peak_worth := 0
 var bankrupt := {}                # set when the bills can't be paid; the dealership closes and the run is over
 var debug_day := 0
 var debug_level := 0
+var debug_tier := 0
 var debug_screen := ""
 var debug_desk := false           # &desk=1: a furnished desk with collectibles (screenshots of the desk view)
 var debug_broke := false          # &broke: start deep in the red (tests the closing-down screen)
@@ -303,6 +304,9 @@ func _ready() -> void:
 		var lv := query.find("level=")
 		if lv >= 0:
 			debug_level = int(query.substr(lv + 6).split("&")[0])
+		var tr := query.find("tier=")
+		if tr >= 0:
+			debug_tier = int(query.substr(tr + 5).split("&")[0])
 	if not load_game():
 		new_game()
 
