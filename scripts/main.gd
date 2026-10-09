@@ -655,6 +655,9 @@ func _park_cars(yard: Control) -> void:
 		art.quarter = true
 		art.set_car(car)
 		b.add_child(art)
+		# parked cars darken with the lot at night (the background crossfades to its night render)
+		if WorldLook.night_tex("lot" + Game.world_suffix()) != null:
+			art.modulate = Color.WHITE.lerp(Color(0.42, 0.46, 0.62), Game.night_amount())
 		# dealer-style windshield price: big yellow numbers with a dark outline, painted at a slight slant
 		var tag := UI.label(Game.money_str(car.get("sticker", 0)), 18, Color("ffe14a"), true)
 		tag.add_theme_constant_override("outline_size", 7)
