@@ -31,6 +31,11 @@ var auction_detail: Dictionary = {}   # listing open on its detail page
 var live_ui: Array = []         # [listing, node, kind] refreshed while auctions run
 var _auc_acc := 0.0
 var _lane_sig := ""
+var _lane_grid: GridContainer = null   # live lane grid, patched in place when lots close or arrive
+var _lane_count: Label = null
+var _lane_cards := {}                  # car id -> card node
+var _lane_empty: Label = null
+var _lane_scroll: ScrollContainer = null
 var auction_view: Dictionary = {}
 var pc_tab := "auction"
 var desk_look := false   # Office PC: pulled back to look at (and arrange) the desk
@@ -1138,7 +1143,8 @@ func _tab_auction(inner: Control) -> void:
 	if auction_page == "watch":
 		shown = Game.listings.filter(func(l): return l.get("watch", false))
 	var tools := UI.hbox(10)
-	tools.add_child(UI.label(("%d on your watchlist" if auction_page == "watch" else "%d live auctions in this lane") % shown.size(), 13, INK, true))
+	_lane_count = UI.label("", 13, INK, true)
+	tools.add_child(_lane_count)
 	tools.add_child(UI.label("Sort: Ending soonest  ·  View: Grid", 12, GREY))
 	tools.add_child(UI.spacer())
 	tools.add_child(UI.label("Each lot runs about a minute. Tap ☆ to watch one.", 12, GREY))
@@ -1147,12 +1153,46 @@ func _tab_auction(inner: Control) -> void:
 	grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 10)
-	body.add_child(UI.scroll(grid))
+	_lane_scroll = UI.scroll(grid)
+	_lane_grid = grid
+	_lane_cards = {}
+	_lane_empty = UI.label("Nothing on your watchlist yet. Tap the ☆ on any lot." if auction_page == "watch" else "New lots are rolling in...", 15, GREY)
+	body.add_child(_lane_empty)
+	body.add_child(_lane_scroll)
+	_patch_lane(lane)
+
+
+func _lane_listings() -> Array:
+	var shown: Array = Game.open_listings(auction_house)
+	if auction_page == "watch":
+		shown = Game.listings.filter(func(l): return l.get("watch", false))
 	shown.sort_custom(func(x, y): return float(x.get("ends_at", 0.0)) < float(y.get("ends_at", 0.0)))
+	return shown
+
+
+## Bring the lane grid in line with the listings without rebuilding the page (keeps the scroll position).
+func _patch_lane(lane: Dictionary) -> void:
+	var shown := _lane_listings()
+	var keep := {}
 	for l in shown:
-		grid.add_child(_listing_card(l, lane))
-	if shown.is_empty():
-		body.add_child(UI.label("Nothing on your watchlist yet. Tap the ☆ on any lot." if auction_page == "watch" else "New lots are rolling in...", 15, GREY))
+		keep[int(l.car.get("id", 0))] = l
+	for id in _lane_cards.keys():
+		if not keep.has(id) or not is_instance_valid(_lane_cards[id]):
+			if is_instance_valid(_lane_cards[id]):
+				_lane_cards[id].queue_free()
+				_lane_grid.remove_child(_lane_cards[id])
+			_lane_cards.erase(id)
+	var i := 0
+	for l in shown:
+		var id := int(l.car.get("id", 0))
+		if not _lane_cards.has(id):
+			var c := _listing_card(l, lane)
+			_lane_cards[id] = c
+			_lane_grid.add_child(c)
+		_lane_grid.move_child(_lane_cards[id], i)
+		i += 1
+	_lane_count.text = ("%d on your watchlist" if auction_page == "watch" else "%d live auctions in this lane") % shown.size()
+	_lane_empty.visible = shown.is_empty()
 
 
 ## My Bids: every lot you've bid on, across lanes, with its status and a live countdown.
@@ -1770,7 +1810,32 @@ func _tick_auction(delta: float) -> void:
 		var sig := _auction_sig()
 		if sig != _lane_sig:
 			_lane_sig = sig
-			show_screen("pc")
+			if auction_page != "mybids" and is_instance_valid(_lane_grid) and _lane_grid.is_inside_tree() and auction_house in Game.memberships:
+				_patch_lane(LANES.get(auction_house, LANES.autobidz))
+				_refresh_live()
+			else:
+				var sv := _first_scroll_v()
+				show_screen("pc")
+				_restore_scroll_v.call_deferred(sv)
+
+
+func _pc_scroll() -> ScrollContainer:
+	for n in find_children("*", "ScrollContainer", true, false):
+		if n.is_visible_in_tree() and n.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED:
+			return n
+	return null
+
+
+func _first_scroll_v() -> int:
+	var sc := _pc_scroll()
+	return sc.scroll_vertical if sc else 0
+
+
+func _restore_scroll_v(v: int) -> void:
+	await get_tree().process_frame
+	var sc := _pc_scroll()
+	if sc:
+		sc.scroll_vertical = v
 
 
 func _auction_sig() -> String:
