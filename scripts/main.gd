@@ -2626,7 +2626,7 @@ func _tab_reviews(inner: Control) -> void:
 	sv.add_child(addr)
 	sv.add_child(UI.label("Get directions  ·  (949) 555-0142", 12, WEB_LINK))
 	var hrs := "%d:00 AM – %d:00 PM" % [Game.OPEN_MIN / 60, Game.CLOSE_MIN / 60 - 12]
-	for d in [["Mon – Fri", hrs], ["Sat", hrs], ["Sun", "Closed"]]:
+	for d in [["Mon – Fri", hrs], ["Sat – Sun", hrs]]:
 		var row := UI.hbox()
 		row.add_child(UI.label(d[0], 12, GREY))
 		row.add_child(UI.spacer())
@@ -3576,6 +3576,15 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 		var factor: float = 0.86 + Game.skill(s, "closing") / 700.0
 		var price: int = min(car.get("sticker", 0), _max_price(c, car, 50)) * min(1.0, factor * randf_range(0.97, 1.03))
 		price = int(round(price / 100.0)) * 100
+		# staff know what we're in for: they won't sell under cost (Jeff used to give cars away at a loss)
+		var floor_price: int = int(car.paid) + int(car.spent)
+		if price < floor_price:
+			if _max_price(c, car, 50) < floor_price:
+				toast("%s couldn't get %s up to what we paid for the %s, so no deal." % [s.name, c.name, car.model])
+				if lobby_stage:
+					_build_lobby(lobby_stage)
+				return
+			price = int(ceil(floor_price / 100.0)) * 100
 		var income := {"sales": price}
 		if c.finance:
 			income.finance = int(price * 0.004 * (Game.skill(s, "finance") / 20.0) * (1.5 if s.trait == "Finance whiz" else 1.0))
