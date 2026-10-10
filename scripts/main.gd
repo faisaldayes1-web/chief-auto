@@ -5352,6 +5352,8 @@ var _toasts: Array = []
 
 
 func toast(text: String) -> void:
+	if closing:
+		return   # the closing report lists the day's news; toasts would only cover it
 	var p := UI.panel(Color(0.05, 0.08, 0.14, 0.95), UI.GOLD, 14)
 	p.anchor_left = 0.5
 	p.anchor_right = 0.5
@@ -5359,7 +5361,13 @@ func toast(text: String) -> void:
 	p.offset_right = 340
 	# stack under toasts that are still showing instead of drawing on top of them
 	_toasts = _toasts.filter(func(t): return is_instance_valid(t))
-	p.offset_top = 86 + 58 * min(_toasts.size(), 3)
+	# at most three at a time: the oldest goes so they never pile over a report
+	while _toasts.size() >= 3:
+		_toasts.pop_front().queue_free()
+	for i in _toasts.size():
+		_toasts[i].offset_top = 86 + 58 * i
+		_toasts[i].offset_bottom = _toasts[i].offset_top
+	p.offset_top = 86 + 58 * _toasts.size()
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := UI.para(text, 17)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -5376,9 +5384,9 @@ func _close_for_night() -> void:
 	if closing or current == "title":
 		return
 	closing = true
-	for n in Game.settle_auctions():
-		toast(n.text)
 	var notes := []
+	for n in Game.settle_auctions():
+		notes.append(n.text)
 	# salespeople finish the deal they're in the middle of before we lock up
 	for c in lobby.duplicate():
 		if c.has("with_staff"):
