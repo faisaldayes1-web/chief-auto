@@ -284,6 +284,7 @@ var ledger_day := {}              # money in and out today, by category
 var ledger_month := {}            # same for this month (shown in the month-end summary)
 var month_walked := 0
 var month_sold := 0
+var month_profit_start := 0       # stats.profit on the 1st, so the month report can show profit on cars sold
 var liabilities: Array = []       # shady deals that can still turn into lawsuits
 var last_month_report := {}       # filled on the 1st, shown by the night report
 var reviews: Array = []          # Yolp reviews, newest last
@@ -344,6 +345,7 @@ func new_game() -> void:
 	sales_today = []
 	day_start = {}
 	last_day = {}
+	month_profit_start = 0
 	money = 15000
 	xp = 0
 	level = 1
@@ -1317,7 +1319,9 @@ func end_day() -> Array:
 		var months := ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
 		var prev := date_dict(day - 1)
 		last_month_report = {"title": "%s %d" % [months[prev.month - 1], prev.year], "ledger": ledger_month.duplicate(),
-			"sold": month_sold, "walked": month_walked, "reputation": reputation, "money": money, "staff": staff.duplicate(true)}
+			"sold": month_sold, "walked": month_walked, "reputation": reputation, "money": money, "staff": staff.duplicate(true),
+			"car_profit": int(stats.profit) - month_profit_start}
+		month_profit_start = int(stats.profit)
 		ledger_month = {}
 		month_sold = 0
 		month_walked = 0
@@ -1381,7 +1385,7 @@ func legal_exposure() -> int:
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
-	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
+	"ledger_day", "ledger_month", "month_walked", "month_sold", "month_profit_start", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
 	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start"]
 
 

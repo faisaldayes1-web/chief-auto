@@ -5332,6 +5332,8 @@ func _night_report(today: String, ledger: Dictionary, notes: Array) -> void:
 			goal = g[0]
 			break
 	var nxt := Game.next_tier_hint()
+	if goal.begins_with("Move to") or goal.begins_with("Upgrade to"):
+		goal = ""   # the tier hint below already says it, with what's missing
 	if goal != "" or nxt != "":
 		v.add_child(UI.para(("Next goal: %s.  " % goal if goal != "" else "") + nxt, 14, UI.GOLD))
 	var exposure := Game.legal_exposure()
@@ -5366,8 +5368,12 @@ func _month_report(r: Dictionary) -> void:
 	var net := UI.panel(Color(0.08, 0.3, 0.15, 0.9) if net_amt >= 0 else Color(0.3, 0.07, 0.07, 0.9), UI.GOOD if net_amt >= 0 else UI.BAD, 10)
 	var nv := UI.vbox(0)
 	net.add_child(nv)
-	_money_row(nv, "Monthly net profit", net_amt, 19, true)
+	_money_row(nv, "Monthly net cash flow", net_amt, 19, true)
 	v.add_child(net)
+	if r.has("car_profit"):
+		# cash flow counts stock still on the lot and big one-off buys; this is what the cars actually made
+		v.add_child(UI.label("Profit on cars sold: %s over %d sales (avg %s). Shop & dealership upgrades: %s." % [Game.money_str(int(r.car_profit)), int(r.sold),
+			Game.money_str(int(r.car_profit) / max(1, int(r.sold))), Game.money_str(-l.get("shop", 0))], 14, UI.MUTED))
 	var cols := UI.hbox(12)
 	var a := UI.vbox(4)
 	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
