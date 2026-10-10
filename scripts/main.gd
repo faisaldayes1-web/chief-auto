@@ -3491,7 +3491,7 @@ func _tick_walkins() -> void:
 		var waited: float = Game.clock - c.arrived
 		var patience := (240.0 if Game.has_upgrade("lounge") else 120.0) + (30.0 if Game.has_upgrade("detailbay") else 0.0)
 		# during the first-day coach the walk-ins are yours: staff don't grab the customer the tutorial asks you to sell to
-		if waited > 40 and not Game.tutorial_active() and _free_staff() != {}:
+		if waited > 40 and not Game.tutorial_active() and not Game.cars.is_empty() and _free_staff() != {}:
 			_staff_handles(c, _free_staff(), true)
 		elif waited > patience:
 			lobby.erase(c)
@@ -3506,7 +3506,7 @@ func _tick_walkins() -> void:
 ## Showroom fit-outs you bought, standing on the floor: their ShowroomPro product renders with a contact shadow.
 func _lobby_props(stage: SceneArt) -> void:
 	# placed with anchors (fractions of the stage) because the stage has no size yet when the lobby is built
-	for spec in [["coffee", 0.08, 0.86, 0.36], ["lounge", 0.6, 1.02, 0.34]]:
+	for spec in [["coffee", 0.07, 0.84, 0.27], ["lounge", 0.6, 1.0, 0.3]]:
 		if not Game.has_upgrade(spec[0]):
 			continue
 		var t := _prop_tex(spec[0])
@@ -5097,6 +5097,11 @@ func _marco_tips() -> Array:
 		t.append(["Marco", who, "Lot's full. A car sitting here is money sitting still. Sell something, even at a thinner margin."])
 	if Game.ads_active.is_empty():
 		t.append(["Marco", who, "Nobody knows we exist. Even flyers on windshields bring people in. Check AdSpace on your PC."])
+	var nxt := Game.next_tier_hint()
+	if nxt != "":
+		t.append(["Marco", who, "Where we're headed: " + nxt])
+	elif not Game.has_upgrade("gallery"):
+		t.append(["Marco", who, "We own the harbour. Money sitting in the bank does nothing: ShowroomPro has the detail bay, the overflow lot and the heritage gallery."])
 	if Game.reputation < 2.5:
 		t.append(["Marco", who, "Our reviews are slipping. Smaller margins make happier customers, and happy customers come back."])
 	t.append(["Marco", who, ["Always pull the history report. A flood car looks fine until it doesn't.", "The finance office is where the money is. A point or two over the bank rate adds up.", "Detailing is the cheapest profit in this business.", "Squeeze too hard and they walk. A fair deal and a happy customer beats one big margin."].pick_random()])
