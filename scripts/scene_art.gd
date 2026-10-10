@@ -201,11 +201,8 @@ func _draw_lobby() -> void:
 	var dst := _cover(_tex("showroom"))
 	var horizon := dst.position.y + dst.size.y * float(showroom_spots().get("floor", SHOWROOM_FLOOR))
 	# upgrades
-	# fit-outs drawn with their ShowroomPro product renders (the old flat boxes read as placeholders)
-	if Game.has_upgrade("coffee"):
-		_prop_on_floor("coffee", Vector2(w * 0.07, horizon + h * 0.02), h * 0.2)
-	if Game.has_upgrade("lounge"):
-		_prop_on_floor("lounge", Vector2(w * 0.6, h * 0.98), h * 0.17)
+	# the espresso bar and lounge are TextureRect children added by main.gd (_lobby_props): this canvas item
+	# draws through the WorldLook material, which would wash a product render out to a white box
 	if Game.has_upgrade("lights"):
 		for p in podiums:
 			draw_colored_polygon(PackedVector2Array([Vector2(p.x - 18, h * 0.06), Vector2(p.x + 18, h * 0.06), Vector2(p.x + 140, p.y + 10), Vector2(p.x - 140, p.y + 10)]), Color(1, 0.95, 0.75, 0.07))
@@ -218,16 +215,6 @@ func _draw_lobby() -> void:
 		_ellipse(p, 146, 18, Color(1, 1, 1, 0.22) if not glow else Color(0.95, 0.85, 0.6, 0.5))
 		if glow:
 			draw_arc(p, 146, 0, TAU, 48, Color("e8b64c"), 2.0)
-
-
-func _prop_on_floor(id: String, foot: Vector2, height: float) -> void:
-	var p := "res://assets/props/%s.png" % id
-	if not ResourceLoader.exists(p):
-		return
-	var t: Texture2D = load(p)
-	var sz := Vector2(height * t.get_width() / float(t.get_height()), height)
-	_ellipse(foot + Vector2(0, -2), sz.x * 0.42, sz.y * 0.06, Color(0, 0, 0, 0.3))
-	draw_texture_rect(t, Rect2(foot - Vector2(sz.x / 2, sz.y), sz), false)
 
 
 # ---------- office desk ----------

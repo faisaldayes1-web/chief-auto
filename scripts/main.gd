@@ -1215,7 +1215,9 @@ func _auction_site(inner: Control, house: Dictionary, lane: Dictionary, with_lan
 	var bar: HBoxContainer = site.bar
 	bar.add_child(_fake_search("Search %s vehicles" % _num(2400 + Game.listings.size() * 7), "Search", lane.btn, lane.btn_ink, 250))
 	bar.add_child(UI.spacer())
-	bar.add_child(UI.label("Balance " + Game.money_str(Game.money), 13, lane.bar_ink, true))
+	var bal := UI.label("Balance " + Game.money_str(Game.money), 13, lane.bar_ink, true)
+	bar.add_child(bal)
+	live_ui.append([{}, bal, "balance"])   # winning a lot charges you while the page stays open
 	var n_bids: int = Game.listings.filter(func(l): return _my_status(l) in ["winning", "outbid"]).size()
 	var n_watch: int = Game.listings.filter(func(l): return l.get("watch", false)).size()
 	bar.add_child(_auction_page_btn("Live lanes", "lane", lane))
@@ -1413,7 +1415,13 @@ func _refresh_live() -> void:
 func _refresh_live_one(e: Array) -> void:
 	var l: Dictionary = e[0]
 	var node = e[1]
+	if e[2] == "balance":
+		node.text = "Balance " + Game.money_str(Game.money)
+		return
 	var secs := _secs_left(l)
+	if e[2] == "balance":
+		node.text = "Balance " + Game.money_str(Game.money)
+		return
 	match e[2]:
 		"pill":
 			var txt := ""
@@ -1441,8 +1449,13 @@ func _refresh_live_one(e: Array) -> void:
 				node.text = "high bid · " + l.leader
 			node.add_theme_color_override("font_color", WEB_GOOD if st in ["winning", "won"] else (WEB_BAD if st in ["outbid", "lost"] else GREY))
 		"bin":
-			node.visible = Game.buy_now_open(l)
-			node.text = "Buy It Now " + Game.money_str(int(l.buy_now))
+			# keep the line (as a note) when Buy It Now goes, so the Bid button doesn't jump under the cursor
+			if node is Label:
+				node.text = ("Buy It Now " + Game.money_str(int(l.buy_now))) if Game.buy_now_open(l) else ("" if l.sold else "Buy It Now gone: bidding passed it")
+				node.modulate.a = 1.0 if Game.buy_now_open(l) else 0.6
+			else:
+				node.visible = Game.buy_now_open(l)
+				node.text = "Buy It Now " + Game.money_str(int(l.buy_now))
 		"bidbtn":
 			var next: int = int(l.current) + (Game.bid_increment(l) if l.leader != "" else 0)
 			node.text = "Closed" if l.sold else ("Winning" if l.leader == "you" else "Bid " + Game.money_str(next))
@@ -2166,6 +2179,8 @@ func _dealership_card(web: bool) -> Control:
 	var why := Game.dealership_blocker()
 	var move := func():
 		if Game.upgrade_dealership():
+			# close the popup too: it was left showing the old building with a live Move up button
+			_close_overlay()
 			toast("Welcome to the %s!" % nxt.name)
 			show_screen(current)
 		else:
@@ -3201,6 +3216,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		box.add_child(tag)
 		displays.append([box, art, tag, refl, hit])
+	_lobby_props(stage)
 	var people := []
 	for c in lobby:
 		var btn := Button.new()
@@ -3485,6 +3501,29 @@ func _tick_walkins() -> void:
 			toast("%s got tired of waiting, left, and posted a bad Yolp review." % c.name)
 			if lobby_stage:
 				_build_lobby(lobby_stage)
+
+
+## Showroom fit-outs you bought, standing on the floor: their ShowroomPro product renders with a contact shadow.
+func _lobby_props(stage: SceneArt) -> void:
+	var w := stage.size.x
+	var h := stage.size.y
+	for spec in [["coffee", 0.075, 0.8, 0.2], ["lounge", 0.6, 0.99, 0.17]]:
+		if not Game.has_upgrade(spec[0]):
+			continue
+		var t := _prop_tex(spec[0])
+		if t == null:
+			continue
+		var ph: float = h * spec[3]
+		var pw: float = ph * t.get_width() / float(t.get_height())
+		var tr := TextureRect.new()
+		tr.texture = t
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tr.modulate = Color(0.85, 0.8, 0.75)   # the showroom's warm light
+		tr.position = Vector2(w * spec[1] - pw / 2.0, h * spec[2] - ph)
+		tr.size = Vector2(pw, ph)
+		stage.add_child(tr)
 
 
 func _free_staff() -> Dictionary:
@@ -3866,7 +3905,7 @@ func _pitch(id: String) -> void:
 		"espresso":
 			c.happiness += 0.15
 			c.patience += 0.15
-			c.log.append("%s: \"Oh, that's actually good espresso.\"  (+15% happiness)" % c.name)
+			c.log.append("%s: \"Oh, that's actually good espresso.\"  (+15%% happiness)" % c.name)
 		"features":
 			var g := randi_range(5, 15) if (id in likes or car.cls in ["sport", "exotic"]) else randi_range(1, 6)
 			c.interest += g * boost
@@ -4431,7 +4470,7 @@ func _render_paperwork() -> void:
 	sv.add_child(UI.para(deal, 15))
 	_meter(sv, "Happiness", c.happiness)
 	sv.add_child(UI.label("Add-ons", 16, UI.GOLD, true))
-	for a in [["warranty", "Offer extended warranty (+$1,200)"], ["protect", "Offer paint protection (+$400)"], ["pack", "Slip the warranty into the payment without mentioning it"]]:
+	for a in [["warranty", "Offer extended warranty (+$1,200)"], ["protect", "Offer paint protection (+$400)"], ["pack", "Sneak the warranty in, unmentioned (+$1,200)"]]:
 		var cb := CheckBox.new()
 		cb.text = a[1]
 		cb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4534,7 +4573,9 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	var summary := "Sold the %s to %s for %s." % [car.model, info.get("customer", "the buyer"), Game.money_str(price)]
 	if info.get("reserve", 0) > 0:
 		summary += " Finance profit %s." % Game.money_str(info.reserve)
-	summary += " Total profit: %s. They left %s." % [Game.money_str(profit), _mood_word(happiness).to_lower()]
+	if income.get("addons", 0) > 0:
+		summary += " Add-ons %s." % Game.money_str(income.addons)
+	summary += " Profit %s (bought for %s, repairs %s). They left %s." % [Game.money_str(profit), Game.money_str(car.paid), Game.money_str(car.spent), _mood_word(happiness).to_lower()]
 	summary += " They gave us %d★ on Yolp." % info.review
 	if info.review == 5:
 		summary += " And they're sending a friend tomorrow."
