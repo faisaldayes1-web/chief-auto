@@ -14,6 +14,10 @@ func check(ok: bool, what: String) -> void:
 
 func _initialize() -> void:
 	G = root.get_node("Game")
+	# every game script must parse (a typo in main.gd otherwise only shows up as a grey screen in the browser)
+	for path in ["res://scripts/main.gd", "res://scripts/ui.gd", "res://scripts/car3d_view.gd", "res://scripts/scene_art.gd", "res://scripts/person_art.gd", "res://scripts/car_art.gd", "res://scripts/world_look.gd"]:
+		var scr: GDScript = load(path)
+		check(scr != null and scr.can_instantiate(), "%s parses" % path)
 	G.new_game()
 	# month end: bills hit on Nov 1 and the report is filled
 	var start: int = G.money
@@ -55,7 +59,12 @@ func _initialize() -> void:
 	lb.next_ai = 0.0
 	G.tick_auctions(0.1)
 	check(lb.leader != "you", "rivals outbid the player")
-	var lc: Dictionary = G.open_listings("autobidz")[0]
+	G.cars = []
+	var lc: Dictionary = {}
+	for l in G.open_listings("autobidz"):
+		if l != lb and G.buy_now_open(l):
+			lc = l
+			break
 	check(G.buy_listing_now(lc) == "" and lc.winner == "you", "Buy It Now buys instantly")
 	G.tick_auctions(0.1)
 	check(G.open_listings("autobidz").size() == G.lane_size("autobidz"), "fresh lots roll in")

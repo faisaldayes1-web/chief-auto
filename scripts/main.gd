@@ -201,6 +201,9 @@ func _refresh_clock() -> void:
 	hud_rent.text = "Rent & bills %s in %d day%s" % [Game.money_str(Game.monthly_bills().total), dl, "" if dl == 1 else "s"]
 	hud_rent.add_theme_color_override("font_color", UI.BAD if dl <= 3 else UI.MUTED)
 	hud_lobby.text = ("Showroom: %d waiting" % lobby.size()) if lobby.size() > 0 else ""
+	# the first-day coach moves on as soon as the step is done, not on the next screen change
+	if Game.tutorial_active() and Game.seen_intro and current != "title" and Game.check_tutorial():
+		_update_coach()
 
 
 func _build_nav() -> Control:
@@ -429,12 +432,20 @@ func _update_coach() -> void:
 	coach.mouse_filter = Control.MOUSE_FILTER_STOP
 	var v := UI.vbox(6)
 	coach.add_child(v)
+	# On the screen the step points at, the card shrinks to one line so it doesn't cover the auction cards,
+	# the garage car or the customers (the full hint is still on its tooltip).
+	var compact: bool = current == step[2]
 	v.add_child(UI.label("FIRST DAY · STEP %d OF %d" % [Game.tutorial + 1, Game.TUTORIAL.size()], 12, UI.GOLD, true))
-	v.add_child(UI.label(step[0], 20, UI.TEXT, true))
-	var hint := UI.para(step[1], 14, UI.MUTED)
-	hint.custom_minimum_size.x = 330
-	v.add_child(hint)
+	if not compact:
+		v.add_child(UI.label(step[0], 20, UI.TEXT, true))
+		var hint := UI.para(step[1], 14, UI.MUTED)
+		hint.custom_minimum_size.x = 330
+		v.add_child(hint)
+	else:
+		coach.tooltip_text = step[1]
 	var row := UI.hbox(8)
+	if compact:
+		row.add_child(UI.label(step[0], 17, UI.TEXT, true))
 	if current != step[2]:
 		row.add_child(UI.gold_button("Take me there", show_screen.bind(step[2]), 150, 36))
 	row.add_child(UI.spacer())
@@ -2929,8 +2940,10 @@ func _fill_garage_panel() -> void:
 		_fill_garage_panel())
 	v.add_child(opt)
 	var mech: Dictionary = Game.MECHANICS[mechanic_index]
-	if garage_log != "":
-		v.add_child(UI.para(garage_log, 14, UI.GOOD))
+	# the last job's result always takes the same two lines, so the Fix buttons below don't jump between clicks
+	var glog := UI.para(garage_log if garage_log != "" else "Pick a mechanic, then fix a system or click a part.", 14, UI.GOOD if garage_log != "" else UI.MUTED)
+	glog.custom_minimum_size.y = 40
+	v.add_child(glog)
 	# ---- the part you clicked
 	var card := UI.panel(Color(0.05, 0.08, 0.14, 0.9), UI.GOLD, 10)
 	v.add_child(card)
@@ -3449,7 +3462,8 @@ func _tick_walkins() -> void:
 	for c in lobby.duplicate():
 		var waited: float = Game.clock - c.arrived
 		var patience := 240.0 if Game.has_upgrade("lounge") else 120.0
-		if waited > 40 and _free_staff() != {}:
+		# during the first-day coach the walk-ins are yours: staff don't grab the customer the tutorial asks you to sell to
+		if waited > 40 and not Game.tutorial_active() and _free_staff() != {}:
 			_staff_handles(c, _free_staff(), true)
 		elif waited > patience:
 			lobby.erase(c)
@@ -3561,6 +3575,17 @@ func _open_customer(c: Dictionary) -> void:
 		c.patience = clamp(1.0 - waited / 200.0, 0.35, 1.0)
 		c.happiness = clamp(c.happiness - waited / 600.0, 0.2, 1.0)
 		var car := _pick_car_for(c)
+		var stretch := false
+		if car.is_empty() and not Game.cars.is_empty():
+			# nothing fits at its sticker: they still look at the closest one and say what they can spend,
+			# so you can haggle down instead of hitting a dead end
+			var best_r := -1.0
+			for cc in Game.cars:
+				var r: float = float(_max_price(c, cc, 50.0)) / max(1.0, float(cc.get("sticker", 1)))
+				if r > best_r:
+					best_r = r
+					car = cc
+			stretch = true
 		if not car.is_empty():
 			c.car_id = car.id
 			var fair := float(Game.sale_value(car))
@@ -3569,6 +3594,8 @@ func _open_customer(c: Dictionary) -> void:
 			interest -= 40.0 * (car.get("sticker", fair) - fair) / fair
 			c.interest = clamp(interest, 5.0, 90.0)
 			c.log = ["%s: \"%s\"" % [c.name, Game.BUYER_TYPES[c.type].intro], "%s: \"I'm looking at the %s.\"" % [c.name, car.model]]
+			if stretch:
+				c.log.append("%s: \"Honestly it's over my budget. I was thinking more like %s.\"" % [c.name, Game.money_str(int(round(_max_price(c, car, 40.0) * 0.9 / 100.0)) * 100)])
 			if waited > 30:
 				c.log.push_front("%s: \"I've been standing here %d minutes, you know.\"" % [c.name, int(waited)])
 		else:
@@ -4478,6 +4505,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.stats.goal_sold_today += 1
 	Game.stats.profit += profit
 	Game.stats.days_held += Game.day - car.day_bought
+	Game.record_sale("%s %s" % [car.get("year", ""), car.model], price, profit, seller)
 	var stars := Game.stars_from_happiness(happiness)
 	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
 	info.review = stars
@@ -5186,13 +5214,53 @@ func _night_report(today: String, ledger: Dictionary, notes: Array) -> void:
 	var v := UI.vbox(8)
 	p.add_child(v)
 	v.add_child(UI.header("Closing report · %s · 9:00 PM" % today))
-	var rev := Game.ledger_total(ledger, 1)
-	var exp := Game.ledger_total(ledger, -1)
+	# the finished day as end_day() left it: includes the daily-goal bonus, lawsuits and month-end bills
+	var ld: Dictionary = Game.last_day if not Game.last_day.is_empty() else {"ledger": ledger, "sales": [], "buyers": 0, "walked": 0}
+	var lg: Dictionary = ld.ledger
+	var rev := Game.ledger_total(lg, 1)
+	var bought: int = lg.get("cars", 0)
+	var ops: int = Game.ledger_total(lg, -1) - bought
 	_money_row(v, "Daily revenue", rev)
-	_money_row(v, "Daily expenses", exp)
+	if bought != 0:
+		_money_row(v, "Cars bought (stock)", bought)
+	_money_row(v, "Running costs", ops)
 	v.add_child(UI.rule())
-	_money_row(v, "Net profit", rev + exp, 18, true)
+	_money_row(v, "Net cash today", rev + bought + ops, 18, true)
 	_money_row(v, "Total funds", Game.money, 18, true)
+	# what sold, and what each one made after purchase and repairs
+	var sales: Array = ld.get("sales", [])
+	if not sales.is_empty():
+		v.add_child(UI.label("SOLD TODAY", 13, UI.GOLD, true))
+		var day_profit := 0
+		for sl in sales:
+			var h := UI.hbox(8)
+			var who: String = "" if sl.seller == "you" else " · %s" % sl.seller
+			var nl := UI.label("%s%s" % [sl.model, who], 15)
+			nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			nl.clip_text = true
+			h.add_child(nl)
+			h.add_child(UI.label(Game.money_str(int(sl.price)), 15, UI.MUTED))
+			var pl := UI.label(("+" if int(sl.profit) >= 0 else "") + Game.money_str(int(sl.profit)), 15, UI.GOOD if int(sl.profit) >= 0 else UI.BAD, true)
+			pl.custom_minimum_size.x = 96
+			pl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			h.add_child(pl)
+			v.add_child(h)
+			day_profit += int(sl.profit)
+		v.add_child(UI.label("Profit on today's sales: %s (avg %s a car)" % [Game.money_str(day_profit), Game.money_str(day_profit / sales.size())], 14, UI.GOOD if day_profit >= 0 else UI.BAD))
+	var stock := 0
+	for c in Game.cars:
+		stock += Game.value(c)
+	v.add_child(UI.label("Walk-ins %d · sold %d · walked out %d     Lot %d/%d cars, worth about %s" % [int(ld.get("buyers", 0)), sales.size(), int(ld.get("walked", 0)),
+		Game.cars.size(), Game.lot_capacity(), Game.money_str(stock)], 14, UI.MUTED))
+	# where to go next
+	var goal := ""
+	for g in Game.goals():
+		if not g[1]:
+			goal = g[0]
+			break
+	var nxt := Game.next_tier_hint()
+	if goal != "" or nxt != "":
+		v.add_child(UI.para(("Next goal: %s.  " % goal if goal != "" else "") + nxt, 14, UI.GOLD))
 	var exposure := Game.legal_exposure()
 	if exposure > 0:
 		v.add_child(UI.label("Pending legal risk from shady deals: about %s" % Game.money_str(exposure), 15, UI.BAD))

@@ -273,6 +273,9 @@ var apartment := 1                # tier of the rooftop apartment (see APARTMENT
 var loan := 0                     # TewportBank line of credit you owe; interest is billed on the 1st
 var run_id := 0                   # identifies this dealership's row on the leaderboard
 var peak_worth := 0
+var sales_today: Array = []       # [{model, price, profit, seller}] for the closing report
+var day_start := {}               # stats at the start of today (walk-ins, walk-outs) for the closing report
+var last_day := {}                # what the closing report shows: the finished day's ledger, sales and traffic
 var bankrupt := {}                # set when the bills can't be paid; the dealership closes and the run is over
 var debug_day := 0
 var debug_level := 0
@@ -316,6 +319,9 @@ func new_game() -> void:
 	run_id = randi()
 	peak_worth = 0
 	bankrupt = {}
+	sales_today = []
+	day_start = {}
+	last_day = {}
 	money = 15000
 	xp = 0
 	level = 1
@@ -695,6 +701,25 @@ func dealership_blocker() -> String:
 	if money < nxt.price:
 		return "You need %s." % money_str(nxt.price)
 	return ""
+
+
+## One line for the closing report and Marco: what stands between you and the next building.
+func next_tier_hint() -> String:
+	if dealership >= DEALERSHIPS.size():
+		return ""
+	var nxt := dealership_info(dealership + 1)
+	var need := []
+	if level < nxt.level:
+		need.append("level %d (you're %d)" % [nxt.level, level])
+	if money < nxt.price:
+		need.append("%s more cash" % money_str(nxt.price - money))
+	if need.is_empty():
+		return "%s: ready. Buy it from Upgrade Dealership on the Lot." % nxt.name
+	return "%s (%s): need %s." % [nxt.name, money_str(nxt.price), " and ".join(need)]
+
+
+func record_sale(model: String, price: int, profit: int, seller: String) -> void:
+	sales_today.append({"model": model, "price": price, "profit": profit, "seller": seller})
 
 
 func upgrade_dealership() -> bool:
@@ -1267,6 +1292,11 @@ func end_day() -> Array:
 		generate_candidates()
 	if date_dict().weekday == 1:
 		generate_candidates()
+	# the closing report reads this: everything that moved money today, including the bonus, lawsuits and bills above
+	last_day = {"ledger": ledger_day.duplicate(), "sales": sales_today.duplicate(),
+		"buyers": int(stats.buyers) - int(day_start.get("buyers", 0)), "walked": int(stats.walked) - int(day_start.get("walked", 0))}
+	sales_today = []
+	day_start = {"buyers": int(stats.buyers), "walked": int(stats.walked)}
 	ledger_day = {}
 	generate_listings()
 	schedule_walkins()
@@ -1293,7 +1323,7 @@ func legal_exposure() -> int:
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
-	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock"]
+	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start"]
 
 
 func save_game() -> void:
