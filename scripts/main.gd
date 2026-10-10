@@ -42,7 +42,7 @@ var desk_look := false   # Office PC: pulled back to look at (and arrange) the d
 
 # Garage
 var selected_car_id := -1
-var mechanic_index := 0
+var mechanic_index := -1
 var garage_log := ""
 var garage_view: Car3DView
 var garage_box: VBoxContainer
@@ -434,7 +434,7 @@ func _update_coach() -> void:
 	coach.add_child(v)
 	# On the screen the step points at, the card shrinks to one line so it doesn't cover the auction cards,
 	# the garage car or the customers (the full hint is still on its tooltip).
-	var compact: bool = current == step[2] or not current in ["lot", "home"]
+	var compact: bool = current != "home"   # full card only where nothing sits under it
 	v.add_child(UI.label("FIRST DAY · STEP %d OF %d" % [Game.tutorial + 1, Game.TUTORIAL.size()], 12, UI.GOLD, true))
 	if not compact:
 		v.add_child(UI.label(step[0], 20, UI.TEXT, true))
@@ -1757,7 +1757,15 @@ func _place_bid(l: Dictionary) -> void:
 
 ## Live auctions run on their own clock while the Office PC is open.
 func _tick_auction(delta: float) -> void:
-	if current != "pc" or closing:
+	if closing or current == "title":
+		return
+	if current != "pc":
+		# away from the PC the lanes pause, except while you have a bid in: walking to the garage shouldn't
+		# freeze a lot at 0:05 and then charge you for it an hour later
+		if _overlay_open() or not Game.listings.any(func(l): return not l.sold and int(l.get("my_bid", 0)) > 0):
+			return
+		for n in Game.tick_auctions(delta):
+			toast(n.text)
 		return
 	for n in Game.tick_auctions(delta):
 		toast(n.text)
@@ -2932,8 +2940,12 @@ func _fill_garage_panel() -> void:
 		else:
 			opt.add_item("%s · Level %d" % [m.name, m.level], i)
 			opt.set_item_disabled(opt.get_item_index(i), true)
-	if Game.level < Game.MECHANICS[mechanic_index].level:
+	if mechanic_index < 0 or Game.level < Game.MECHANICS[mechanic_index].level:
+		# first visit (or after a reload): start on the best shop you've unlocked, not on Cousin Ray forever
 		mechanic_index = 0
+		for i in Game.MECHANICS.size():
+			if Game.level >= Game.MECHANICS[i].level:
+				mechanic_index = i
 	opt.select(opt.get_item_index(mechanic_index))
 	opt.item_selected.connect(func(idx):
 		mechanic_index = opt.get_item_id(idx)

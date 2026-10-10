@@ -201,17 +201,11 @@ func _draw_lobby() -> void:
 	var dst := _cover(_tex("showroom"))
 	var horizon := dst.position.y + dst.size.y * float(showroom_spots().get("floor", SHOWROOM_FLOOR))
 	# upgrades
+	# fit-outs drawn with their ShowroomPro product renders (the old flat boxes read as placeholders)
 	if Game.has_upgrade("coffee"):
-		draw_rect(Rect2(w * 0.005, horizon - 70, w * 0.09, 70), Color("2b2b2f"))
-		draw_rect(Rect2(w * 0.005, horizon - 74, w * 0.09, 6), Color("b08d57"))
-		draw_rect(Rect2(w * 0.025, horizon - 104, 34, 30), Color("9aa0a6"))
-		_text(Vector2(w * 0.012, horizon - 82), "ESPRESSO", 11, Color("e8b64c"))
+		_prop_on_floor("coffee", Vector2(w * 0.07, horizon + h * 0.02), h * 0.2)
 	if Game.has_upgrade("lounge"):
-		var sx := w * 0.82
-		draw_rect(Rect2(sx, horizon - 30, w * 0.16, 50), Color("6b3e26"))
-		draw_rect(Rect2(sx, horizon - 58, w * 0.16, 32), Color("7d4a2e"))
-		draw_rect(Rect2(sx - 10, horizon - 40, 18, 60), Color("5a321f"))
-		draw_rect(Rect2(sx + w * 0.16 - 8, horizon - 40, 18, 60), Color("5a321f"))
+		_prop_on_floor("lounge", Vector2(w * 0.6, h * 0.98), h * 0.17)
 	if Game.has_upgrade("lights"):
 		for p in podiums:
 			draw_colored_polygon(PackedVector2Array([Vector2(p.x - 18, h * 0.06), Vector2(p.x + 18, h * 0.06), Vector2(p.x + 140, p.y + 10), Vector2(p.x - 140, p.y + 10)]), Color(1, 0.95, 0.75, 0.07))
@@ -224,6 +218,16 @@ func _draw_lobby() -> void:
 		_ellipse(p, 146, 18, Color(1, 1, 1, 0.22) if not glow else Color(0.95, 0.85, 0.6, 0.5))
 		if glow:
 			draw_arc(p, 146, 0, TAU, 48, Color("e8b64c"), 2.0)
+
+
+func _prop_on_floor(id: String, foot: Vector2, height: float) -> void:
+	var p := "res://assets/props/%s.png" % id
+	if not ResourceLoader.exists(p):
+		return
+	var t: Texture2D = load(p)
+	var sz := Vector2(height * t.get_width() / float(t.get_height()), height)
+	_ellipse(foot + Vector2(0, -2), sz.x * 0.42, sz.y * 0.06, Color(0, 0, 0, 0.3))
+	draw_texture_rect(t, Rect2(foot - Vector2(sz.x / 2, sz.y), sz), false)
 
 
 # ---------- office desk ----------

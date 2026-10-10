@@ -212,19 +212,29 @@ func check_tutorial() -> bool:
 ## Marco's whiteboard: goals for the dealership you have now. [text, done?]
 func goals() -> Array:
 	var hired := staff.size() > 1
+	var prog := func(have: int, need: int, money := false) -> String:
+		# progress in brackets while a goal is open, so the whiteboard says how close you are
+		if have >= need:
+			return ""
+		return " (%s/%s)" % [money_str(max(0, have)), money_str(need)] if money else " (%d/%d)" % [have, need]
+	var tier_txt := func(t: int) -> String:
+		if dealership >= t:
+			return ""
+		var nx := dealership_info(t)
+		return " (%s, level %d)" % [money_str(nx.price), nx.level]
 	match dealership:
 		1:
-			return [["Sell 3 cars", stats.sold >= 3], ["Make %s profit" % money_str(10000), stats.profit >= 10000],
-				["Hire 1 salesperson", hired], ["Upgrade to the Street Showroom", dealership >= 2]]
+			return [["Sell 3 cars" + prog.call(stats.sold, 3), stats.sold >= 3], ["Make %s profit" % money_str(10000) + prog.call(stats.profit, 10000, true), stats.profit >= 10000],
+				["Hire 1 salesperson", hired], ["Upgrade to the Street Showroom" + tier_txt.call(2), dealership >= 2]]
 		2:
-			return [["Sell 15 cars", stats.sold >= 15], ["Make %s profit" % money_str(75000), stats.profit >= 75000],
-				["Reach a 4.0★ Yolp rating", reputation >= 4.0], ["Move to the Harbour Flagship", dealership >= 3]]
-	var first := [["Sell 50 cars", stats.sold >= 50], ["Make %s profit" % money_str(500000), stats.profit >= 500000],
-		["Reach a 4.5★ Yolp rating", reputation >= 4.5], ["Move into the penthouse", apartment >= 3]]
+			return [["Sell 15 cars" + prog.call(stats.sold, 15), stats.sold >= 15], ["Make %s profit" % money_str(75000) + prog.call(stats.profit, 75000, true), stats.profit >= 75000],
+				["Reach a 4.0★ Yolp rating (%.1f)" % reputation if reputation < 4.0 else "Reach a 4.0★ Yolp rating", reputation >= 4.0], ["Move to the Harbour Flagship" + tier_txt.call(3), dealership >= 3]]
+	var first := [["Sell 50 cars" + prog.call(stats.sold, 50), stats.sold >= 50], ["Make %s profit" % money_str(500000) + prog.call(stats.profit, 500000, true), stats.profit >= 500000],
+		["Reach a 4.5★ Yolp rating (%.1f)" % reputation if reputation < 4.5 else "Reach a 4.5★ Yolp rating", reputation >= 4.5], ["Move into the penthouse", apartment >= 3]]
 	if first.any(func(g): return not g[1]):
 		return first
 	# flagship done: the long game
-	return [["Sell 200 cars", stats.sold >= 200], ["Reach %s net worth" % money_str(2000000), peak_worth >= 2000000],
+	return [["Sell 200 cars" + prog.call(stats.sold, 200), stats.sold >= 200], ["Reach %s net worth" % money_str(2000000) + prog.call(peak_worth, 2000000, true), peak_worth >= 2000000],
 		["Open the heritage gallery", has_upgrade("gallery")], ["Fill the overflow lot across PCH", has_upgrade("expand3")]]
 
 
@@ -375,6 +385,10 @@ func new_game() -> void:
 	_recompute_rep()
 	hot_class = ["economy", "truck", "suv"].pick_random()
 	generate_listings()
+	# day one is a lesson, not a trap: the opening lane has no flood cars or hidden faults
+	for l in listings:
+		l.car.history = "Clean" if l.car.history in ["Flood", "Major accident"] else l.car.history
+		l.car.hidden = {}
 	generate_candidates()
 	schedule_walkins()
 	emit_signal("changed")
