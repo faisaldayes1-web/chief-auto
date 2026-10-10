@@ -214,7 +214,12 @@ func _draw_lobby() -> void:
 		_ellipse(p + Vector2(0, 6), 150, 22, Color(0, 0, 0, 0.25))
 		_ellipse(p, 146, 18, Color(1, 1, 1, 0.22) if not glow else Color(0.95, 0.85, 0.6, 0.5))
 		if glow:
-			draw_arc(p, 146, 0, TAU, 48, Color("e8b64c"), 2.0)
+			# gold rim on the podium's ellipse (draw_arc made a full circle that ringed the whole floor)
+			var rim := PackedVector2Array()
+			for k in 49:
+				var a := TAU * k / 48.0
+				rim.append(p + Vector2(cos(a) * 146, sin(a) * 18))
+			draw_polyline(rim, Color("e8b64c"), 2.0, true)
 
 
 # ---------- office desk ----------

@@ -5297,13 +5297,16 @@ func _night_report(today: String, ledger: Dictionary, notes: Array) -> void:
 	var lg: Dictionary = ld.ledger
 	var rev := Game.ledger_total(lg, 1)
 	var bought: int = lg.get("cars", 0)
-	var ops: int = Game.ledger_total(lg, -1) - bought
+	var invest: int = lg.get("shop", 0)
+	var ops: int = Game.ledger_total(lg, -1) - bought - invest
 	_money_row(v, "Daily revenue", rev)
 	if bought != 0:
 		_money_row(v, "Cars bought (stock)", bought)
+	if invest != 0:
+		_money_row(v, "Upgrades & shop (one-off)", invest)
 	_money_row(v, "Running costs", ops)
 	v.add_child(UI.rule())
-	_money_row(v, "Net cash today", rev + bought + ops, 18, true)
+	_money_row(v, "Net cash today", rev + bought + invest + ops, 18, true)
 	_money_row(v, "Total funds", Game.money, 18, true)
 	# what sold, and what each one made after purchase and repairs
 	var sales: Array = ld.get("sales", [])
