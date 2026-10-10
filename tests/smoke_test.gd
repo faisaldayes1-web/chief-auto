@@ -43,7 +43,7 @@ func _initialize() -> void:
 	G.cars = []
 	var la: Dictionary = G.listings[0]
 	check(la.has("ends_at") and float(la.ends_at) > G.auction_clock + 30.0, "listing has a live end time")
-	check(G.buy_now_open(la) and la.buy_now > G.value(la.car), "Buy It Now above market value")
+	check(G.buy_now_open(la) and la.buy_now >= G.value(la.car) * 0.88 and la.buy_now <= G.value(la.car) * 1.1 + 100, "Buy It Now is priced around retail")
 	check(G.place_bid(la) == "" and la.leader == "you", "player bid leads")
 	la.rival_max = la.current
 	var won := false
@@ -123,5 +123,17 @@ func _initialize() -> void:
 	check(G.load_leaderboard().any(func(r): return int(r.run) == G.run_id and r.status == "Closed down"), "closed run is on the leaderboard")
 	G.reset_save()
 	check(G.bankrupt.is_empty(), "starting over clears the bankruptcy")
+	# repairs on an old runner are priced off its fixed-up value, so they can pay for themselves
+	var junk: Dictionary = G.make_car(30000)
+	junk.year = 2009
+	check(G.repair_cost(junk, G.MECHANICS[0]) < int(junk.base * G.MECHANICS[0].cost), "junker repairs cost less than the new-price formula")
+	# late-game fit-outs: the overflow lot adds spots; the closing report has a next-tier hint
+	G.dealership = 3
+	G.upgrades = ["expand1", "expand2", "expand3"]
+	check(G.lot_capacity() == G.dealership_info().cars + 7, "overflow lot adds 3 spots")
+	G.dealership = 1
+	G.upgrades = []
+	G.level = 1
+	check(G.next_tier_hint().begins_with("Street Showroom"), "next tier hint names the Street Showroom")
 	print("smoke test: %s" % ("OK" if fails == 0 else "%d failures" % fails))
 	quit(1 if fails > 0 else 0)
