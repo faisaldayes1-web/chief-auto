@@ -205,20 +205,23 @@ func _draw_lobby() -> void:
 	# draws through the WorldLook material, which would wash a product render out to a white box
 	if Game.has_upgrade("lights"):
 		for p in podiums:
-			draw_colored_polygon(PackedVector2Array([Vector2(p.x - 18, h * 0.06), Vector2(p.x + 18, h * 0.06), Vector2(p.x + 140, p.y + 10), Vector2(p.x - 140, p.y + 10)]), Color(1, 0.95, 0.75, 0.07))
+			draw_colored_polygon(PackedVector2Array([Vector2(p.x - 18, h * 0.06), Vector2(p.x + 18, h * 0.06), Vector2(p.x + car_w * 0.42, p.y + 10), Vector2(p.x - car_w * 0.42, p.y + 10)]), Color(1, 0.95, 0.75, 0.07))
 	# podiums for the display cars (the corner lot has none: its cars sit on the asphalt)
 	if Game.dealership <= 1:
 		return
+	# podiums follow the fitted row: sized to the (possibly shrunk) car so each car sits on its own disc
+	var rx: float = clampf(car_w * 0.46, 90.0, 150.0) if car_w > 0.0 else 146.0
+	var ry: float = rx * 0.125
 	for p in podiums:
 		var glow := Game.has_upgrade("turntable")
-		_ellipse(p + Vector2(0, 6), 150, 22, Color(0, 0, 0, 0.25))
-		_ellipse(p, 146, 18, Color(1, 1, 1, 0.22) if not glow else Color(0.95, 0.85, 0.6, 0.5))
+		_ellipse(p + Vector2(0, ry * 0.33), rx + 4, ry + 4, Color(0, 0, 0, 0.25))
+		_ellipse(p, rx, ry, Color(1, 1, 1, 0.22) if not glow else Color(0.95, 0.85, 0.6, 0.5))
 		if glow:
 			# gold rim on the podium's ellipse (draw_arc made a full circle that ringed the whole floor)
 			var rim := PackedVector2Array()
 			for k in 49:
 				var a := TAU * k / 48.0
-				rim.append(p + Vector2(cos(a) * 146, sin(a) * 18))
+				rim.append(p + Vector2(cos(a) * rx, sin(a) * ry))
 			draw_polyline(rim, Color("e8b64c"), 2.0, true)
 
 
