@@ -434,7 +434,7 @@ func _update_coach() -> void:
 	coach.add_child(v)
 	# On the screen the step points at, the card shrinks to one line so it doesn't cover the auction cards,
 	# the garage car or the customers (the full hint is still on its tooltip).
-	var compact: bool = current == step[2]
+	var compact: bool = current == step[2] or not current in ["lot", "home"]
 	v.add_child(UI.label("FIRST DAY · STEP %d OF %d" % [Game.tutorial + 1, Game.TUTORIAL.size()], 12, UI.GOLD, true))
 	if not compact:
 		v.add_child(UI.label(step[0], 20, UI.TEXT, true))
@@ -2126,7 +2126,7 @@ func _tab_showroom_shop(inner: Control) -> void:
 				else:
 					toast("Not enough money."), SP_TEAL, 0, 32, false, Color("06201e"))
 		_dark_btn(btn)
-		grid.add_child(_product_card(it.name, it.desc, SP_PICTS.get(it.id, "lot"), SP_PAL, Game.money_str(it.price), btn, badge, it.id))
+		grid.add_child(_product_card(it.name, it.desc, SP_PICTS.get(it.id, "lot"), SP_PAL, Game.money_str(it.price), btn, badge, it.get("img", it.id)))
 
 
 ## Current dealership and the next one to buy. web = styled for ShowroomPro's dark page.
@@ -3097,7 +3097,7 @@ func _fix_panel(car: Dictionary, panel: String, kind: String, cost: int, mech: D
 
 
 func _repair_cost(car: Dictionary, mech: Dictionary) -> int:
-	return max(100, int(round(car.base * mech.cost / 50.0)) * 50)
+	return Game.repair_cost(car, mech)
 
 
 func _detail_cost(car: Dictionary) -> int:
@@ -3461,7 +3461,7 @@ func _tick_walkins() -> void:
 	# waiting customers: staff step in after 40 minutes, others give up after 2 hours
 	for c in lobby.duplicate():
 		var waited: float = Game.clock - c.arrived
-		var patience := 240.0 if Game.has_upgrade("lounge") else 120.0
+		var patience := (240.0 if Game.has_upgrade("lounge") else 120.0) + (30.0 if Game.has_upgrade("detailbay") else 0.0)
 		# during the first-day coach the walk-ins are yours: staff don't grab the customer the tutorial asks you to sell to
 		if waited > 40 and not Game.tutorial_active() and _free_staff() != {}:
 			_staff_handles(c, _free_staff(), true)

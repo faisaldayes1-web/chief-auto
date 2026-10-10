@@ -60,7 +60,7 @@ const BUYER_TYPES := {
 		"intro": "Is it cool if I film this? I have 80k followers. My review goes out to all of them."},
 	"lowballer": {"title": "Lowballer", "budget": 0.85, "likes": ["discount"], "tolerance": 0.55,
 		"intro": "I'll give you half. Cash. Today. Final offer. Probably."},
-	"whale": {"title": "Cash Whale", "budget": 1.35, "likes": ["features", "test_drive"], "tolerance": 1.5,
+	"whale": {"title": "Cash Whale", "budget": 1.25, "likes": ["features", "test_drive"], "tolerance": 1.5,
 		"intro": "I sold my startup last week. Show me something fast."},
 }
 const REVIEW_NAMES := ["Brad K.", "Kayla M.", "Devon R.", "Priya S.", "Chad W.", "Monica L.", "Luis G.", "Tiffany B.",
@@ -153,6 +153,13 @@ const SHOWROOM_UPGRADES := [
 	{"id": "turntable", "name": "Display turntables", "price": 15000, "desc": "Gold podiums: +10 customer interest.", "tier": 3},
 	{"id": "expand1", "name": "Expand the lot", "price": 20000, "desc": "+2 car spots on top of what your building holds. Moves with you when you upgrade."},
 	{"id": "expand2", "name": "Expand the lot again", "price": 45000, "desc": "+2 more car spots, on top of the first expansion.", "needs": "expand1"},
+	# late-game buys for the flagship, so a big bank balance still has somewhere useful to go
+	{"id": "detailbay", "name": "In-house detail bay", "price": 90000, "img": "lights", "tier": 3,
+		"desc": "Every car you buy arrives detailed (no detailer bill), and waiting customers stay 30 minutes longer."},
+	{"id": "expand3", "name": "Overflow lot across PCH", "price": 250000, "img": "expand2", "tier": 3, "needs": "expand2",
+		"desc": "+3 car spots on the old gas-station corner. Rent for it is on us. Mostly."},
+	{"id": "gallery", "name": "Heritage gallery", "price": 600000, "img": "turntable", "tier": 3,
+		"desc": "A glass gallery of classics off the marina. Collectors come to look: +2 walk-ins a day and more Cash Whales."},
 ]
 
 const ADS := [
@@ -169,7 +176,7 @@ const DEALERSHIPS := [
 		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains, and auctions won't send you anything too fancy."},
 	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 1, "budget": 0.96, "max_car": 110000,
 		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, better budgets, pricier cars at auction, more showroom upgrades."},
-	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 8000, "cars": 6, "walkins": 3, "budget": 1.04, "max_car": 0,
+	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 15000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
 		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
 ]
 
@@ -212,8 +219,13 @@ func goals() -> Array:
 		2:
 			return [["Sell 15 cars", stats.sold >= 15], ["Make %s profit" % money_str(75000), stats.profit >= 75000],
 				["Reach a 4.0★ Yolp rating", reputation >= 4.0], ["Move to the Harbour Flagship", dealership >= 3]]
-	return [["Sell 50 cars", stats.sold >= 50], ["Make %s profit" % money_str(500000), stats.profit >= 500000],
+	var first := [["Sell 50 cars", stats.sold >= 50], ["Make %s profit" % money_str(500000), stats.profit >= 500000],
 		["Reach a 4.5★ Yolp rating", reputation >= 4.5], ["Move into the penthouse", apartment >= 3]]
+	if first.any(func(g): return not g[1]):
+		return first
+	# flagship done: the long game
+	return [["Sell 200 cars", stats.sold >= 200], ["Reach %s net worth" % money_str(2000000), peak_worth >= 2000000],
+		["Open the heritage gallery", has_upgrade("gallery")], ["Fill the overflow lot across PCH", has_upgrade("expand3")]]
 
 
 ## Where you sleep: the apartment on the showroom roof. Each tier is a visual upgrade of the same room.
@@ -573,7 +585,7 @@ func auto_place(id: String) -> void:
 
 
 func lot_capacity() -> int:
-	return dealership_info().cars + (2 if has_upgrade("expand1") else 0) + (2 if has_upgrade("expand2") else 0)
+	return dealership_info().cars + (2 if has_upgrade("expand1") else 0) + (2 if has_upgrade("expand2") else 0) + (3 if has_upgrade("expand3") else 0)
 
 
 func item(id: String) -> Dictionary:
@@ -775,6 +787,8 @@ func walkins_today() -> int:
 	if apartment >= 3:
 		n += 1
 	n += dealership_info().walkins
+	if has_upgrade("gallery"):
+		n += 2
 	return max(1, n)
 
 
@@ -791,6 +805,8 @@ func make_customer() -> Dictionary:
 	var types := ["bargain", "local", "first", "nerd", "parent", "bargain", "local", "first", "nerd", "parent", "influencer", "lowballer", "lowballer"]
 	if reputation >= 3.5 or "billboard" in ads_active or apartment >= 3 or dealership >= 3:
 		types += ["whale", "whale"]
+	if has_upgrade("gallery"):
+		types += ["whale"]
 	var type_key: String = types.pick_random()
 	var rich := 0.0
 	if "radio" in ads_active:
@@ -803,7 +819,9 @@ func make_customer() -> Dictionary:
 	var c := {
 		"id": next_id, "name": BUYER_NAMES.pick_random(), "type": type_key,
 		"look_seed": randi(), "credit": tier,
-		"budget": BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich) * dealership_info().budget,
+		# ads bring richer people (better credit, more whales) but only nudge what they'll pay: the old (1 + rich)
+		# multiplier let billboard whales pay twice a car's value and the late game earned millions a week
+		"budget": min(1.35, BUYER_TYPES[type_key].budget * randf_range(0.9, 1.15) * (1.0 + rich * 0.3) * dealership_info().budget),
 		"finance": randf() < 0.7, "happiness": 0.55 + randf_range(-0.05, 0.1) + apartment_info().fresh, "patience": 1.0,
 		"arrived": clock, "wants_cls": ["economy", "suv", "truck", "sport", "exotic"].pick_random(),
 	}
@@ -991,6 +1009,19 @@ func value(car: Dictionary, true_value := false) -> int:
 	return int(round(v / 50.0) * 50)
 
 
+## What the car would be worth fully repaired (every part at 100, no hidden faults).
+func full_value(car: Dictionary) -> int:
+	var cond := condition(car, true)
+	var now := float(value(car, true))
+	return int(now / (0.45 + 0.55 * pow(max(cond, 1) / 100.0, 0.8)))
+
+
+## One repair job. Labour and parts follow what the car is worth fixed up, not its price new, so patching up an
+## old runner can pay for itself (before, a $250 job on a $6k junker added about $100 of value).
+func repair_cost(car: Dictionary, mech: Dictionary) -> int:
+	return max(100, int(round(full_value(car) * mech.cost * 1.1 / 50.0)) * 50)
+
+
 func sale_value(car: Dictionary) -> int:
 	var v := float(value(car))
 	if car.cls == hot_class:
@@ -1031,8 +1062,8 @@ func listing_count() -> int:
 const AUCTION_DEAL := {
 	"autobidz": [0.25, 0.4, 0.68, 0.95],
 	"salvage": [0.1, 0.2, 0.38, 0.6],
-	"dealer": [0.28, 0.4, 0.65, 0.88],
-	"exotic": [0.3, 0.45, 0.68, 0.92],
+	"dealer": [0.28, 0.4, 0.7, 0.92],    # pro lanes: the other dealers know what these are worth
+	"exotic": [0.3, 0.45, 0.8, 0.98],    # collectors bid exotics close to retail; the margin is in the fix-up and the buyer
 }
 const AUCTION_SECONDS := 60.0
 var auction_clock := 0.0   # seconds of live auction time; only advances while the PC is open
@@ -1057,14 +1088,17 @@ func make_listing(house: String, delay := 0.0, avoid: Array = []) -> Dictionary:
 	var v := value(car)
 	var d: Array = AUCTION_DEAL.get(house, AUCTION_DEAL.autobidz)
 	var start: int = int(round(v * randf_range(d[0], d[1]) / 100.0) * 100)
-	var final: int = int(v * randf_range(d[2], d[3]))
+	# rival dealers get sharper as you grow: from level 6 the field bids a little closer to retail each level
+	var heat: float = clamp((level - 5) * 0.012, 0.0, 0.14)
+	var final: int = int(v * (randf_range(d[2], d[3]) + heat))
 	if randf() < 0.2:
 		final = int(v * randf_range(1.05, 1.3))
 	final = max(final, start)
 	return {
 		"car": car, "current": start, "start": start, "house": house,
 		"leader": "", "rival": RIVALS.pick_random(), "rival_max": final,
-		"buy_now": int(round(v * randf_range(1.08, 1.32) / 100.0) * 100),
+		# Buy It Now skips the bidding war: a fair price around retail, not a trap above it
+		"buy_now": int(round(v * randf_range(0.9, 1.08) / 100.0) * 100),
 		"ends_at": auction_clock + delay + randf_range(AUCTION_SECONDS - 10.0, AUCTION_SECONDS + 10.0),
 		"next_ai": auction_clock + delay + randf_range(2.0, 6.0),
 		"bids": 0, "my_bid": 0, "watch": false, "feed_log": [],
@@ -1211,6 +1245,8 @@ func settle_auctions() -> Array:
 func add_car(car: Dictionary, price: int) -> void:
 	car.paid = price
 	car.day_bought = day
+	if has_upgrade("detailbay"):
+		car.detailed = true
 	car.sticker = int(round(sale_value(car) * 1.1 / 100.0)) * 100
 	cars.append(car)
 	emit_signal("changed")

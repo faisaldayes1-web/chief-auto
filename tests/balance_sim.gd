@@ -52,6 +52,12 @@ func _play(days: int) -> Dictionary:
 		out.low = min(out.low, G.money)
 		if OS.get_environment("TRACE") != "" and G.day % 3 == 0:
 			print("  day %d money %s lvl %d tier %d sold %d profit %s cars %d rep %.1f" % [G.day, G.money_str(G.money), G.level, G.dealership, G.stats.sold, G.money_str(G.stats.profit), G.cars.size(), G.reputation])
+		# a sensible player fits out the building once there's cash to spare
+		for u in G.SHOWROOM_UPGRADES:
+			if not G.has_upgrade(u.id) and G.dealership >= u.get("tier", 1) and (not u.has("needs") or G.has_upgrade(u.needs)) \
+					and G.money > u.price * 2 + 20000 and (G.dealership >= 3 or u.price < 10000):
+				G.spend(u.price, "shop")
+				G.upgrades.append(u.id)
 		if G.dealership < G.DEALERSHIPS.size() and G.dealership_blocker() == "" and G.money - G.dealership_info(G.dealership + 1).price > 15000:
 			G.upgrade_dealership()
 			if G.dealership == 2: out.t2 = G.day
@@ -96,7 +102,7 @@ func _repair(car: Dictionary) -> void:
 		car.history_known = true
 		G.reveal_faults(car)
 	for i in 12:
-		var cost: int = max(100, int(round(car.base * mech.cost / 50.0)) * 50)
+		var cost: int = G.repair_cost(car, mech)
 		var best := ""
 		var best_gain := 0.0
 		for p in G.PARTS:
