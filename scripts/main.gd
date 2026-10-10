@@ -5,7 +5,7 @@ extends Control
 const LOGO := preload("res://assets/logo.png")
 const CASH_ICON := preload("res://assets/icons/cash.png")
 const MINUTES_PER_SECOND := 3.5   # game clock speed: a 13-hour day takes about 4 minutes
-const MAX_IN_LOBBY := 4
+const MAX_IN_LOBBY := 5
 
 var bg: TextureRect
 var dim: ColorRect
@@ -105,6 +105,7 @@ func _process(delta: float) -> void:
 	# the clock only runs while nothing is waiting on the player
 	Game.clock += delta * MINUTES_PER_SECOND
 	_tick_walkins()
+	_check_restock_nudge()
 	if Game.clock >= Game.CLOSE_MIN:
 		Game.clock = Game.CLOSE_MIN
 		_close_for_night()
@@ -201,7 +202,8 @@ func _refresh_clock() -> void:
 	var dl := Game.days_until_bills()
 	hud_rent.text = "Rent & bills %s in %d day%s" % [Game.money_str(Game.monthly_bills().total), dl, "" if dl == 1 else "s"]
 	hud_rent.add_theme_color_override("font_color", UI.BAD if dl <= 3 else UI.MUTED)
-	hud_lobby.text = ("Showroom: %d waiting" % lobby.size()) if lobby.size() > 0 else ""
+	var waiting := lobby.filter(func(x): return not x.has("with_staff")).size()
+	hud_lobby.text = ("Showroom: %d waiting" % waiting) if waiting > 0 else ""
 	# the first-day coach moves on as soon as the step is done, not on the next screen change
 	if Game.tutorial_active() and Game.seen_intro and current != "title" and Game.check_tutorial():
 		_update_coach()
@@ -349,10 +351,27 @@ func _start_game() -> void:
 			Game.money += 50000
 		if Game.debug_tier > 0:
 			Game.dealership = clampi(Game.debug_tier, 1, 3)
+		if Game.debug_name != "":
+			Game.dealer_name = Game.debug_name
+		if Game.debug_busy:
+			Game.clock = 14 * 60
+			Game.tutorial = Game.TUTORIAL.size()
 		for l in Game.listings.slice(0, 3):
 			Game.add_car(l.car, int(Game.value(l.car) * 0.6))
 		lobby.append(Game.make_customer())
 		lobby.append(Game.make_customer())
+		if Game.debug_busy:
+			Game.staff += Game.named_applicants()
+			while Game.cars.size() < Game.lot_capacity():
+				var car := Game.make_car(Game.max_auction_base())
+				Game.add_car(car, int(Game.value(car) * 0.6))
+				car.day_bought = Game.day - 1
+				car.sticker = int(Game.sale_value(car) * 1.05 / 100) * 100
+			for i in 3:
+				var c := Game.make_customer()
+				lobby.append(c)
+				if i < 2:
+					_staff_handles(c, Game.staff[i + 1])
 	show_screen(Game.debug_screen if Game.debug_screen != "" else "lot")
 	if not Game.seen_intro:
 		_name_dealership()
@@ -524,6 +543,20 @@ func _screen_lot() -> void:
 	_park_cars(yard)
 
 
+## Low stock: under half the lot (or 2 cars or fewer) while customers are still coming.
+func _stock_low() -> bool:
+	return Game.cars.size() <= max(2, Game.lot_capacity() / 2) and Game.cars.size() < Game.lot_capacity()
+
+
+## Marco nudges once a day when the lot is thin, so the showroom never sits empty without warning.
+var _restock_nudged_day := -1
+func _check_restock_nudge() -> void:
+	if _restock_nudged_day == Game.day or Game.tutorial_active() or Game.clock < Game.OPEN_MIN + 30 or not _stock_low():
+		return
+	_restock_nudged_day = Game.day
+	toast("Marco: \"Only %d car%s left on the lot and buyers keep coming. Hit AutoBidz and restock.\"" % [Game.cars.size(), "" if Game.cars.size() == 1 else "s"])
+
+
 ## A compact menu like the reference HUD: gold title, then icon rows that act as buttons.
 func _menu_panel(title: String, rows: Array, w := 270) -> PanelContainer:
 	var p := _glass_panel()
@@ -584,6 +617,8 @@ func _lot_summary() -> PanelContainer:
 	if Game.cars.is_empty():
 		rows.append(["gavel", "Empty: buy one at AutoBidz", show_screen.bind("pc")])
 	else:
+		if _stock_low():
+			rows.append(["gavel", "Stock running low: restock at AutoBidz", show_screen.bind("pc")])
 		rows.append(["money", "Total sticker value", null, Game.money_str(total)])
 	var panel := _menu_panel("LOT (%d / %d CARS)" % [Game.cars.size(), Game.lot_capacity()], rows)
 	# market line wraps inside the panel instead of running past its edge
@@ -3267,7 +3302,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		p.mood = c.happiness * 2.0 - 1.0
 		p.set_anchors_preset(Control.PRESET_FULL_RECT)
 		btn.add_child(p)
-		var name_tag := UI.label(c.name + "  · tap to help", 14, UI.TEXT, true)
+		var name_tag := UI.label(c.name + ("  · with %s" % c.with_staff if c.has("with_staff") else "  · tap to help"), 14, UI.MUTED if c.has("with_staff") else UI.TEXT, true)
 		name_tag.add_theme_constant_override("outline_size", 4)
 		name_tag.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 		name_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -3314,7 +3349,8 @@ func _build_lobby(stage: SceneArt) -> void:
 	info.add_child(iv)
 	iv.add_child(UI.label("Showroom", 20, UI.GOLD, true))
 	var left := Game.walkin_schedule.size()
-	iv.add_child(UI.label("Waiting: %d · Still coming today: about %d" % [lobby.size(), left], 14))
+	var talking := lobby.filter(func(x): return x.has("with_staff")).size()
+	iv.add_child(UI.label("Waiting: %d · With staff: %d · Still coming today: about %d" % [lobby.size() - talking, talking, left], 14))
 	if Game.cars.is_empty():
 		iv.add_child(UI.label("No cars to show. Customers will leave.", 14, UI.BAD))
 	elif Game.cars.size() > 4:
@@ -3378,6 +3414,11 @@ func _build_lobby(stage: SceneArt) -> void:
 					ok = false
 			if ok:
 				xs.append(w * f)
+		# a busy floor: spread everyone evenly so nobody stands inside someone else
+		if people.size() > 3:
+			xs = []
+			for k in people.size():
+				xs.append(w * lerp(0.17, 0.66, float(k) / float(people.size() - 1)))
 		for i in people.size():
 			var pr: Array = people[i]
 			# stand on the marble at slightly different depths; size follows the camera's perspective
@@ -3521,10 +3562,15 @@ func _tick_walkins() -> void:
 			_build_lobby(lobby_stage)
 	# waiting customers: staff step in after 40 minutes, others give up after 2 hours
 	for c in lobby.duplicate():
+		if c.has("with_staff"):
+			if Game.clock >= c.talk_until:
+				_finish_staff_talk(c)
+			continue
 		var waited: float = Game.clock - c.arrived
 		var patience := (240.0 if Game.has_upgrade("lounge") else 120.0) + (30.0 if Game.has_upgrade("detailbay") else 0.0)
 		# during the first-day coach the walk-ins are yours: staff don't grab the customer the tutorial asks you to sell to
-		if waited > 40 and not Game.tutorial_active() and not Game.cars.is_empty() and _free_staff() != {}:
+		# they leave fresh walk-ins to you for over an hour, so there's always someone to sell to
+		if waited > 75 and not Game.tutorial_active() and not Game.cars.is_empty() and _free_staff() != {}:
 			_staff_handles(c, _free_staff(), true)
 		elif waited > patience:
 			lobby.erase(c)
@@ -3571,10 +3617,12 @@ func _free_staff() -> Dictionary:
 	return {}
 
 
-func _pick_car_for(c: Dictionary) -> Dictionary:
+func _pick_car_for(c: Dictionary, fresh_ok := true) -> Dictionary:
 	var best := {}
 	var best_score := -1e9
 	for car in Game.cars:
+		if not fresh_ok and int(car.get("day_bought", -1)) == Game.day:
+			continue
 		var max_price := _max_price(c, car, 50.0)
 		var score := 0.0
 		if car.cls == c.wants_cls:
@@ -3597,11 +3645,40 @@ func _max_price(c: Dictionary, car: Dictionary, interest: float) -> int:
 	return int(round(v * (0.85 + interest / 400.0) / 100.0)) * 100
 
 
+## A salesperson takes a customer: one at a time, and the conversation takes real time on the floor
+## (about 2 game hours, faster for good closers). The customer stays visible until it's settled.
 func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
-	lobby.erase(c)
-	s.busy_until = Game.clock + 60
+	var dur: float = 150.0 - Game.skill(s, "closing") * 0.6 + randf_range(-15, 15)
+	c.with_staff = s.name
+	c.talk_until = Game.clock + dur
+	s.busy_until = c.talk_until
 	s.busy_day = Game.day
-	var car := _pick_car_for(c)
+	if not lobby.has(c):
+		lobby.append(c)
+	if current != "showroom":
+		toast("%s is showing %s around the floor." % [s.name, c.name])
+	if lobby_stage:
+		_build_lobby(lobby_stage)
+
+
+func _finish_staff_talk(c: Dictionary) -> void:
+	var s := {}
+	for st in Game.staff:
+		if st.name == c.with_staff:
+			s = st
+	c.erase("with_staff")
+	if s.is_empty():
+		lobby.erase(c)
+		return
+	_staff_resolve(c, s)
+
+
+func _staff_resolve(c: Dictionary, s: Dictionary) -> void:
+	lobby.erase(c)
+	# cars that came in today stay on the floor for you to show; staff work the older stock
+	var car := _pick_car_for(c, false)
+	if car.is_empty():
+		car = _pick_car_for(c)
 	if car.is_empty():
 		toast("%s talked to %s, but nothing on the lot fit their budget." % [s.name, c.name])
 	elif randf() < _handoff_chance(c, s):
@@ -3666,6 +3743,9 @@ func _handoff_chance(c: Dictionary, s: Dictionary) -> float:
 
 
 func _open_customer(c: Dictionary) -> void:
+	if c.has("with_staff"):
+		toast("%s is with %s. They'll be done in about %d minutes." % [c.name, c.with_staff, max(5, int(c.talk_until - Game.clock))])
+		return
 	customer = c
 	if not c.has("stage"):
 		c.stage = "browse"
@@ -5299,6 +5379,10 @@ func _close_for_night() -> void:
 	for n in Game.settle_auctions():
 		toast(n.text)
 	var notes := []
+	# salespeople finish the deal they're in the middle of before we lock up
+	for c in lobby.duplicate():
+		if c.has("with_staff"):
+			_finish_staff_talk(c)
 	# customers still in the showroom go home
 	if not lobby.is_empty():
 		notes.append("%d customer%s still waiting when we locked up. Some of them went straight to Yolp." % [lobby.size(), "" if lobby.size() == 1 else "s"])
