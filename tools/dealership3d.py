@@ -2063,8 +2063,12 @@ def build_dealership():
     lamp = mat("lamp", (1, 1, 1), emit=12, ecol=(1.0, 0.86, 0.68))
     # ---- showroom shell (x -15..15, y 0..16, z 0..6)
     box("floor", (-15, 0, 0), (15, 16, 0.05), marble)
-    box("roof", (-16.5, -2.5, 6), (16.5, 17, 6.8), white)
-    box("fascia", (-16.5, -2.6, 6.0), (16.5, -2.4, 7.0), dark)
+    # flagship exterior (Faisal's flagship mockup): one dark charcoal volume, full-height glass, a deep fascia
+    # with the name in white light, a cantilevered entry canopy, the service wing in the same cladding
+    clad = mat("clad", (0.045, 0.048, 0.052), rough=0.32, metal=0.45)
+    box("roof", (-16.5, -2.5, 6), (16.5, 17, 6.8), clad)
+    box("fascia", (-16.7, -2.75, 5.7), (16.7, -2.4, 7.4), clad)
+    box("fascia_lip", (-16.7, -2.8, 5.62), (16.7, -2.4, 5.7), mat("fascia_led", (1, 1, 1), emit=3.0, ecol=(1.0, 0.92, 0.8)))
     box("ceil", (-15, 0, 5.9), (15, 16, 6.0), ceiling)
     for x in range(-12, 14, 4):
         for y in (3, 7, 11, 14):
@@ -2073,8 +2077,13 @@ def build_dealership():
     glass_wall("rear", (-8, 16), (15, 16), 0, 6, every=3)
     box("west", (-15.3, 0, 0), (-15, 16, 6), white)
     box("east", (15, 0, 0), (15.3, 16, 6), white)
-    text("sign", "CHIEF AUTO", (0, -2.65, 6.15), 0.75, gold)
-    text("sign_sub", "TEWPORT BEACH", (8.8, -2.65, 6.25), 0.25, mat("white_lit", (1, 1, 1), emit=2.0))
+    box("west_clad", (-15.6, -2.4, 0), (-15.3, 17, 6.0), clad)
+    box("east_clad", (15.3, -2.4, 0), (15.6, 17, 6.0), clad)
+    for x in (-15.45, 15.45):   # corner piers carrying the fascia, like the mockup
+        box("pier", (x - 0.35, -2.75, 0), (x + 0.35, -2.4, 5.7), clad)
+    sign_lit = mat("sign_white_lit", (1, 1, 1), emit=6.0, ecol=(1.0, 0.98, 0.94))
+    text("sign", "CHIEF AUTO", (1.5, -2.8, 6.05), 1.15, sign_lit, extrude=0.06)
+    text("sign_sub", "TEWPORT BEACH", (12.2, -2.8, 6.3), 0.3, sign_lit)
     # entry doors
     for x0, x1 in ((-1.6, -1.5), (-0.03, 0.03), (1.5, 1.6)):
         box("door_frame", (x0, -0.08, 0), (x1, 0.08, 3.1), dark)
@@ -2083,7 +2092,8 @@ def build_dealership():
     box("door_handle", (0.2, -0.12, 0.9), (0.25, -0.08, 1.9), mat("chrome", (0.8, 0.8, 0.82), rough=0.15, metal=1.0))
     g = box("door_glass", (-1.5, -0.03, 0.05), (1.5, 0.03, 3.0), glass())
     g.visible_shadow = False
-    box("canopy", (-3, -3, 3.4), (3, 0, 3.55), white)
+    box("canopy", (-4.5, -4.2, 3.5), (4.5, 0, 3.8), clad)
+    box("canopy_glow", (-4.3, -4.0, 3.48), (4.3, -0.2, 3.5), mat("canopy_led", (1, 1, 1), emit=2.5, ecol=(1.0, 0.9, 0.75)))
     # back wall feature: logo wall left of the rear glass, behind the office
     box("logo_wall", (-8, 15.6, 0), (-7.7, 16, 6), wood)
     # reception desk
@@ -2109,21 +2119,21 @@ def build_dealership():
     # ---- service bay wing (x 15..33, y 0..16)
     epoxy = noise_mat("epoxy", (0.33, 0.35, 0.37), (0.4, 0.42, 0.44), 12, 0.25)
     box("bay_floor", (15.3, 0, 0), (33, 16, 0.04), epoxy)
-    box("bay_roof", (15, -0.5, 6.2), (33.5, 16.5, 6.9), white)
+    box("bay_roof", (15, -0.5, 6.2), (33.5, 16.5, 6.9), clad)
     box("bay_back", (15.3, 15.7, 0), (33, 16, 6.2), mat("block", (0.62, 0.62, 0.6), rough=0.8))
-    box("bay_east", (33, 0, 0), (33.3, 16, 6.2), white)
+    box("bay_east", (33, 0, 0), (33.3, 16, 6.2), clad)
     box("bay_ceil", (15.3, 0, 6.1), (33, 16, 6.2), ceiling)
     for x in (19, 24, 29):
         for y in (4, 9, 13):
             box("tube", (x - 1.2, y - 0.1, 5.9), (x + 1.2, y + 0.1, 5.98), lamp)
     # front with three roll-up doors (open)
-    box("bay_front_l", (15.3, -0.15, 0), (16.2, 0.15, 6.2), white)
+    box("bay_front_l", (15.3, -0.15, 0), (16.2, 0.15, 6.2), clad)
     for i, x in enumerate((16.2, 22.0, 27.8)):
-        box("door_post", (x + 5.0, -0.15, 0), (x + 5.8, 0.15, 6.2), white)
-        box("door_head", (x, -0.15, 4.6), (x + 5.0, 0.15, 6.2), white)
+        box("door_post", (x + 5.0, -0.15, 0), (x + 5.8, 0.15, 6.2), clad)
+        box("door_head", (x, -0.15, 4.6), (x + 5.0, 0.15, 6.2), clad)
         box("door_roll", (x, -0.3, 4.3), (x + 5.0, 0.0, 4.6), mat("rollup", (0.7, 0.72, 0.75), rough=0.4, metal=0.6))
         text("bay_num", str(i + 1), (x + 2.5, -0.2, 5.0), 0.7, mat("bay_txt", (0.95, 0.75, 0.2), emit=1.0))
-    text("bay_sign", "SERVICE", (24.5, -0.55, 6.25), 0.6, gold)
+    text("bay_sign", "SERVICE", (24.5, -0.55, 6.25), 0.7, sign_lit)
     tool_red = mat("toolbox", (0.62, 0.05, 0.04), rough=0.3, metal=0.4)
     for x in (16.5, 18.6, 30.0):
         box("toolbox", (x, 14.9, 0), (x + 2.0, 15.6, 1.0), tool_red, bevel=0.02)
@@ -2149,6 +2159,13 @@ def build_dealership():
     box("pc_top", (9.4, 13.9, 0.76), (13.6, 15.3, 0.8), wood)
     # ---- roof-top apartment: shell is shared, furniture is per tier
     build_apartment_shell(white, dark, wood)
+    # the roof-top apartment wears the same dark cladding outside (its rooms stay white inside)
+    box("apt_clad_w_lo", (AX0 - 0.45, AY0 - 0.15, AZ0), (AX0 - 0.25, AY1 + 3.5, AZ0 + 0.45), clad)
+    box("apt_clad_w_hi", (AX0 - 0.45, AY0 - 0.15, AZ1 - 0.35), (AX0 - 0.25, AY1 + 3.5, AZ1 + 0.4), clad)
+    box("apt_clad_e", (AX1 + 0.25, AY0 - 0.15, AZ0), (AX1 + 0.55, AY1 + 3.5, AZ1 + 0.4), clad)
+    box("apt_clad_roof", (AX0 - 0.65, AY0 - 0.7, AZ1 + 0.02), (AX1 + 0.65, AY0 - 0.55, AZ1 + 0.45), clad)
+    box("apt_clad_sill", (AX0, AY0 - 0.05, AZ0), (AX1, AY0, AZ0 + 0.45), clad)
+    box("apt_clad_head", (AX0, AY0 - 0.05, AZ1 - 0.35), (AX1, AY0, AZ1), clad)
 
 
 def planter(x, y):
@@ -2182,10 +2199,13 @@ def build_apartment_shell(white, dark, wood):
     box("apt_slab", (AX0, AY0, AZ0), (AX1, AY1 + 3.5, AZ0 + 0.06), wood)
     box("apt_roof", (AX0 - 0.6, AY0 - 0.6, AZ1), (AX1 + 0.6, AY1 + 4.0, AZ1 + 0.4), white)
     box("apt_ceil", (AX0, AY0, AZ1 - 0.05), (AX1, AY1, AZ1), mat("ceiling", (0.95, 0.95, 0.95)))
-    box("apt_back", (AX0, AY0, AZ0), (AX1, AY0 + 0.25, AZ0 + 1.0), white)
+    box("apt_back", (AX0, AY0, AZ0), (AX1, AY0 + 0.25, AZ0 + 0.45), white)   # low sill: the ocean view
     box("apt_back_top", (AX0, AY0, AZ1 - 0.35), (AX1, AY0 + 0.25, AZ1), white)
-    glass_wall("apt_front_glass", (AX0, AY0 + 0.12), (AX1, AY0 + 0.12), AZ0 + 1.0, AZ1 - 0.35, every=2.0)
-    box("apt_west", (AX0 - 0.25, AY0, AZ0), (AX0, AY1, AZ1), white)
+    glass_wall("apt_front_glass", (AX0, AY0 + 0.12), (AX1, AY0 + 0.12), AZ0 + 0.45, AZ1 - 0.35, every=2.0)
+    # the west side looks over Pacific Coast Highway to the ocean: glass above a low sill
+    box("apt_west", (AX0 - 0.25, AY0, AZ0), (AX0, AY1, AZ0 + 0.45), white)
+    box("apt_west_top", (AX0 - 0.25, AY0, AZ1 - 0.35), (AX0, AY1, AZ1), white)
+    glass_wall("apt_west_glass", (AX0 - 0.12, AY0), (AX0 - 0.12, AY1), AZ0 + 0.45, AZ1 - 0.35, every=2.5)
     box("apt_east", (AX1, AY0, AZ0), (AX1 + 0.25, AY1, AZ1), white)
     glass_wall("apt_glass", (AX0, AY1), (AX1, AY1), AZ0, AZ1, every=2.8)
     railm = mat("rail", (0.75, 0.75, 0.76), rough=0.3, metal=1)
@@ -2653,7 +2673,7 @@ def build_apartment_tiers():
     COL = tier_collection(1)
     floor1 = noise_mat("t1_laminate", (0.3, 0.2, 0.13), (0.38, 0.26, 0.17), 6, 0.45, stretch=(1, 14, 1))
     box("t1_floor", (AX0, AY0, AZ0 + 0.06), (AX1, AY1, AZ0 + 0.075), floor1)
-    box("t1_wall_tint", (AX0 + 0.01, AY0, AZ0), (AX0 + 0.02, AY1, AZ1), mat("t1_wall", (0.62, 0.55, 0.47), rough=0.85))
+    box("t1_wall_tint", (AX1 - 0.02, AY0, AZ0), (AX1 - 0.01, AY1, AZ1), mat("t1_wall", (0.62, 0.55, 0.47), rough=0.85))
     grey = mat("t1_fabric", (0.22, 0.22, 0.24), rough=0.9)
     box("t1_bed", (-14.0, 9.0, AZ0 + 0.07), (-11.8, 11.2, AZ0 + 0.55), mat("t1_sheet", (0.82, 0.8, 0.76), rough=0.9), bevel=0.08)
     box("t1_blanket", (-14.0, 9.9, AZ0 + 0.5), (-11.8, 11.25, AZ0 + 0.6), mat("t1_blanket", (0.45, 0.4, 0.33), rough=0.95), bevel=0.05)
@@ -3052,7 +3072,7 @@ VIEWS = {
     "garage": ((24.5, 0.9, 1.7), (24.5, 16.0, 1.6), 17, -0.2),
     "desk": ((11.5, 12.6, 1.25), (11.5, 16.0, 1.05), 24, -0.3),
     "dealdesk": ((-3.4, 4.3, 1.3), (1.5, 16.0, 0.9), 20, -0.3),
-    "apartment": ((-12.5, 4.6, AZ0 + 1.6), (-3.0, 16.0, AZ0 + 1.2), 17, -0.2),
+    "apartment": ((-1.0, 11.5, AZ0 + 1.65), (-30.0, -6.0, AZ0 + 1.0), 17, -0.2),    # from the back of the room, south over PCH to the ocean
     "lot_t1": ((-10.5, -43.0, 5.68), (-10.5, -23.0, 4.28), 50, 0.2),
     "showroom_t1": ((-7.25, 11.4, 1.65), (-7.25, -10.0, 1.3), 18, 0.0),
     "office_t1": ((-3.5, 5.4, 1.6), (-9.0, -1.0, 1.3), 18, 0.0),
