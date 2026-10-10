@@ -30,9 +30,9 @@ STAFF = {
     "marco": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.6, "hair_cards": False,
               "strand_hair": True, "head_maps": "Male_Adult_05",
               "stocky": True, "glasses": "clear", "watch": True},
-    # Maruchan: Female_Adult_14's layered long dark hair (not in the walk-in pool), dyed black, sunglasses
+    # Maruchan: long straight dark strand hair to the shoulders, combed from a crown parting (long_hair), sunglasses
     "maruchan": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.7, "hair_cards": False,
-                 "hair_from": "Female_Adult_14", "hair_tint": (0.06, 0.055, 0.05), "head_maps": "Male_Adult_15",
+                 "long_hair": True, "head_maps": "Male_Adult_15",
                  "glasses": "sun", "watch": False},
 }
 SRCS = []
@@ -789,6 +789,149 @@ def transplant_hair(arm, meshes, donor_folder, tint=(0.05, 0.047, 0.045)):
     meshes.append(dob)
 
 
+def long_hair(arm, meshes, count=42000, points=26, seed=7, melanin=0.96):
+    """Long straight dark hair as real curves (a Curves object, Principled Hair): roots on an ellipsoid fitted to the
+    posed skull (forehead and face left bare), each strand combed away from a crown parting, hugging the skull and
+    then falling straight to the shoulders. Parented to the head bone so moods and poses carry it."""
+    import random
+    rnd = random.Random(seed)
+    bpy.context.view_layer.update()
+    hp = head_pos(arm)
+    fwd, _ = facing(arm)
+    up = Vector((0, 0, 1))
+    side = fwd.cross(up).normalized()
+    fwd = up.cross(side).normalized()
+    # skull ellipsoid from the posed head-material vertices above the head bone
+    ob = meshes[0]
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    me = ev.to_mesh()
+    hidx = [i for i, sl in enumerate(ob.material_slots) if sl.material.name.split(".")[0].endswith("head")][0]
+    vids = {v for p in me.polygons if p.material_index == hidx for v in p.vertices}
+    mw = ob.matrix_world
+    pts = [mw @ me.vertices[v].co for v in vids]
+    # the real skull surface (head polygons, world space) in hair-frame coordinates, for ray casts from the centre
+    from mathutils.bvhtree import BVHTree
+    hpolys = [list(p.vertices) for p in me.polygons if p.material_index == hidx]
+    hverts_w = [mw @ v.co for v in me.vertices]
+    ev.to_mesh_clear()
+    pts = [p for p in pts if p.z > hp.z + 0.02]
+    loc = [Vector(((p - hp).dot(side), (p - hp).dot(fwd), (p - hp).dot(up))) for p in pts]
+    lo = Vector([min(q[i] for q in loc) for i in range(3)])
+    hi = Vector([max(q[i] for q in loc) for i in range(3)])
+    ctr = (lo + hi) / 2
+    rad = (hi - lo) / 2
+    ctr.z = hi.z - rad.x * 1.05            # a skull is about as tall above its centre as it is wide
+    rad.z = hi.z - ctr.z
+    rad.y *= 0.98
+
+    hverts = [Vector(((p - hp).dot(side), (p - hp).dot(fwd), (p - hp).dot(up))) for p in hverts_w]
+    bvh = BVHTree.FromPolygons(hverts, hpolys)
+
+    def surface(q, shell):
+        """q pushed out to shell x the skull surface along the ray from the centre (unchanged if already outside)."""
+        dv = q - ctr
+        L = dv.length
+        if L < 1e-6:
+            return q
+        hit = bvh.ray_cast(ctr, dv / L)
+        if hit[0] is None:
+            return q
+        dh = (hit[0] - ctr).length * shell
+        return ctr + dv / L * dh if L < dh else q
+
+    def world(q):
+        return hp + side * q.x + fwd * q.y + up * q.z
+
+    def g(q):
+        d = q - ctr
+        return (d.x / rad.x) ** 2 + (d.y / rad.y) ** 2 + (d.z / rad.z) ** 2
+
+    def normal(q):
+        d = q - ctr
+        return Vector((d.x / rad.x ** 2, d.y / rad.y ** 2, d.z / rad.z ** 2)).normalized()
+
+    crown = ctr + Vector((0, -rad.y * 0.25, rad.z))
+    bottom = -(ctr.z + rad.z) * 0.0 - 0.13      # shoulder length: 13 cm below the head bone
+    step = 0.0085
+    strands = []
+    while len(strands) < count:
+        u = Vector((rnd.gauss(0, 1), rnd.gauss(0, 1), rnd.gauss(0, 1))).normalized()
+        if u.z < -0.05:
+            continue
+        # bare forehead and face; hairline a little higher at the temples
+        if u.y > 0.3 and u.z < 0.32 + 0.12 * abs(u.x):
+            continue
+        if u.y > 0.6 and u.z < 0.5:
+            continue
+        shell = 1.012 + rnd.random() ** 1.5 * 0.06
+        q = surface(ctr + Vector((u.x, u.y, u.z)) * 0.001, shell)
+        d = q - crown
+        if q.y > crown.y:
+            # centre parting: hair in front of the crown is swept to the sides and back, never over the face
+            d = Vector((math.copysign(1.0, u.x if abs(u.x) > 1e-3 else rnd.random() - 0.5), -0.35, -0.25))
+        n = normal(q)
+        d = (d - n * d.dot(n))
+        if d.length < 1e-6:
+            d = -Vector((0, 1, 0))
+        d.normalize()
+        path = [q.copy()]
+        for i in range(points - 1):
+            n = normal(q)
+            hanging = q.z < ctr.z - rad.z * 0.15
+            down = Vector((0, 0, -1))
+            if hanging:
+                d = (d * 0.08 + down * 0.92).normalized()
+                d.y = min(d.y, 0.0) if q.y < ctr.y + rad.y * 0.2 else d.y
+            else:
+                d = (d + down * 0.18)
+                d = (d - n * d.dot(n)).normalized()
+            q = q + d * step * (1.6 if hanging else 1.0)
+            q = surface(q, shell)
+            # hanging strands stay beside the face: anything in front of the ears is pushed out to the cheek line
+            if q.z < ctr.z and q.y > ctr.y - rad.y * 0.1 and abs(q.x - ctr.x) < rad.x * 0.96:
+                q.x = ctr.x + math.copysign(rad.x * 0.96, q.x - ctr.x)
+            if q.z < bottom - rnd.random() * 0.025:
+                q.z = bottom - rnd.random() * 0.025
+            path.append(q.copy())
+        strands.append([world(p) for p in path])
+    cv = bpy.data.hair_curves.new("long_hair")
+    cv.add_curves([points] * len(strands))
+    flat = [c for s_ in strands for p in s_ for c in p]
+    cv.attributes["position"].data.foreach_set("vector", flat)
+    if "radius" not in cv.attributes:
+        cv.attributes.new("radius", "FLOAT", "POINT")
+    rads = []
+    for s_ in strands:
+        for i in range(points):
+            rads.append(0.00045 * (1.0 - 0.6 * i / (points - 1)))
+    cv.attributes["radius"].data.foreach_set("value", rads)
+    m = bpy.data.materials.new("long_hair_mat")
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    hb = nt.nodes.new("ShaderNodeBsdfHairPrincipled")
+    hb.parametrization = "MELANIN"
+    hb.inputs["Melanin"].default_value = melanin
+    hb.inputs["Melanin Redness"].default_value = 0.3
+    hb.inputs["Roughness"].default_value = 0.26
+    hb.inputs["Radial Roughness"].default_value = 0.35
+    hb.inputs["Random Color"].default_value = 0.1
+    hb.inputs["Random Roughness"].default_value = 0.15
+    nt.links.new(hb.outputs[0], out.inputs[0])
+    cv.materials.append(m)
+    hob = bpy.data.objects.new("long_hair", cv)
+    bpy.context.scene.collection.objects.link(hob)
+    wm = hob.matrix_world.copy()
+    hob.parent = arm
+    hob.parent_type = "BONE"
+    hob.parent_bone = "Bip01 Head"
+    bpy.context.view_layer.update()
+    hob.matrix_world = wm
+    return hob
+
+
 def head_top(meshes, hp):
     """Highest point of the posed mesh (hair included) above the head."""
     dg = bpy.context.evaluated_depsgraph_get()
@@ -914,6 +1057,8 @@ def do_avatar(folder, out, pid, staff=None):
         relax_pose(arm)
     if staff and staff.get("glasses"):
         add_glasses(arm, staff["glasses"])
+    if staff and staff.get("long_hair"):
+        long_hair(arm, meshes)
     if staff and staff.get("watch"):
         add_watch(arm)
     cam = studio((520, 1100))
