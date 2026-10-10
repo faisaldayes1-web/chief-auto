@@ -62,7 +62,7 @@ func _play(days: int) -> Dictionary:
 					and G.money > u.price * 2 + 20000 and (G.dealership >= 3 or u.price < 10000):
 				G.spend(u.price, "shop")
 				G.upgrades.append(u.id)
-		if G.dealership < G.DEALERSHIPS.size() and G.dealership_blocker() == "" and G.money - G.dealership_info(G.dealership + 1).price > 15000:
+		if G.dealership < G.DEALERSHIPS.size() and G.dealership_blocker() == "" and G.money - G.dealership_info(G.dealership + 1).price > 30000:
 			G.upgrade_dealership()
 			if G.dealership == 2: out.t2 = G.day
 			if G.dealership == 3: out.t3 = G.day

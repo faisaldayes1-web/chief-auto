@@ -174,9 +174,9 @@ const ADS := [
 const DEALERSHIPS := [
 	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.9, "max_car": 50000,
 		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains, and auctions won't send you anything too fancy."},
-	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 1, "budget": 0.96, "max_car": 110000,
+	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 2, "budget": 0.96, "max_car": 110000,
 		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, better budgets, pricier cars at auction, more showroom upgrades."},
-	{"tier": 3, "name": "Harbour Flagship", "price": 220000, "level": 6, "rent": 15000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
+	{"tier": 3, "name": "Harbour Flagship", "price": 185000, "level": 6, "rent": 15000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
 		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
 ]
 
@@ -734,8 +734,9 @@ func dealership_blocker() -> String:
 	var nxt := dealership_info(dealership + 1)
 	if level < nxt.level:
 		return "Reach level %d first." % nxt.level
-	if money < nxt.price:
-		return "You need %s." % money_str(nxt.price)
+	# the bank wants a month's rent of the new building on top of the price, so a move can't leave you stranded
+	if money < nxt.price + nxt.rent:
+		return "You need %s (the price plus a month's rent)." % money_str(nxt.price + nxt.rent)
 	return ""
 
 
@@ -747,8 +748,8 @@ func next_tier_hint() -> String:
 	var need := []
 	if level < nxt.level:
 		need.append("level %d (you're %d)" % [nxt.level, level])
-	if money < nxt.price:
-		need.append("%s more cash" % money_str(nxt.price - money))
+	if money < nxt.price + nxt.rent:
+		need.append("%s more cash" % money_str((nxt.price + nxt.rent) - money))
 	if need.is_empty():
 		return "%s: ready. Buy it from Upgrade Dealership on the Lot." % nxt.name
 	return "%s (%s): need %s." % [nxt.name, money_str(nxt.price), " and ".join(need)]
@@ -775,16 +776,25 @@ static func commission(gross_profit: int) -> int:
 ## utilities and benefits per tier and per salesperson.
 func daily_overhead() -> int:
 	var n := 50 * (dealership * dealership - 1) + 30 * staff.size()
+	# the Corner Lot's first three cars ride on the lot's own cover; a bigger place insures every car
+	var free_cars := 3 if dealership == 1 else 0
 	for c in cars:
+		if free_cars > 0:
+			free_cars -= 1
+			continue
 		n += 25 + int(value(c) * 0.0007)
 	return n
 
 
 ## Business tax on the day's operating profit (car profit minus running costs), progressive.
 func business_tax(day_profit: int) -> int:
-	if day_profit <= 2000:
+	# a one-man corner lot is under the small-business threshold; the Street Showroom gets a bigger allowance
+	if dealership == 1:
 		return 0
-	var t: float = (min(day_profit, 15000) - 2000) * 0.15
+	var free := 6000 if dealership == 2 else 2000
+	if day_profit <= free:
+		return 0
+	var t: float = (min(day_profit, 15000) - free) * 0.15
 	if day_profit > 15000:
 		t += (min(day_profit, 50000) - 15000) * 0.3
 	if day_profit > 50000:
@@ -845,6 +855,8 @@ func walkins_today() -> int:
 	if apartment >= 3:
 		n += 1
 	n += dealership_info().walkins
+	if dealership == 1:
+		n += 1   # the Corner Lot sits on the coast highway: passers-by stop for a cheap first car
 	if has_upgrade("gallery"):
 		n += 2
 	# Tewport is a small town: past 7 a day, extra marketing and reputation only bring half as many people
