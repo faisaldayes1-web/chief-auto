@@ -11,6 +11,14 @@ uniform float vignette = 0.32;
 uniform float grade = 1.0;
 uniform vec2 texel = vec2(0.000625, 0.0011);       // 1 / render size
 
+// COLOR in fragment() already holds texture × modulate, so multiplying by it again squared the picture
+// (~35-45% darker): keep the plain vertex/modulate colour from vertex() instead.
+varying vec4 modulate_col;
+
+void vertex() {
+	modulate_col = COLOR;
+}
+
 vec3 world_at(sampler2D day, vec2 uv) {
 	vec3 d = texture(day, uv).rgb * tint.rgb;
 	vec3 n = texture(night_tex, uv).rgb;
@@ -40,5 +48,5 @@ void fragment() {
 	// vignette on the screen, not the texture, so every layer shares it
 	vec2 q = SCREEN_UV - 0.5;
 	float v = 1.0 - vignette * smoothstep(0.25, 0.85, dot(q, q) * 2.2);
-	COLOR = vec4(clamp(c * v, 0.0, 1.0), base.a) * COLOR;
+	COLOR = vec4(clamp(c * v, 0.0, 1.0), base.a) * modulate_col;
 }
