@@ -135,5 +135,15 @@ func _initialize() -> void:
 	G.upgrades = []
 	G.level = 1
 	check(G.next_tier_hint().begins_with("Street Showroom"), "next tier hint names the Street Showroom")
+	# bids you're winning count against your cash
+	G.new_game()
+	G.money = 3000
+	var opens: Array = G.open_listings("autobidz")
+	opens[0].current = 2000
+	opens[0].leader = ""
+	opens[1].current = 2000
+	opens[1].leader = ""
+	check(G.place_bid(opens[0]) == "", "first bid placed")
+	check(G.place_bid(opens[1]) != "", "second bid refused: cash already committed")
 	print("smoke test: %s" % ("OK" if fails == 0 else "%d failures" % fails))
 	quit(1 if fails > 0 else 0)

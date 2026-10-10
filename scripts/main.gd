@@ -3505,24 +3505,29 @@ func _tick_walkins() -> void:
 
 ## Showroom fit-outs you bought, standing on the floor: their ShowroomPro product renders with a contact shadow.
 func _lobby_props(stage: SceneArt) -> void:
-	var w := stage.size.x
-	var h := stage.size.y
-	for spec in [["coffee", 0.075, 0.8, 0.2], ["lounge", 0.6, 0.99, 0.17]]:
+	# placed with anchors (fractions of the stage) because the stage has no size yet when the lobby is built
+	for spec in [["coffee", 0.08, 0.86, 0.36], ["lounge", 0.6, 1.02, 0.34]]:
 		if not Game.has_upgrade(spec[0]):
 			continue
 		var t := _prop_tex(spec[0])
 		if t == null:
 			continue
-		var ph: float = h * spec[3]
-		var pw: float = ph * t.get_width() / float(t.get_height())
 		var tr := TextureRect.new()
 		tr.texture = t
 		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		tr.modulate = Color(0.85, 0.8, 0.75)   # the showroom's warm light
-		tr.position = Vector2(w * spec[1] - pw / 2.0, h * spec[2] - ph)
-		tr.size = Vector2(pw, ph)
+		var hh: float = spec[3]
+		var hw: float = hh * 0.5625 * t.get_width() / float(t.get_height())   # 16:9 stage
+		tr.anchor_left = spec[1] - hw / 2.0
+		tr.anchor_right = spec[1] + hw / 2.0
+		tr.anchor_top = spec[2] - hh
+		tr.anchor_bottom = spec[2]
+		tr.offset_left = 0
+		tr.offset_right = 0
+		tr.offset_top = 0
+		tr.offset_bottom = 0
 		stage.add_child(tr)
 
 
@@ -3981,6 +3986,9 @@ func _actions_negotiate(r: Control) -> void:
 	var s := HSlider.new()
 	s.min_value = c.offer
 	s.max_value = int(c.threshold * 1.1 / 100) * 100
+	# once you've named a number you can only come down from it (raising your own ask mid-haggle isn't a thing)
+	if int(c.get("rounds", 0)) > 0 and int(c.get("counter", 0)) > c.offer:
+		s.max_value = min(s.max_value, int(c.counter))
 	s.step = 100
 	s.value = clamp(c.counter, s.min_value, s.max_value)
 	s.custom_minimum_size = Vector2(0, 30)
@@ -4496,12 +4504,16 @@ func _finish_paperwork() -> void:
 	var car: Dictionary = s.car
 	var addon_total := 0
 	var vals := {"warranty": 1200, "protect": 400}
+	var notes := []
+	var addon_names := {"warranty": "the extended warranty", "protect": "paint protection"}
 	for k in ["warranty", "protect"]:
 		if s.addons[k]:
 			c.happiness -= 0.05
 			if randf() < 0.25 + c.happiness * 0.45:
 				addon_total += vals[k]
-	var notes := []
+			else:
+				# say so: before, a declined add-on just vanished and the box looked broken
+				notes.append("%s passed on %s." % [c.name, addon_names[k]])
 	var costs: int = -c.get("extras", 0)
 	# anything shady you leave in the deal can come back as a lawsuit
 	if s.addons.pack:
@@ -4586,6 +4598,8 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 		reaction = "Big margin, but that customer won't send their friends."
 	elif profit < 0:
 		reaction = "We lost money on that one. Buy smarter or fix smarter."
+	elif info.review <= 2:
+		reaction = "We made money, but a %d★ review costs us walk-ins. Squeeze a little less next time." % info.review
 	if current == "showroom" and lobby_stage:
 		_build_lobby(lobby_stage)
 	var m := ["Marco", "CEO & Financial Advisor"]
@@ -5202,18 +5216,24 @@ func _dialogue_role(speaker: String, given: String) -> String:
 	return given
 
 
+var _toasts: Array = []
+
+
 func toast(text: String) -> void:
 	var p := UI.panel(Color(0.05, 0.08, 0.14, 0.95), UI.GOLD, 14)
 	p.anchor_left = 0.5
 	p.anchor_right = 0.5
 	p.offset_left = -340
 	p.offset_right = 340
-	p.offset_top = 86
+	# stack under toasts that are still showing instead of drawing on top of them
+	_toasts = _toasts.filter(func(t): return is_instance_valid(t))
+	p.offset_top = 86 + 58 * min(_toasts.size(), 3)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := UI.para(text, 17)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.add_child(l)
 	add_child(p)
+	_toasts.append(p)
 	var tw := create_tween()
 	tw.tween_interval(2.8)
 	tw.tween_property(p, "modulate:a", 0.0, 0.4)

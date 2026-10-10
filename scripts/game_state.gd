@@ -1152,8 +1152,17 @@ func place_bid(l: Dictionary) -> String:
 	if l.leader == "you":
 		return "You're already the high bidder."
 	var next: int = int(l.current) + (bid_increment(l) if l.leader != "" else 0)
-	if next > money:
-		return "You can't cover that bid."
+	# what you're already high bidder on counts against your cash and your lot space
+	var committed := 0
+	var leading := 0
+	for o in listings:
+		if o != l and not o.sold and o.leader == "you":
+			committed += int(o.current)
+			leading += 1
+	if next + committed > money:
+		return "You can't cover that bid." if committed == 0 else "You can't cover that bid on top of the %s you're already winning." % money_str(committed)
+	if cars.size() + leading >= lot_capacity():
+		return "No room: you're already winning enough cars to fill the lot."
 	l.current = next
 	l.leader = "you"
 	l.my_bid = next
