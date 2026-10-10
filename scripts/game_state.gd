@@ -296,6 +296,7 @@ var apartment := 1                # tier of the rooftop apartment (see APARTMENT
 var loan := 0                     # TewportBank line of credit you owe; interest is billed on the 1st
 var run_id := 0                   # identifies this dealership's row on the leaderboard
 var peak_worth := 0
+var cls_sales := {}                # class -> recent sales (decays nightly): market saturation
 var sales_today: Array = []       # [{model, price, profit, seller}] for the closing report
 var day_start := {}               # stats at the start of today (walk-ins, walk-outs) for the closing report
 var last_day := {}                # what the closing report shows: the finished day's ledger, sales and traffic
@@ -343,6 +344,7 @@ func new_game() -> void:
 	peak_worth = 0
 	bankrupt = {}
 	sales_today = []
+	cls_sales = {}
 	day_start = {}
 	last_day = {}
 	month_profit_start = 0
@@ -746,8 +748,42 @@ func next_tier_hint() -> String:
 	return "%s (%s): need %s." % [nxt.name, money_str(nxt.price), " and ".join(need)]
 
 
-func record_sale(model: String, price: int, profit: int, seller: String) -> void:
+func record_sale(model: String, price: int, profit: int, seller: String, cls := "") -> void:
 	sales_today.append({"model": model, "price": price, "profit": profit, "seller": seller})
+	if cls != "":
+		cls_sales[cls] = float(cls_sales.get(cls, 0.0)) + 1.0
+
+
+## Market saturation: every recent sale of a class soaks up Tewport's demand for it, so buyers offer less.
+## cls_sales decays 30% a night, so it's roughly "sold this week".
+func demand_factor(cls: String) -> float:
+	return clamp(1.0 - 0.03 * float(cls_sales.get(cls, 0.0)), 0.75, 1.0)
+
+
+## Staff commission on a sale: a cut of the gross profit, never under $150.
+static func commission(gross_profit: int) -> int:
+	return int(round(max(150.0, gross_profit * 0.12) / 10.0)) * 10
+
+
+## Daily operating costs that grow with the business: insurance and upkeep per car on the lot,
+## utilities and benefits per tier and per salesperson.
+func daily_overhead() -> int:
+	var n := 50 * (dealership * dealership - 1) + 30 * staff.size()
+	for c in cars:
+		n += 25 + int(value(c) * 0.0007)
+	return n
+
+
+## Business tax on the day's operating profit (car profit minus running costs), progressive.
+func business_tax(day_profit: int) -> int:
+	if day_profit <= 2000:
+		return 0
+	var t: float = (min(day_profit, 15000) - 2000) * 0.15
+	if day_profit > 15000:
+		t += (min(day_profit, 50000) - 15000) * 0.3
+	if day_profit > 50000:
+		t += (day_profit - 50000) * 0.45
+	return int(round(t / 10.0)) * 10
 
 
 func upgrade_dealership() -> bool:
@@ -805,6 +841,9 @@ func walkins_today() -> int:
 	n += dealership_info().walkins
 	if has_upgrade("gallery"):
 		n += 2
+	# Tewport is a small town: past 7 a day, extra marketing and reputation only bring half as many people
+	if n > 7:
+		n = 7 + (n - 7) / 2
 	return max(1, n)
 
 
@@ -1305,6 +1344,24 @@ func end_day() -> Array:
 			stats.lawsuits = stats.get("lawsuits", 0) + 1
 			add_review({"name": l.customer}, 1, "", "", "Sued them over %s. Read your contract before you sign anything here." % l.reason)
 			notes.append("LAWSUIT: %s sued us over %s. Settled for %s." % [l.customer, l.reason, money_str(cost)])
+	# running a bigger place costs more: insurance and lot upkeep per car, then tax on the day's profit
+	var oh := daily_overhead()
+	money -= oh
+	log_money("overhead", -oh)
+	var car_profit := 0
+	for sl in sales_today:
+		car_profit += int(sl.profit)
+	var running := 0
+	for k in ledger_day:
+		if k in ["rent", "payroll", "ads", "interest", "repairs", "legal", "overhead"]:
+			running += int(ledger_day[k])
+	var tax := business_tax(car_profit + running)
+	if tax > 0:
+		money -= tax
+		log_money("tax", -tax)
+		notes.append("Business tax on today's profit: %s." % money_str(tax))
+	for k in cls_sales.keys():
+		cls_sales[k] = float(cls_sales[k]) * 0.7
 	day += 1
 	clock = OPEN_MIN
 	stats.goal_sold_today = 0
@@ -1384,7 +1441,7 @@ func legal_exposure() -> int:
 # ---------- save / load ----------
 
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
-	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule",
+	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule", "cls_sales",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "month_profit_start", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
 	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start"]
 

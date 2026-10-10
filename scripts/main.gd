@@ -130,6 +130,7 @@ func _build_hud() -> Control:
 	var nv := UI.vbox(-4)
 	nv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hud_name = UI.label(Game.dealer_name.to_upper(), 20, UI.GOLD, true)
+	_fit_name(hud_name, Game.dealer_name.to_upper(), 22, HUD_NAME_W)
 	nv.add_child(hud_name)
 	var sub := UI.label("TEWPORT BEACH", 11, UI.MUTED, true)
 	nv.add_child(sub)
@@ -176,7 +177,7 @@ func _build_hud() -> Control:
 func _refresh_hud() -> void:
 	if hud_money == null:
 		return
-	hud_name.text = Game.dealer_name.to_upper()
+	_fit_name(hud_name, Game.dealer_name.to_upper(), 22, HUD_NAME_W)
 	if Game.tutorial_active() and current != "title" and Game.check_tutorial():
 		_update_coach.call_deferred()
 	var old := hud_money.text
@@ -359,6 +360,24 @@ func _start_game() -> void:
 		_update_coach()
 
 
+const NAME_MAX := 24
+const HUD_NAME_W := 300.0
+
+
+## Long dealer names: shrink the font until the name fits max_w (down to 12px), then trim with an ellipsis.
+func _fit_name(l: Label, text: String, base: int, max_w: float) -> void:
+	l.text = text
+	var font: Font = l.get_theme_font("font")
+	var sz := base
+	while sz > 12 and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x > max_w:
+		sz -= 1
+	l.add_theme_font_size_override("font_size", sz)
+	l.custom_minimum_size.x = min(max_w, font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, sz).x + 2)
+	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	l.tooltip_text = text
+
+
 ## New game: the player names the dealership, then Marco's welcome, then the first-day coach.
 func _name_dealership() -> void:
 	var p := _modal(UI.NAVY, 0)
@@ -369,14 +388,26 @@ func _name_dealership() -> void:
 	v.add_child(UI.para("This goes on your contracts, your Yolp page and the top of every screen. You can't change it later, so make it count.", 15, UI.MUTED))
 	var edit := LineEdit.new()
 	edit.text = "Chief Auto"
-	edit.max_length = 28
+	edit.max_length = NAME_MAX
 	edit.custom_minimum_size = Vector2(0, 52)
 	edit.add_theme_font_size_override("font_size", 24)
 	edit.select_all_on_focus = true
 	v.add_child(edit)
+	# live counter, so a long name never gets cut off without warning
+	var count := UI.label("", 13, UI.MUTED)
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	v.add_child(count)
+	var upd := func(t: String):
+		var n := t.length()
+		count.text = "%d / %d characters%s" % [n, NAME_MAX, " · that's the limit" if n >= NAME_MAX else ""]
+		count.add_theme_color_override("font_color", UI.BAD if n >= NAME_MAX else (UI.GOLD if n >= NAME_MAX - 4 else UI.MUTED))
+	edit.text_changed.connect(upd)
+	upd.call(edit.text)
 	var ideas := UI.hbox(8)
 	for idea in ["Chief Auto", "Tewport Motors", "Harbour Auto Gallery", "Coastline Cars"]:
-		var b := UI.button(idea, func(): edit.text = idea, 0, 36)
+		var b := UI.button(idea, func():
+			edit.text = idea
+			upd.call(idea), 0, 36)
 		b.add_theme_font_size_override("font_size", 13)
 		ideas.add_child(b)
 	v.add_child(ideas)
@@ -2582,7 +2613,9 @@ func _tab_reviews(inner: Control) -> void:
 	var bh := UI.hbox(12)
 	var bv := UI.vbox(2)
 	bv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bv.add_child(UI.label(Game.dealer_name, 24, INK, true))
+	var yname := UI.label(Game.dealer_name, 24, INK, true)
+	_fit_name(yname, Game.dealer_name, 26, 420)
+	bv.add_child(yname)
 	var rating := UI.hbox(8)
 	rating.add_child(UI.label(_stars(int(round(avg))), 20, red))
 	rating.add_child(UI.label("%.1f (%d reviews)" % [avg, Game.reviews.size()], 14, INK, true))
@@ -3556,7 +3589,7 @@ func _pick_car_for(c: Dictionary) -> Dictionary:
 
 
 func _max_price(c: Dictionary, car: Dictionary, interest: float) -> int:
-	var v: float = float(Game.value(car, true)) * c.budget
+	var v: float = float(Game.value(car, true)) * c.budget * Game.demand_factor(car.cls)
 	if car.cls == Game.hot_class:
 		v *= 1.1
 	if Game.has_perk("vip") and car.cls in ["sport", "exotic"]:
@@ -3577,7 +3610,8 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 		var price: int = min(car.get("sticker", 0), _max_price(c, car, 50)) * min(1.0, factor * randf_range(0.97, 1.03))
 		price = int(round(price / 100.0)) * 100
 		# staff know what we're in for: they won't sell under cost (Jeff used to give cars away at a loss)
-		var floor_price: int = int(car.paid) + int(car.spent)
+		# and their commission comes out of the deal, so the floor covers it too
+		var floor_price: int = int(car.paid) + int(car.spent) + Game.commission(0)
 		if price < floor_price:
 			if _max_price(c, car, 50) < floor_price:
 				toast("%s couldn't get %s up to what we paid for the %s, so no deal." % [s.name, c.name, car.model])
@@ -3586,6 +3620,8 @@ func _staff_handles(c: Dictionary, s: Dictionary, auto := false) -> void:
 				return
 			price = int(ceil(floor_price / 100.0)) * 100
 		var income := {"sales": price}
+		# commission: 12% of what the deal made, at least $150 (part of the sale's profit in the closing report)
+		income.payroll = -Game.commission(price - int(car.paid) - int(car.spent))
 		if c.finance:
 			income.finance = int(price * 0.004 * (Game.skill(s, "finance") / 20.0) * (1.5 if s.trait == "Finance whiz" else 1.0))
 		if randf() < Game.skill(s, "upsell") / 180.0 + (0.25 if s.trait == "Upsells warranties" else 0.0):
@@ -4380,7 +4416,9 @@ func _render_paperwork() -> void:
 	paper.add_child(v)
 	var top := UI.hbox(8)
 	var brand := UI.vbox(0)
-	brand.add_child(UI.label(Game.dealer_name.to_upper(), 15, PAPER_RED, true))
+	var bname := UI.label(Game.dealer_name.to_upper(), 15, PAPER_RED, true)
+	_fit_name(bname, Game.dealer_name.to_upper(), 17, 260)
+	brand.add_child(bname)
 	brand.add_child(UI.label("1500 Coast Hwy · Tewport Beach, Canioria", 10, PAPER_INK))
 	top.add_child(brand)
 	top.add_child(UI.spacer())
@@ -4577,7 +4615,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.stats.goal_sold_today += 1
 	Game.stats.profit += profit
 	Game.stats.days_held += Game.day - car.day_bought
-	Game.record_sale("%s %s" % [car.get("year", ""), car.model], price, profit, seller)
+	Game.record_sale("%s %s" % [car.get("year", ""), car.model], price, profit, seller, car.cls)
 	var stars := Game.stars_from_happiness(happiness)
 	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
 	info.review = stars
@@ -5284,7 +5322,7 @@ func _close_for_night() -> void:
 
 const LEDGER_NAMES := {"sales": "Car sales", "finance": "Finance profit", "addons": "Add-ons", "cars": "Auto acquisitions",
 	"repairs": "Repairs & detailing", "shop": "Shop purchases", "ads": "Advertising", "rent": "Rent (lot & showroom)",
-	"payroll": "Staff payroll", "legal": "Lawsuits & legal", "interest": "Loan interest", "other": "Other"}
+	"payroll": "Staff payroll", "legal": "Lawsuits & legal", "interest": "Loan interest", "overhead": "Insurance & lot upkeep", "tax": "Business tax", "other": "Other"}
 
 
 func _money_row(parent: Control, name: String, amount: int, size := 16, bold := false) -> void:
@@ -5375,7 +5413,7 @@ func _month_report(r: Dictionary) -> void:
 	var l: Dictionary = r.ledger
 	var rev := Game.ledger_total(l, 1)
 	_money_row(v, "Monthly revenue", rev, 17, true)
-	for k in ["rent", "payroll", "ads", "interest", "cars", "repairs", "shop", "legal", "other"]:
+	for k in ["rent", "payroll", "ads", "interest", "overhead", "tax", "cars", "repairs", "shop", "legal", "other"]:
 		if l.get(k, 0) != 0:
 			_money_row(v, LEDGER_NAMES[k], l[k])
 	var alert := UI.panel(Color(0.35, 0.06, 0.06, 0.9), UI.BAD, 10)

@@ -21,7 +21,7 @@ func _initialize() -> void:
 	G.new_game()
 	# month end: bills hit on Nov 1 and the report is filled
 	var start: int = G.money
-	var bills: int = G.monthly_bills().total
+	var bills: int = G.monthly_bills().total + G.daily_overhead() * 31   # empty lot: overhead is flat
 	for i in 30:
 		G.end_day()
 	check(G.date_dict().day == 31, "day 31 is Oct 31")

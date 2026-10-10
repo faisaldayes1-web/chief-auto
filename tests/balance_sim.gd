@@ -19,8 +19,8 @@ func _initialize() -> void:
 		G.new_game()
 		G.tutorial = G.TUTORIAL.size()
 		var res := _play(days)
-		print("run %d: day %d money %s level %d rep %.1f sold %d profit %s tier %d loan %s t2@%s t3@%s min_money %s" % [r, G.day, G.money_str(G.money), G.level,
-			G.reputation, G.stats.sold, G.money_str(G.stats.profit), G.dealership, G.money_str(G.loan), res.t2, res.t3, G.money_str(res.low)])
+		print("run %d: day %d money %s level %d rep %.1f sold %d profit %s tier %d loan %s t2@%s t3@%s min_money %s day40 %s day80 %s day120 %s" % [r, G.day, G.money_str(G.money), G.level,
+			G.reputation, G.stats.sold, G.money_str(G.stats.profit), G.dealership, G.money_str(G.loan), res.t2, res.t3, G.money_str(res.low), G.money_str(res.get("p40", 0)), G.money_str(res.get("p80", 0)), G.money_str(res.get("p120", 0))])
 		if res.t2 > 0: t2_days.append(res.t2)
 		if res.t3 > 0: t3_days.append(res.t3)
 		if res.low < 0: broke += 1
@@ -42,6 +42,7 @@ func _avg(a: Array) -> String:
 
 func _play(days: int) -> Dictionary:
 	var out := {"t2": 0, "t3": 0, "low": G.money}
+	var hist := [G.money]
 	for d in days:
 		_join_houses()
 		_buy_cars()
@@ -50,6 +51,9 @@ func _play(days: int) -> Dictionary:
 		_sell_day()
 		G.end_day()
 		out.low = min(out.low, G.money)
+		hist.append(G.money)
+		if G.day in [41, 81, 121]:   # average daily change over the 10 days before day 40/80/120
+			out["p%d" % (G.day - 1)] = (hist[-1] - hist[-11]) / 10
 		if OS.get_environment("TRACE") != "" and G.day % 3 == 0:
 			print("  day %d money %s lvl %d tier %d sold %d profit %s cars %d rep %.1f" % [G.day, G.money_str(G.money), G.level, G.dealership, G.stats.sold, G.money_str(G.stats.profit), G.cars.size(), G.reputation])
 		# a sensible player fits out the building once there's cash to spare
@@ -133,7 +137,7 @@ func _repair(car: Dictionary) -> void:
 
 
 func _max_price(c: Dictionary, car: Dictionary, interest: float) -> int:
-	var v: float = float(G.value(car, true)) * c.budget
+	var v: float = float(G.value(car, true)) * c.budget * (G.demand_factor(car.cls) if G.has_method("demand_factor") else 1.0)
 	if car.cls == G.hot_class:
 		v *= 1.1
 	if G.has_perk("vip") and car.cls in ["sport", "exotic"]:
@@ -188,6 +192,8 @@ func _sell_day() -> void:
 		G.month_sold += 1
 		G.stats.goal_sold_today += 1
 		G.stats.profit += profit
+		if G.has_method("demand_factor"):
+			G.record_sale(car.model, price, profit, "you", car.cls)
 		G.add_review(c, G.stars_from_happiness(happy), car.model)
 		G.remove_car(car)
 		G.add_xp(G.sale_xp(profit))
