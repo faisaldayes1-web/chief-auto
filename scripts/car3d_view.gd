@@ -85,6 +85,7 @@ func _init() -> void:
 	rim.light_energy = 0.35
 	rim.light_color = Color(0.85, 0.92, 1.0)
 	_vp.add_child(rim)
+	RenderQuality.apply_environment(env, _vp, sun)
 	# floor: catches the car's shadow and a soft contact shadow, fades out at the edges
 	var floor := MeshInstance3D.new()
 	_floor = floor
