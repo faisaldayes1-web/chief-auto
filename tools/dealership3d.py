@@ -124,6 +124,260 @@ def noise_mat(name, c1, c2, scale, rough, detail=6, bump=0.0, metal=0.0, veins=F
     return m
 
 
+# ---------------------------------------------------------------- CC0 scanned materials and props (Poly Haven)
+# Real photo-scanned textures replace the procedural asphalt, concrete, walls, roof tiles, sand, grass, floors and
+# wood (apply_cc0 swaps them in by material name after the scene is built). Each is a Principled BSDF fed by the
+# colour, roughness and OpenGL normal maps, projected triplanar in world metres at the texture's real-world size,
+# with a second rotated, rescaled sample blended in by a large noise and a soft brightness drift so no repeat shows.
+CC0 = os.environ.get("CC0", "/mnt/project-files/chief-auto/cc0")
+_tex_cache = {}
+
+# material name (or prefix ending in *) -> (texture, tile size in metres, tint toward the old colour 0..1,
+# roughness target or None for the scan's own, normal strength[, extra brightness factor])
+CC0_MATS = {
+    "asphalt": ("asphalt_02", 3.2, 1.0, 0.93, 0.8, 0.6),
+    "asphalt_patch": ("asphalt_02", 2.6, 1.0, 0.9, 0.7, 0.6),
+    "street": ("clean_asphalt", 4.0, 1.0, 0.9, 0.8, 0.7),
+    "pch": ("clean_asphalt", 4.0, 1.0, 0.9, 0.8, 0.7),
+    "concrete": ("brushed_concrete", 2.5, 0.7, None, 0.8),
+    "walk_pch": ("brushed_concrete", 2.5, 0.7, None, 0.8),
+    "walk3": ("square_concrete_pavers", 2.4, 0.6, None, 1.0),
+    "walk1": ("concrete_floor_02", 2.5, 0.7, None, 0.8),
+    "block": ("concrete_tile_facade", 3.0, 0.8, None, 0.8),
+    "stucco*": ("white_stucco", 2.0, 1.0, None, 0.7),
+    "render": ("plastered_wall_04", 2.5, 1.0, None, 0.35),
+    "o_plaster": ("plastered_wall_04", 2.5, 1.0, None, 0.4),
+    "wall_taupe": ("plastered_wall_04", 2.5, 1.0, None, 0.4),
+    "t1_wall": ("plastered_wall_04", 2.5, 1.0, None, 0.4),
+    "roof_tile": ("clay_roof_tiles_02", 2.0, 0.45, None, 1.0),
+    "sand": ("coast_sand_01", 3.0, 0.55, None, 1.0),
+    "iceplant": ("leafy_grass", 2.0, 0.5, None, 1.0),
+    "epoxy*": ("hangar_concrete_floor", 4.0, 0.6, 0.32, 0.7),
+    "polished_concrete": ("concrete_floor_02", 3.0, 0.7, 0.25, 0.5),
+    "show_floor": ("large_floor_tiles_02", 2.4, 0.85, 0.16, 0.5),
+    "marble": ("marble_01", 2.5, 0.4, 0.12, 0.4),
+    "t3_marble": ("marble_01", 2.0, 0.4, 0.1, 0.4),
+    "t1_stone": ("marble_01", 2.0, 0.4, 0.15, 0.4),
+}
+for _w in ("oak", "oak2", "oak_feature", "oak_top", "desk_wood1", "walnut_office", "walnut_t", "t3_walnut",
+           "t1_walnut", "t2_oak"):
+    CC0_MATS[_w] = ("smoked_walnut_veneer", 1.2, 1.0, None, 0.6)
+
+
+def _cc0_image(path, data):
+    if path in _tex_cache:
+        return _tex_cache[path]
+    im = bpy.data.images.load(path, check_existing=True)
+    if data:
+        im.colorspace_settings.name = "Non-Color"
+    import numpy as np
+    w, h = im.size
+    a = np.empty(w * h * im.channels, np.float32)
+    im.pixels.foreach_get(a)
+    a = a.reshape(-1, im.channels)[:, :3]
+    mean = a.mean(0) if data else (((a + 0.055) / 1.055) ** 2.4).mean(0)    # sRGB to linear for the colour map
+    _tex_cache[path] = (im, tuple(float(v) for v in mean))
+    return _tex_cache[path]
+
+
+def _old_colour(m):
+    """Average base colour of a material built by mat()/noise_mat()/asphalt_mat() (its ramp, or the BSDF)."""
+    nt = m.node_tree
+    best = None
+    for nd in nt.nodes:      # the darkest ramp is the colour (asphalt's wear ramp is a ~1.0 multiplier)
+        if nd.type == "VALTORGB":
+            els = nd.color_ramp.elements
+            c = tuple(sum(e.color[i] for e in els) / len(els) for i in range(3))
+            if best is None or sum(c) < sum(best):
+                best = c
+    if best is not None:
+        return best
+    b = nt.nodes.get("Principled BSDF")
+    return tuple(b.inputs["Base Color"].default_value[:3]) if b else (0.5, 0.5, 0.5)
+
+
+def cc0_mat(name, tex, size, tint=0.0, rough=None, nstr=1.0, old=None, mul=1.0):
+    key = "cc0_" + name
+    if key in _mats:
+        return _mats[key]
+    base = os.path.join(CC0, "textures", tex, tex + "_%s_2k.jpg")
+    dif, dmean = _cc0_image(base % "Diffuse", False)
+    rgh, rmean = _cc0_image(base % "Rough", True)
+    nor, _ = _cc0_image(base % "nor_gl", True)
+    m, nt, b = _node_mat(key)
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    P, N = geo.outputs["Position"], geo.outputs["Normal"]
+    ps = nt.nodes.new("ShaderNodeVectorMath")
+    ps.operation = "SCALE"
+    ps.inputs["Scale"].default_value = 1.0 / size
+    nt.links.new(P, ps.inputs[0])
+    sp = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(ps.outputs[0], sp.inputs[0])
+    sn = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(N, sn.inputs[0])
+    # blend mask between the two samples, and a slow brightness drift, both in world metres
+    blend = nt.nodes.new("ShaderNodeMapRange")
+    blend.interpolation_type = "SMOOTHSTEP"
+    blend.inputs["From Min"].default_value, blend.inputs["From Max"].default_value = 0.42, 0.58
+    nt.links.new(_noise(nt, P, 0.35 / size, 3.0).outputs["Fac"], blend.inputs["Value"])
+    mix_f = blend.outputs["Result"]
+    drift = nt.nodes.new("ShaderNodeMapRange")
+    drift.inputs["To Min"].default_value, drift.inputs["To Max"].default_value = 0.86, 1.12
+    nt.links.new(_noise(nt, P, 0.12 / size, 2.0).outputs["Fac"], drift.inputs["Value"])
+    # triplanar weights |N|^4, normalised
+    ws = [_math(nt, "POWER", _math(nt, "ABSOLUTE", sn.outputs[a]), 4.0) for a in "XYZ"]
+    tot = _math(nt, "ADD", _math(nt, "ADD", ws[0], ws[1]), _math(nt, "ADD", ws[2], 1e-5))
+    ws = [_math(nt, "DIVIDE", w, tot) for w in ws]
+    cols, rs, ns = [], [], []
+    for ax, (u, v) in enumerate((("Y", "Z"), ("X", "Z"), ("X", "Y"))):
+        uv = nt.nodes.new("ShaderNodeCombineXYZ")
+        nt.links.new(sp.outputs[u], uv.inputs[0])
+        nt.links.new(sp.outputs[v], uv.inputs[1])
+        rot = nt.nodes.new("ShaderNodeVectorRotate")
+        rot.rotation_type = "Z_AXIS"
+        rot.inputs["Angle"].default_value = 0.63 + ax * 0.9
+        nt.links.new(uv.outputs[0], rot.inputs["Vector"])
+        uv2 = nt.nodes.new("ShaderNodeVectorMath")
+        uv2.operation = "MULTIPLY_ADD"
+        uv2.inputs[1].default_value = (0.79, 0.79, 0.79)
+        uv2.inputs[2].default_value = (0.37 + ax * 0.21, 0.71, 0.0)
+        nt.links.new(rot.outputs[0], uv2.inputs[0])
+        per = []
+        for im in (dif, rgh, nor):
+            outs = []
+            for vec in (uv.outputs[0], uv2.outputs[0]):
+                t = nt.nodes.new("ShaderNodeTexImage")
+                t.image = im
+                t.interpolation = "Linear"
+                nt.links.new(vec, t.inputs["Vector"])
+                outs.append(t.outputs["Color"])
+            per.append(_mix(nt, mix_f, outs[0], outs[1]))
+        cols.append(per[0])
+        rs.append(per[1])
+        # tangent-space normal to world: (r,g) run along the projection's u,v; b along the face normal
+        tn = nt.nodes.new("ShaderNodeVectorMath")
+        tn.operation = "MULTIPLY_ADD"
+        tn.inputs[1].default_value = (2.0 * nstr, 2.0 * nstr, 2.0)
+        tn.inputs[2].default_value = (-nstr, -nstr, -1.0)
+        nt.links.new(per[2], tn.inputs[0])
+        st = nt.nodes.new("ShaderNodeSeparateXYZ")
+        nt.links.new(tn.outputs[0], st.inputs[0])
+        out_ax = "XYZ"[ax]
+        comps = {u: st.outputs["X"], v: st.outputs["Y"],
+                 out_ax: _math(nt, "MULTIPLY", st.outputs["Z"], _math(nt, "SIGN", sn.outputs[out_ax]))}
+        cw = nt.nodes.new("ShaderNodeCombineXYZ")
+        for k, s in comps.items():
+            nt.links.new(s, cw.inputs[k])
+        ns.append(cw.outputs[0])
+
+    def wsum(vals, kind):
+        acc = None
+        for w, v in zip(ws, vals):
+            if kind == "rgb":
+                t = nt.nodes.new("ShaderNodeVectorMath")
+                t.operation = "SCALE"
+                nt.links.new(v, t.inputs[0])
+                nt.links.new(w, t.inputs["Scale"])
+                t = t.outputs[0]
+            if acc is None:
+                acc = t
+            else:
+                a = nt.nodes.new("ShaderNodeVectorMath")
+                a.operation = "ADD"
+                nt.links.new(acc, a.inputs[0])
+                nt.links.new(t, a.inputs[1])
+                acc = a.outputs[0]
+        return acc
+
+    col = wsum(cols, "rgb")
+    gain = [1.0, 1.0, 1.0]
+    if tint > 0 and old is not None:
+        gain = [1.0 + tint * (max(0.005, o) / max(0.005, d) - 1.0) for o, d in zip(old, dmean)]
+    g = nt.nodes.new("ShaderNodeVectorMath")
+    g.operation = "MULTIPLY"
+    g.inputs[1].default_value = [x * mul for x in gain]
+    nt.links.new(col, g.inputs[0])
+    col = _mix(nt, 1.0, g.outputs[0], drift.outputs["Result"], "MULTIPLY")
+    nt.links.new(col, b.inputs["Base Color"])
+    r = nt.nodes.new("ShaderNodeRGBToBW")
+    nt.links.new(wsum(rs, "rgb"), r.inputs[0])
+    rv = r.outputs[0]
+    if rough is not None:
+        rv = _math(nt, "MULTIPLY", rv, rough / max(0.02, sum(rmean) / 3), clamp=True)
+    nt.links.new(rv, b.inputs["Roughness"])
+    nn = nt.nodes.new("ShaderNodeVectorMath")
+    nn.operation = "NORMALIZE"
+    nt.links.new(wsum(ns, "rgb"), nn.inputs[0])
+    nt.links.new(nn.outputs[0], b.inputs["Normal"])
+    b.inputs["Metallic"].default_value = 0.0
+    _mats[key] = m
+    return m
+
+
+def apply_cc0():
+    """Swaps every procedural material named in CC0_MATS for its scanned counterpart, keeping the old colour."""
+    if not os.path.isdir(os.path.join(CC0, "textures")):
+        print("CC0 textures missing at", CC0, "- keeping procedural materials")
+        return
+    swap = {}
+    for m in list(bpy.data.materials):
+        base = m.name.split(".")[0]
+        spec = CC0_MATS.get(base)
+        if spec is None:
+            for k, v in CC0_MATS.items():
+                if k.endswith("*") and base.startswith(k[:-1]):
+                    spec = v
+        if spec is None or not m.use_nodes:
+            continue
+        tex, size, tint, rough, nstr = spec[:5]
+        swap[m] = cc0_mat(m.name, tex, size, tint, rough, nstr, _old_colour(m), *spec[5:])
+    for o in bpy.data.objects:
+        if o.type not in ("MESH", "CURVE", "FONT"):
+            continue
+        for s in o.material_slots:
+            if s.material in swap:
+                s.material = swap[s.material]
+        if o.type == "MESH":
+            ms = o.data.materials
+            for i, mm in enumerate(ms):
+                if mm in swap:
+                    ms[i] = swap[mm]
+
+
+_props = {}
+
+
+def cc0_prop(model, loc, yaw=0.0, scale=1.0):
+    """Places a Poly Haven glTF model (cc0/models/<model>) at loc, sharing meshes between copies."""
+    path = os.path.join(CC0, "models", model, model + ".gltf")
+    if not os.path.exists(path):
+        return None
+    if model not in _props:
+        before = set(bpy.data.objects)
+        bpy.ops.import_scene.gltf(filepath=path)
+        new = [o for o in bpy.data.objects if o not in before]
+        for o in new:
+            for c in list(o.users_collection):
+                c.objects.unlink(o)
+        _props[model] = new
+    pivot = bpy.data.objects.new("prop_" + model, None)
+    pivot.location = loc
+    pivot.rotation_euler.z = yaw
+    pivot.scale = (scale, scale, scale)
+    _link(pivot)
+    src = _props[model]
+    copies = {}
+    for o in src:
+        c = o.copy()
+        copies[o] = c
+        _link(c)
+    for o, c in copies.items():
+        c.parent = copies.get(o.parent, pivot)
+        if o.parent is None:
+            c.matrix_parent_inverse = Matrix.Identity(4)
+    return pivot
+
+
 def glass():
     m = mat("glass", (0.85, 0.92, 0.95), rough=0.02, trans=1.0)
     return m
@@ -1194,7 +1448,10 @@ def blinds(axis, plane, out, a0, a1, ztop, drop, d=0.12):
 
 
 def floor_plant(x, y, h=1.6, z=0.0):
-    """A potted fiddle-leaf fig: a tapered pot, a stem and a column of big leaf cards."""
+    """A potted fiddle-leaf fig: a tapered pot, a stem and a column of big leaf cards (a scanned plant when the CC0
+    models are there)."""
+    if cc0_prop("potted_plant_02", (x, y, z), yaw=x * 1.7 + y, scale=h / 0.84):
+        return
     cyl("pot", (x, y, z + 0.25), 0.26, 0.5, mat("pot_cer", (0.85, 0.84, 0.8), rough=0.3), r2=0.2, verts=20)
     cyl("stem", (x, y, z + h * 0.45), 0.02, h * 0.6, mat("stem", (0.25, 0.18, 0.1)), verts=6)
     rnd = random.Random(int(x * 7 + y * 3))
@@ -1438,6 +1695,8 @@ def golden_hour(on):
     if "warm" not in GOLDEN or NIGHT:
         return
     GOLDEN["warm"].inputs[0].default_value = 1.0 if on else 0.0
+    if "warm2" in GOLDEN:
+        GOLDEN["warm2"].inputs[0].default_value = 0.85 if on else 0.0
     sun = bpy.data.objects.get("sun")
     if sun:
         sun.data.energy = 1.6 if on else 6.2
@@ -1445,6 +1704,31 @@ def golden_hour(on):
     for o in bpy.data.objects:      # dimmer room fills so the sunlight on the floor stands out
         if o.type == "LIGHT" and o.name.startswith("fill"):
             o.data.energy = o.data["day"] * (0.45 if on else 1.0) if "day" in o.data else o.data.energy
+
+
+HDRI = {}
+SPIAGGIA_SUN_U, AUTOSHOP_SUN_U = 0.601, 0.031     # where each HDRI's brightest spot sits across the image
+HDRI_GAIN = float(os.environ.get("HDRI_GAIN", 20.0))   # brings the HDRI to the painted sky's light level (x0.19)
+
+
+def hdri_turn(u):
+    """Turns the HDRI so the point at image column u faces the sun lamp's azimuth (Blender's equirect: u = 0.5 +
+    atan2(y, -x) / 2pi)."""
+    phi = (u - 0.5) * 2 * math.pi
+    theta_h = math.pi - phi
+    theta_s = math.pi / 2 - math.radians(SUN_AZ)
+    HDRI["map"].inputs["Rotation"].default_value = (0, 0, theta_h - theta_s)
+
+
+def hdri_for(view):
+    """The garage views take their bounce light from a real auto-shop HDRI; everything else from the coast."""
+    if "node" not in HDRI or NIGHT:
+        return
+    garage = view.startswith("garage")
+    name = "autoshop_01_4k.hdr" if garage else "spiaggia_di_mondello_4k.hdr"
+    HDRI["node"].image = bpy.data.images.load(os.path.join(CC0, "hdri", name), check_existing=True)
+    hdri_turn(AUTOSHOP_SUN_U if garage else SPIAGGIA_SUN_U)
+    HDRI["gain"].inputs["Scale"].default_value = HDRI_GAIN * (1.6 if garage else 1.0)
 
 
 def build_world():
@@ -1512,7 +1796,45 @@ def build_world():
     nt.links.new(col, warm.inputs[6])
     nt.links.new(dusk, warm.inputs[7])
     GOLDEN["warm"] = warm
-    nt.links.new(warm.outputs[2], nt.nodes["Background"].inputs[0])
+    out = warm.outputs[2]
+    hdri = os.path.join(CC0, "hdri", "spiaggia_di_mondello_4k.hdr")
+    if os.path.exists(hdri):
+        # the light the scene gets (diffuse and glossy bounces) comes from a real coastal HDRI, its sun disc clipped
+        # off (the sun lamp stays the one sun) and turned so its bright side sits where SUN_AZ puts the sun; what the
+        # camera sees directly or through glass stays the painted sky with its clouds and golden hour
+        env = nt.nodes.new("ShaderNodeTexEnvironment")
+        env.image = bpy.data.images.load(hdri, check_existing=True)
+        HDRI["node"] = env
+        rot = nt.nodes.new("ShaderNodeMapping")
+        tc2 = nt.nodes.new("ShaderNodeTexCoord")
+        nt.links.new(tc2.outputs["Generated"], rot.inputs["Vector"])
+        nt.links.new(rot.outputs["Vector"], env.inputs["Vector"])
+        HDRI["map"] = rot
+        hdri_turn(SPIAGGIA_SUN_U)
+        clip = nt.nodes.new("ShaderNodeVectorMath")
+        clip.operation = "MINIMUM"
+        clip.inputs[1].default_value = (8.0, 8.0, 8.0)
+        nt.links.new(env.outputs["Color"], clip.inputs[0])
+        gain = nt.nodes.new("ShaderNodeVectorMath")
+        gain.operation = "SCALE"
+        gain.inputs["Scale"].default_value = HDRI_GAIN
+        HDRI["gain"] = gain
+        nt.links.new(clip.outputs[0], gain.inputs[0])
+        warm2 = nt.nodes.new("ShaderNodeMix")
+        warm2.data_type = "RGBA"
+        warm2.inputs[0].default_value = 0.0
+        nt.links.new(gain.outputs[0], warm2.inputs[6])
+        nt.links.new(dusk, warm2.inputs[7])
+        GOLDEN["warm2"] = warm2
+        lp2 = nt.nodes.new("ShaderNodeLightPath")
+        cam_seen = _math(nt, "MAXIMUM", lp2.outputs["Is Camera Ray"], lp2.outputs["Is Transmission Ray"])
+        sel = nt.nodes.new("ShaderNodeMix")
+        sel.data_type = "RGBA"
+        nt.links.new(cam_seen, sel.inputs[0])
+        nt.links.new(warm2.outputs[2], sel.inputs[6])
+        nt.links.new(out, sel.inputs[7])
+        out = sel.outputs[2]
+    nt.links.new(out, nt.nodes["Background"].inputs[0])
     nt.nodes["Background"].inputs["Strength"].default_value = 0.19
     sun = bpy.data.lights.new("sun", "SUN")
     sun.energy = 6.2
@@ -2191,7 +2513,8 @@ def build_dealership():
     box("monitor", (-12.0, 12.9, 0.85), (-11.0, 12.95, 1.45), mat("screen", (0.02, 0.05, 0.1), rough=0.1, emit=0.6, ecol=(0.3, 0.55, 0.9)))
     chair(-11.7, 13.9, math.pi, mat("leather", (0.06, 0.05, 0.05), rough=0.35))
     for k, x in enumerate((-13.9, -9.0)):
-        chair(x, 10.6, math.pi * 0.25 * (1 if k else -1), mat("leather_tan", (0.45, 0.27, 0.15), rough=0.4))
+        if not cc0_prop("mid_century_lounge_chair", (x, 10.6, 0.07), math.pi * 0.25 * (1 if k else -1) + math.pi):
+            chair(x, 10.6, math.pi * 0.25 * (1 if k else -1), mat("leather_tan", (0.45, 0.27, 0.15), rough=0.4))
     build_office_t3()
     box("rug", (-13.8, 10.0, 0.07), (-9.6, 14.8, 0.085), mat("rug", (0.55, 0.5, 0.42), rough=0.95))
     # ---- service bay wing (x 15..33, y 0..16)
@@ -2200,6 +2523,9 @@ def build_dealership():
     box("bay_roof", (15, -0.5, 6.2), (33.5, 16.5, 6.9), clad)
     box("bay_back", (15.3, 15.7, 0), (33, 16, 6.2), mat("block", (0.62, 0.62, 0.6), rough=0.8))
     box("bay_east", (33, 0, 0), (33.3, 16, 6.2), clad)
+    # painted lining inside the bay over the cladding (the scanned floor and HDRI bounce leave dark metal walls gloomy)
+    box("bay_lining_w", (15.6, 0.15, 0.04), (15.64, 15.7, 6.1), white)
+    box("bay_lining_e", (32.96, 0.15, 0.04), (33.0, 15.7, 6.1), white)
     box("bay_ceil", (15.3, 0, 6.1), (33, 16, 6.2), ceiling)
     for x in (19, 24, 29):
         for y in (4, 9, 13):
@@ -2218,6 +2544,9 @@ def build_dealership():
         for d in range(5):
             box("drawer", (x + 0.05, 14.86, 0.1 + d * 0.18), (x + 1.95, 14.9, 0.24 + d * 0.18), mat("chrome", (0.8, 0.8, 0.82), rough=0.15, metal=1.0))
     box("pegboard", (20.8, 15.62, 1.2), (27.5, 15.7, 3.2), mat("peg", (0.65, 0.5, 0.33), rough=0.8))
+    cc0_prop("tool_cart", (22.6, 14.3, 0.04), 0.15)
+    cc0_prop("metal_tool_chest", (27.0, 15.3, 0.04), 0.0, 1.25)
+    cc0_prop("tool_cart", (32.0, 9.0, 0.04), -math.pi / 2)
     rnd = random.Random(3)
     for i in range(22):
         x, z = rnd.uniform(21.0, 27.2), rnd.uniform(1.4, 3.0)
@@ -2250,6 +2579,8 @@ def build_dealership():
 
 
 def planter(x, y):
+    if cc0_prop("potted_plant_01", (x, y, 0.05), yaw=x * 2.3 + y, scale=2.0):
+        return
     pot = mat("pot", (0.12, 0.12, 0.12), rough=0.4)
     cyl("pot", (x, y, 0.45), 0.45, 0.9, pot, r2=0.35)
     leaf = mat("fig", (0.1, 0.28, 0.08), rough=0.6)
@@ -2726,6 +3057,8 @@ def build_site2():
     box("bay2_divider", (6.0, 0.3, 0), (6.25, 12.0, 4.6), block)
     box("bay2_head", (6.25, -0.15, 3.9), (13.0, 0.15, 4.6), white)
     box("bay2_roll", (6.6, -0.3, 3.7), (12.6, 0.0, 3.9), mat("rollup", (0.7, 0.72, 0.75), metal=0.6, rough=0.4))
+    cc0_prop("tool_cart", (12.2, 9.8, 0.04), -math.pi / 2)
+    cc0_prop("metal_tool_chest", (7.2, 11.45, 0.04), 0.0, 1.25)
     text("bay2_txt", "SERVICE", (9.6, -0.2, 4.05), 0.4, mat("bay_txt", (0.95, 0.75, 0.2), emit=1.0))
     yellow = mat("lift", (0.95, 0.72, 0.05), rough=0.4)
     for side in (-1.5, 1.5):
@@ -2832,6 +3165,8 @@ def build_apartment_tiers():
 
 def planter_at(x, y):
     """Planter sitting on the apartment floor."""
+    if cc0_prop("potted_plant_01", (x, y, AZ0 + 0.06), yaw=x * 2.3 + y, scale=1.35):
+        return
     pot = mat("pot", (0.12, 0.12, 0.12), rough=0.4)
     cyl("pot", (x, y, AZ0 + 0.4), 0.35, 0.7, pot, r2=0.28)
     leaf = mat("fig", (0.1, 0.28, 0.08))
@@ -2995,6 +3330,13 @@ def lounge(x, y, yaw):
     c, s_ = math.cos(yaw), math.sin(yaw)
     def at(dx, dy):
         return x + dx * c - dy * s_, y + dx * s_ + dy * c
+    if cc0_prop("sofa_03", (*at(0, 1.35), 0.05), yaw, 0.85):
+        cc0_prop("modern_arm_chair_01", (*at(1.85, 0.1), 0.05), yaw + math.pi / 2)
+        cc0_prop("modern_arm_chair_01", (*at(-1.85, 0.1), 0.05), yaw - math.pi / 2)
+        cc0_prop("modern_coffee_table_02", (x, y, 0.062), yaw)
+        box("brochure", (x - 0.3, y - 0.15, 0.43), (x + 0.0, y + 0.08, 0.44), mat("brochure", (0.9, 0.88, 0.84), rough=0.4))
+        box("rug_show", (x - 2.0, y - 1.2, 0.05), (x + 2.0, y + 1.9, 0.062), mat("rug_show", (0.62, 0.58, 0.52), rough=0.95))
+        return
     sofa(*at(0, 1.25), yaw, 2.2, tan)
     sofa(*at(1.9, 0.1), yaw + math.pi / 2, 0.8, tan)
     box("rug_show", (x - 2.0, y - 1.2, 0.05), (x + 2.0, y + 1.9, 0.062), mat("rug_show", (0.62, 0.58, 0.52), rough=0.95))
@@ -3059,6 +3401,8 @@ def build_showroom_sets():
     lounge(-11.2, 8.2, 0.0)
     counter(-4.8, 8.4, -1.8, 9.2)
     chair(-3.3, 9.9, math.pi, mat("leather_brown", (0.16, 0.08, 0.04), rough=0.35))
+    for x in (-4.2, -2.6):
+        cc0_prop("bar_chair_round_01", (x, 7.95, TZ), 0.3)
     wall_screen(OX0 + 0.22, 2.6, 1.6, 2.0, 1.15, "y", 1, 60)
     wall_screen(OX0 + 0.22, 5.6, 1.6, 2.0, 1.15, "y", 1, 61)
     wall_screen(OX1 - 0.22, 4.0, 1.6, 2.0, 1.15, "y", -1, 62)
@@ -3204,6 +3548,7 @@ def render_view(cam, name, out):
         o.hide_render = name != "lot"
     desk_seat(name == "desk_t1")
     golden_hour(name.startswith("showroom"))
+    hdri_for(name)
     cam.location = pos
     cam.data.lens = lens
     cam.data.clip_end = 5000
@@ -3260,6 +3605,7 @@ def build():
             TIER_COLLECTIONS[key].objects.link(lo)
             if key == "s3" and loc[2] > 7:
                 LOT_HIDE.append(lo)
+    apply_cc0()
 
 
 NIGHT = bool(os.environ.get("NIGHT"))

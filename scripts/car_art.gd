@@ -41,6 +41,11 @@ var shine := true
 ## Three-quarter front view from the 3D models (tools/car_sprites3d.py) instead of the side view.
 var quarter := false
 var _q_paint: Texture2D
+## Lot sprite set (tools/lot_cars3d.py), e.g. "lot_r0": the car rendered nose-in from that lot view's camera. The
+## sprite fills the control exactly (the lot code sizes it to the crop rect), with its baked contact shadow.
+var lot_key := ""
+var _l_paint: Texture2D
+var _l_detail: Texture2D
 var _q_detail: Texture2D
 var _tex: Texture2D
 var _paint: Texture2D
@@ -71,7 +76,20 @@ func set_car(c: Dictionary) -> void:
 	var qd := "res://assets/cars/%s_q_detail.png" % sl
 	_q_paint = load(qp) if ResourceLoader.exists(qp) else null
 	_q_detail = load(qd) if ResourceLoader.exists(qd) else null
+	_l_paint = null
+	_l_detail = null
+	if lot_key != "":
+		var lp := "res://assets/cars/lot/%s_%s_paint.png" % [lot_key, sl]
+		var ld := "res://assets/cars/lot/%s_%s_detail.png" % [lot_key, sl]
+		if ResourceLoader.exists(lp) and ResourceLoader.exists(ld):
+			_l_paint = load(lp)
+			_l_detail = load(ld)
 	queue_redraw()
+
+
+## True when the lot sprite for lot_key was found (set lot_key before set_car).
+func has_lot_sprite() -> bool:
+	return _l_paint != null
 
 
 func _ready() -> void:
@@ -83,6 +101,11 @@ func _ready() -> void:
 
 func _draw() -> void:
 	if car.is_empty():
+		return
+	if _l_paint and _l_detail:
+		var col := paint_for(car)
+		draw_texture_rect(_l_paint, Rect2(Vector2.ZERO, size), false, Color(min(col.r * 1.25, 1.0), min(col.g * 1.25, 1.0), min(col.b * 1.25, 1.0)))
+		draw_texture_rect(_l_detail, Rect2(Vector2.ZERO, size), false)
 		return
 	if quarter and _q_paint and _q_detail:
 		var ts := _q_paint.get_size()

@@ -397,6 +397,11 @@ func _start_game() -> void:
 			Game.tutorial = Game.TUTORIAL.size()
 		for l in Game.listings.slice(0, 3):
 			Game.add_car(l.car, int(Game.value(l.car) * 0.6))
+		while Game.debug_cars > Game.cars.size() and Game.cars.size() < Game.lot_capacity():
+			var dcar := Game.make_car(Game.max_auction_base())
+			Game.add_car(dcar, int(Game.value(dcar) * 0.6))
+		if Game.debug_cars >= 0 and Game.cars.size() > Game.debug_cars:
+			Game.cars = Game.cars.slice(0, Game.debug_cars)
 		lobby.append(Game.make_customer())
 		lobby.append(Game.make_customer())
 		if Game.debug_busy:
@@ -800,8 +805,13 @@ func _park_cars(yard: Control) -> void:
 		b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 		b.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
 		b.pressed.connect(func(): _car_menu(car, b.get_global_mouse_position()))
+		var st: Dictionary = stalls[i]
 		var art := CarArt.new()
 		art.quarter = true
+		# nose-in sprite rendered from this lot's camera in this stall row (tools/lot_cars3d.py), when there is one
+		var lsp := _lot_sprite(lot, st, CarArt.slug(car.get("model", "")))
+		if not lsp.is_empty():
+			art.lot_key = lsp.key
 		art.set_car(car)
 		b.add_child(art)
 		# parked cars darken with the lot at night (the background crossfades to its night render)
@@ -821,7 +831,9 @@ func _park_cars(yard: Control) -> void:
 		# a longer car keeps its tail at the wheel stop, a taller one is centred higher (the sprites are framed on
 		# each car's own length and on 0.42 of its height)
 		var dims: Array = lot.cars.get(CarArt.slug(car.get("model", "")), [ref.length, ref.width, ref.height])
-		var st: Dictionary = stalls[i]
+		if not lsp.is_empty():
+			items.append({"button": b, "art": art, "tag": tag, "rect": lsp.rect, "glow": lsp.glow, "order": int(st.get("order", i)), "pad": [], "hover": false})
+			continue
 		var target: Vector2 = _v2(st.target) + _v2(st.fwd) * (dims[0] - ref.length) / 2.0 + _v2(st.up) * 0.42 * (dims[2] - ref.height)
 		var frame_w: float = st.ppm * Vector2(1.7 * dims[0], 1.15).length() * 36.0 / 50.0
 		# the car's footprint on the ground (centre, half length, half width as image fractions) for its shadow pad
@@ -840,6 +852,16 @@ func _park_cars(yard: Control) -> void:
 		var cover := _bg_cover_rect()
 		var origin := cover.position - pads.global_position
 		for it in items:
+			if it.has("glow") and it.hover:   # a lot sprite carries its own soft shadow: only the hover glow here
+				var gc: Vector2 = origin + it.glow[0] * cover.size
+				var gx: Vector2 = it.glow[1] * cover.size
+				var gy: Vector2 = it.glow[2] * cover.size
+				for k in 4:
+					var ring := PackedVector2Array()
+					for j in 32:
+						var a := TAU * j / 32.0
+						ring.append(gc + (gx * cos(a) + gy * sin(a)) * (1.15 - k * 0.09))
+					pads.draw_colored_polygon(ring, Color(1.0, 0.78, 0.3, 0.1))
 			if it.pad.is_empty():
 				continue
 			var c: Vector2 = origin + it.pad[0] * cover.size
@@ -869,6 +891,8 @@ func _park_cars(yard: Control) -> void:
 	yard.add_child(pads)
 	# a faint mirror image of each car on the asphalt (the same fade as the showroom floor, much weaker)
 	for it in items:
+		if it.has("rect"):
+			continue
 		var r := CarArt.new()
 		r.quarter = true
 		r.set_car(it.art.car)
@@ -923,6 +947,19 @@ func _park_cars(yard: Control) -> void:
 		var origin := cover.position - yard.global_position
 		pads.queue_redraw()
 		for it in items:
+			if it.has("rect"):
+				var fr := Rect2(origin + it.rect.position * cover.size, it.rect.size * cover.size)
+				# the click area is the car body: the crop's shadow margin trimmed off
+				var bd := fr.grow_individual(-fr.size.x * 0.08, -fr.size.y * 0.12, -fr.size.x * 0.08, -fr.size.y * 0.1)
+				it.button.position = bd.position
+				it.button.size = bd.size
+				it.art.position = fr.position - bd.position
+				it.art.size = fr.size
+				var tl: Label = it.tag
+				tl.add_theme_font_size_override("font_size", clampi(roundi(fr.size.x * 0.07), 16, 34))
+				tl.reset_size()
+				tl.position = fr.position - bd.position + fr.size * Vector2(0.5, 0.35) - tl.get_combined_minimum_size() / 2.0
+				continue
 			var w: float = it.frame_w * cover.size.x
 			var frame := Rect2(origin + it.target * cover.size - Vector2(w, w * 0.5625) / 2.0, Vector2(w, w * 0.5625))
 			# the button covers the car body, not the sprite's empty margins, so clicks go to the car you point at
@@ -977,6 +1014,13 @@ func _lot_stalls() -> Dictionary:
 		# a three-quarter car is wider on screen than one angled stall, so cars fill every other stall first (front
 		# row, then back row) and only take the stalls in between once those are full: up to the flagship's 6 cars
 		# nobody overlaps and the cars spread across the whole lot
+		for k in data.stalls.size():
+			data.stalls[k]["idx"] = k
+		data["all"] = data.stalls.duplicate()
+		var lc_path := "res://assets/cars/lot/lotcars_%s.json" % key
+		var lc = load(lc_path) if ResourceLoader.exists(lc_path) else null
+		data["lotcars"] = lc.data if lc is JSON and lc.data is Dictionary else {}
+		data["key"] = key
 		var spread := []
 		for pass_odd in [0, 1]:
 			for row in [0, 1, 2]:
@@ -990,6 +1034,37 @@ func _lot_stalls() -> Dictionary:
 			data.stalls = spread
 		_stall_cache[key] = data
 	return _stall_cache[key]
+
+
+## Where a nose-in lot sprite (tools/lot_cars3d.py) goes for this car in this stall: each stall row's sprites were
+## rendered in one stall of the row (rep) from the lot's camera; the stalls of a row show their car at the same angle,
+## so the sprite moves with the stall's ground point and scales with its pixels per metre. Returns {} when there is
+## no sprite. rect is in image fractions; glow is the footprint ellipse (centre, half axes) for the hover glow.
+func _lot_sprite(lot: Dictionary, st: Dictionary, sl: String) -> Dictionary:
+	var lc: Dictionary = lot.get("lotcars", {})
+	if lc.is_empty() or not st.has("ground"):
+		return {}
+	var row := int(st.get("row", 0))
+	var sp: Dictionary = lc.get("sprites", {}).get("%d/%s" % [row, sl], {})
+	var rep_i := int(lc.get("rep", {}).get(str(row), -1))
+	if sp.is_empty() or rep_i < 0 or rep_i >= lot.all.size():
+		return {}
+	var rep: Dictionary = lot.all[rep_i]
+	var dims: Array = lc.dims.get(sl, [4.7, 1.85, 1.45])
+	var ref: Dictionary = lot.ref_car
+	# the stall json's ground point is a nose-out reference car's centre; a nose-in car's centre sits off it
+	var off: float = float(lc.get("nose_gap", 0.15)) + dims[0] / 2.0 - float(ref.length) / 2.0
+	var anchor_r := _v2(sp.anchor)
+	var anchor := anchor_r + (_v2(st.ground) - _v2(rep.ground)) + (_v2(st.fwd) - _v2(rep.fwd)) * off
+	var k: float = float(st.ppm) / float(rep.ppm)
+	var r: Array = sp.rect
+	var p0 := anchor + (Vector2(r[0], r[1]) - anchor_r) * k
+	var p1 := anchor + (Vector2(r[2], r[3]) - anchor_r) * k
+	var n0 := _v2(st.nose[0])
+	var n1 := _v2(st.nose[1])
+	var gx: Vector2 = _v2(st.fwd) * (dims[0] / 2.0 + 0.3)
+	var gy: Vector2 = (n0 - n1) / 2.0 * (dims[1] / float(ref.width)) * 1.15
+	return {"key": "%s_r%d" % [lot.key, row], "rect": Rect2(p0, p1 - p0), "glow": [anchor, gx, gy]}
 
 
 func _car_art(car: Dictionary, sz: Vector2) -> CarArt:
