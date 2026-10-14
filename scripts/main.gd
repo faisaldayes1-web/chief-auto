@@ -974,6 +974,20 @@ func _lot_stalls() -> Dictionary:
 			for i in 10:
 				data.stalls.append({"target": [0.47 + (i % 5) * 0.11, 0.8 - floori(i / 5.0) * 0.12], "fwd": [0, 0], "up": [0, 0],
 					"ppm": 0.034 - floori(i / 5.0) * 0.008, "order": 9 - i})
+		# a three-quarter car is wider on screen than one angled stall, so cars fill every other stall first (front
+		# row, then back row) and only take the stalls in between once those are full: up to the flagship's 6 cars
+		# nobody overlaps and the cars spread across the whole lot
+		var spread := []
+		for pass_odd in [0, 1]:
+			for row in [0, 1, 2]:
+				var k := 0
+				for st in data.stalls:
+					if int(st.get("row", 0)) == row:
+						if k % 2 == pass_odd:
+							spread.append(st)
+						k += 1
+		if spread.size() == data.stalls.size():
+			data.stalls = spread
 		_stall_cache[key] = data
 	return _stall_cache[key]
 
