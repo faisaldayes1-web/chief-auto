@@ -364,14 +364,14 @@ func _screen_title() -> void:
 	set_bg("lot", 0.5)
 	var center := CenterContainer.new()
 	content.add_child(center)
-	var v := UI.vbox(10)
+	var v := UI.vbox(14)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(v)
 	var logo := TextureRect.new()
 	logo.texture = LOGO
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(320, 340)
+	logo.custom_minimum_size = Vector2(380, 420)
 	v.add_child(logo)
 	var has_save := Game.day > 1 or Game.cars.size() > 0 or Game.seen_intro
 	if has_save:
@@ -382,12 +382,26 @@ func _screen_title() -> void:
 	else:
 		v.add_child(UI.gold_button("Start", _start_game, 320))
 	v.add_child(UI.button("Leaderboard", _leaderboard, 320))
-	v.add_child(UI.button("Settings", func(): pause_menu.open(true), 320))
-	if Settings.is_desktop():
-		v.add_child(UI.button("Quit", func(): get_tree().quit(), 320))
 	var tag := UI.label("v%s · %s, Tewport Beach" % [Settings.VERSION, Game.dealer_name] if has_save else "v%s · Tewport Beach" % Settings.VERSION, 14, UI.MUTED)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tag)
+	# settings and quit sit in the corner, so the main column (and START) keep their place
+	var layer := Control.new()
+	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(layer)
+	var corner := UI.hbox(10)
+	corner.anchor_left = 1.0
+	corner.anchor_top = 1.0
+	corner.anchor_right = 1.0
+	corner.anchor_bottom = 1.0
+	corner.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	corner.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	corner.offset_right = -24
+	corner.offset_bottom = -24
+	corner.add_child(UI.button("Settings", func(): pause_menu.open(true), 140, 44))
+	if Settings.is_desktop():
+		corner.add_child(UI.button("Quit", func(): get_tree().quit(), 110, 44))
+	layer.add_child(corner)
 
 
 func _start_game() -> void:
