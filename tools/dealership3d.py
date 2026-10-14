@@ -1607,6 +1607,24 @@ def build_site3_front():
     for i, (x, y) in enumerate(((-22, -3.9), (-19.5, 6.0), (-18.5, 15.0), (36.0, -2.0), (44, 6), (-6.0, 21.0), (8.0, 20.0), (22.0, 20.5))):
         palm((x, y, 0), h=9 + (i % 3) * 1.4, seed=i)
     light_pole(-22.5, -4.2, 8.0, ((0, -1),))
+    # the corner west of the showroom: a raised planting bed around the light pole and corner palm, a monument sign
+    # at the lot entrance, and a planted strip along the showroom's blank west wall
+    box("bed3", (-25.0, -10.4, 0), (-18.4, -3.1, 0.42), concrete, bevel=0.04)
+    box("bed3_soil", (-24.85, -10.25, 0.38), (-18.55, -3.25, 0.41), mat("bark_mulch", (0.16, 0.1, 0.06), rough=0.95))
+    stone = block_mat("stone3m", (0.7, 0.66, 0.6), (0.76, 0.72, 0.66), (0.6, 0.58, 0.54), (0.6, 0.3), split=0.2)
+    box("monument_base", (-23.6, -10.0, 0.4), (-19.4, -9.2, 0.95), stone, bevel=0.03)
+    box("monument_panel", (-23.3, -9.85, 0.95), (-19.7, -9.35, 2.15), mat("monument_dark", (0.05, 0.06, 0.08), rough=0.35, metal=0.3), bevel=0.02)
+    box("monument_cap", (-23.45, -9.95, 2.15), (-19.55, -9.25, 2.25), stone)
+    text("monument_txt", "OC CHIEF AUTO", (-21.5, -9.87, 1.42), 0.48, mat("monument_white", (0.97, 0.97, 0.95), emit=0.6, ecol=(1, 1, 1)), extrude=0.01)
+    box("monument_line", (-22.9, -9.87, 1.28), (-20.1, -9.86, 1.31), mat("monument_red", (0.75, 0.05, 0.06), rough=0.4))
+    for k, (x, y) in enumerate(((-24.2, -9.6), (-18.9, -9.5), (-24.3, -6.5), (-19.2, -7.0), (-20.8, -5.2), (-24.0, -3.9), (-19.0, -3.8))):
+        shrub(x, y, 0.65 + (k % 3) * 0.12, seed=40 + k, z=0.4)
+    for k, (x, y) in enumerate(((-22.6, -8.3), (-20.2, -8.4), (-23.5, -5.0))):
+        agave(x, y, 0.55, z=0.4, seed=60 + k)
+    box("bed3w", (-18.2, -2.9, 0), (-16.9, 14.0, 0.4), concrete, bevel=0.03)
+    box("bed3w_soil", (-18.1, -2.8, 0.36), (-17.0, 13.9, 0.39), mat("bark_mulch", (0.16, 0.1, 0.06), rough=0.95))
+    for k in range(9):
+        shrub(-17.55, -2.2 + k * 1.85, 0.6, h=1.3 + (k % 2) * 0.4, seed=70 + k, z=0.38)
     pole_sign(19.0, -8.0, h=10.0, w=4.0, sh=3.2)
     # bunting along the showroom front between two poles, under the fascia and behind the parked cars (the game
     # draws the cars over the render, so nothing may stand between the lot camera and a stall)
@@ -1620,7 +1638,8 @@ def build_site3_front():
 
 def build_grand_opening():
     """Bunting, balloon arch and clusters, and a GRAND OPENING banner under the fascia sign."""
-    t0, t1 = flag_pole(-21.0, -4.4, 6.4), flag_pole(13.5, -4.4, 6.4)
+    # the left end ties to the corner light pole (no extra pole standing alone on the concrete)
+    t0, t1 = Vector((-22.42, -4.12, 6.4)), flag_pole(13.5, -4.4, 6.4)
     bunting_line(t0, t1, sag=0.9)
     bunting_line(t1, (16.5, -2.6, 6.6), sag=0.15)
     bunting_line((16.0, -2.7, 6.1), (33.4, -0.7, 6.2), sag=0.5)
@@ -1636,11 +1655,12 @@ def build_grand_opening():
             sphere("balloon", (x + rnd.uniform(-0.18, 0.18), -4.45 + rnd.uniform(-0.15, 0.15), z + rnd.uniform(-0.18, 0.18)),
                    (0.3, 0.3, 0.34), cols[(k + j) % 4], seg=16)
     # clusters on strings tied to the flag poles and the planters
-    for bx, by in ((-21.0, -4.4), (13.5, -4.4), (-9.0, -4.0), (9.0, -4.0), (27.0, -4.0)):
+    # (the first two are tied to the ends of the entrance monument sign, see build_site3_front)
+    for bx, by, bz in ((-23.4, -9.6, 2.25), (-19.6, -9.6, 2.25), (13.5, -4.4, 0.6), (-9.0, -4.0, 0.6), (9.0, -4.0, 0.6), (27.0, -4.0, 0.6)):
         for j in range(7):
-            top = Vector((bx + rnd.uniform(-0.9, 0.9), by + rnd.uniform(-0.6, 0.4), rnd.uniform(3.2, 4.4)))
+            top = Vector((bx + rnd.uniform(-0.9, 0.9), by + rnd.uniform(-0.6, 0.4), bz - 0.6 + rnd.uniform(3.2, 4.4) * (0.75 if bz > 1 else 1)))
             sphere("balloon", top, (0.32, 0.32, 0.38), cols[j % 4], seg=16)
-            tube("balloon_string", [Vector((bx, by, 0.6)), (Vector((bx, by, 0.6)) + top) / 2 + Vector((0.08, 0, 0)), top - Vector((0, 0, 0.36))],
+            tube("balloon_string", [Vector((bx, by, bz)), (Vector((bx, by, bz)) + top) / 2 + Vector((0.08, 0, 0)), top - Vector((0, 0, 0.36))],
                  0.008, mat("rope", (0.12, 0.12, 0.12), rough=0.6), sides=4)
     red = mat("banner_red", (0.68, 0.04, 0.05), rough=0.6)
     box("banner", (-2.8, -2.95, 4.45), (5.8, -2.88, 5.55), red)
@@ -2032,6 +2052,15 @@ def build_coast():
             continue
         villa(x, y, h, rnd.uniform(12, 22), rnd.uniform(10, 14), rnd, walls, tiles)
         dark.cluster((x - 4, y - 4, h + 2), 3.5, 3.5, 3.0, 40, 1.6, rnd)
+    # a garden tree on the slope screens the villa roofs that otherwise peek through the palms right above the
+    # flagship's roof in the lot view (its own random stream, so the rest of the hillside stays as it was)
+    grnd = random.Random(5150)
+    h0, _ = tz(-7.0, 50.0)
+    for cx, cy, cz, rx, rz in ((-7.5, 50.0, 12.8, 5.5, 3.2), (-11.0, 51.5, 11.8, 4.5, 3.0), (-4.0, 50.5, 11.5, 4.5, 3.2), (-6.5, 52.5, 14.6, 4.0, 2.0),
+                               (-7.0, 49.0, max(h0 + 4.0, 9.0), 6.0, 3.5)):
+        dark.cluster((cx, cy, cz), rx, 3.0, rz, 180, 1.4, grnd)
+    tube("garden_tree_trunk", [Vector((-7.0, 49.5, h0 - 0.5)), Vector((-7.2, 49.8, 11.0))], 0.35,
+         bark_mat("garden_bark", (0.2, 0.16, 0.12), (0.32, 0.27, 0.2)), sides=8)
     for c in (leaf, dark, bouga, pampas):
         c.flush()
     build_beach_shops(pts, frames, rnd)
