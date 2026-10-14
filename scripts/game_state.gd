@@ -352,6 +352,7 @@ var debug_level := 0
 var debug_tier := 0
 var debug_screen := ""
 var debug_name := ""              # &name=...: a dealer name (long-name screenshots)
+var debug_cars := -1             # &cars=N: start with N cars on the lot (up to the lot's capacity)
 var debug_busy := false           # &busy: a full lot, staff and a busy showroom
 var debug_desk := false           # &desk=1: a furnished desk with collectibles (screenshots of the desk view)
 var debug_broke := false          # &broke: start deep in the red (tests the closing-down screen)
@@ -383,6 +384,9 @@ func _ready() -> void:
 		if nm >= 0:
 			debug_name = query.substr(nm + 5).split("&")[0].uri_decode().replace("+", " ")
 		debug_busy = query.find("busy") >= 0
+		var dc := query.find("cars=")
+		if dc >= 0:
+			debug_cars = int(query.substr(dc + 5).split("&")[0])
 		var tr := query.find("tier=")
 		if tr >= 0:
 			debug_tier = int(query.substr(tr + 5).split("&")[0])
