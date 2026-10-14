@@ -477,46 +477,22 @@ func _polish(n: Node) -> void:
 		var mi := x as MeshInstance3D
 		var key := String(mi.name).trim_prefix("part_")
 		var mo := mi.material_override
-		if mo is ShaderMaterial:
+		if mo is ShaderMaterial and (mo as ShaderMaterial).shader == Car3DView.PAINT_SHADER:
 			mo.set_shader_parameter("rough_v", 0.16)
 			mo.set_shader_parameter("metallic_v", 0.55)
 			mo.set_shader_parameter("env_map", env)
 			mo.set_shader_parameter("env_strength", env_k * 0.9)
-		elif key == "glass" and mo is StandardMaterial3D:
-			if env_k > 0.0 and env:
-				var gs := ShaderMaterial.new()
-				gs.shader = GLASS_SHADER
-				gs.set_shader_parameter("tint", Color(0.015, 0.02, 0.025, 0.82))
-				gs.set_shader_parameter("env_map", env)
-				gs.set_shader_parameter("env_strength", env_k)
-				mi.material_override = gs
-			else:
-				var g: StandardMaterial3D = mo.duplicate()
-				g.albedo_color = Color(0.015, 0.02, 0.025, 0.8)
-				g.roughness = 0.02
-				g.metallic = 0.5
-				mi.material_override = g
-		elif (key.begins_with("headlight") or key.begins_with("taillight")) and mo is StandardMaterial3D:
-			mo.emission_energy_multiplier = 0.9
 		elif mo is StandardMaterial3D and (mo as StandardMaterial3D).metallic >= 0.8 and env_k > 0.0:
 			mi.material_override = _env_metal(mo, 0.12, env, env_k)   # chrome grille, handles, mirrors, trim
-		elif key.begins_with("wheel_"):
-			for i in mi.get_surface_override_material_count():
-				var m := mi.get_surface_override_material(i) as StandardMaterial3D
-				var base: Material = mi.mesh.surface_get_material(i)
-				var nm := String(base.resource_name) if base else ""
-				if m == null:
-					continue
-				if nm == "rim":
-					m.metallic = 1.0
-					m.roughness = minf(m.roughness, 0.18)
-					m.metallic_specular = 0.8
-					if env_k > 0.0 and env:
-						mi.set_surface_override_material(i, _env_metal(m, m.roughness, env, env_k))
-				elif nm == "rubber":
-					m.albedo_color = Color(0.035, 0.035, 0.037)
-					m.roughness = 0.82
-					m.metallic = 0.0
+		# the garage styled glass, lamps, rims and chrome to reflect the workshop: point them at the hall
+		for i in mi.get_surface_override_material_count():
+			var sm := mi.get_surface_override_material(i) as ShaderMaterial
+			if sm == null or not sm.has_meta("env_k"):
+				continue
+			sm.set_shader_parameter("env_map", env)
+			sm.set_shader_parameter("env_strength", env_k * float(sm.get_meta("env_k")))
+			if key == "glass":
+				sm.set_shader_parameter("tint", Color(0.015, 0.02, 0.025, 0.8))
 
 
 ## A StandardMaterial3D's metal look rebuilt on the env-map shader (keeps its colour and texture).

@@ -1,6 +1,7 @@
 // Car paint with damage you can see: rust, scratches, dents and road grime, all driven per panel.
 shader_type spatial;
-render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+// cull_disabled: a few source models have panels with flipped faces, which vanish with back-face culling
+render_mode blend_mix, depth_draw_opaque, cull_disabled, diffuse_burley, specular_schlick_ggx;
 #include "res://shaders/env_reflect.gdshaderinc"
 
 uniform vec3 paint_color : source_color = vec3(0.6);
@@ -15,6 +16,9 @@ uniform float seed = 0.0;
 // hand-rolled reflections for the web build (no sky radiance there); 0 where the renderer has real ones
 uniform sampler2D env_map : source_color, filter_linear_mipmap, repeat_enable, hint_default_black;
 uniform float env_strength = 0.0;
+// the compatibility renderer's clear coat lobe is broad and washes the paint out; the web build turns it down
+// and draws its sharp reflection from env_map instead
+uniform float clearcoat_k = 1.0;
 
 varying vec3 lp;
 
@@ -51,9 +55,18 @@ float fbm(vec3 p) {
 
 void fragment() {
 	vec3 p = lp + vec3(seed * 7.13, seed * 3.7, seed * 1.9);
-	vec3 col = paint_color;
+	// real paint tops out around 80% reflectance; brighter reads as a flat, blown-out cartoon white
+	vec3 col = min(paint_color, vec3(0.8));
 	float r = rough_v;
 	float m = metallic_v;
+
+	// metallic flake: a fine grain in colour and gloss that glitters in the highlights
+	float fl = hash(floor(lp * 420.0));
+	col *= 1.0 + (fl - 0.5) * 0.08 * m;
+	r = clamp(r + (fl - 0.5) * 0.18 * m, 0.04, 1.0);
+	// colour flop: metallic paint deepens towards the silhouette and keeps its colour face-on
+	float ndv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+	col *= mix(1.0 - 0.45 * m, 1.0, smoothstep(0.0, 0.7, ndv));
 
 	// road grime low on the body
 	float low = 1.0 - smoothstep(0.15, 0.75, lp.y);
@@ -91,7 +104,7 @@ void fragment() {
 	EMISSION = highlight.rgb * highlight.a * 0.35;
 	if (env_strength > 0.0) {
 		// clear coat mirror (white, strongest at grazing angles) over the metallic base (tinted, blurred by flake)
-		float cc = 0.85 * clean;
+		float cc = 0.6 * clean;
 		vec3 sharp = env_sample(env_map, NORMAL, VIEW, INV_VIEW_MATRIX, 0.04);
 		vec3 base = env_sample(env_map, NORMAL, VIEW, INV_VIEW_MATRIX, r);
 		float f = env_fresnel(NORMAL, VIEW, 0.04);
@@ -99,7 +112,9 @@ void fragment() {
 	}
 	METALLIC = m;
 	ROUGHNESS = r;
+	// the base coat's own highlight sits under the clear coat; full strength it washes pale paint out to white
+	SPECULAR = 0.3;
 	// glossy clear coat over the paint: gone where it has rusted or been scratched through, dulled by grime
-	CLEARCOAT = 0.85 * clean;
+	CLEARCOAT = 0.85 * clean * clearcoat_k;
 	CLEARCOAT_ROUGHNESS = mix(0.04, 0.5, max(dirt * low, dent * 0.3));
 }
