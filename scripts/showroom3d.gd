@@ -218,7 +218,7 @@ func _floor_material() -> Material:
 	m.set_shader_parameter("albedo_tex", load(TEX % ["large_floor_tiles_02", "Diffuse"]))
 	m.set_shader_parameter("normal_tex", load(TEX % ["large_floor_tiles_02", "nor_gl"]))
 	m.set_shader_parameter("rough_tex", load(TEX % ["large_floor_tiles_02", "Rough"]))
-	m.set_shader_parameter("tint", Color(1.3, 1.27, 1.22))
+	m.set_shader_parameter("tint", Color(1.55, 1.5, 1.42))
 	m.set_shader_parameter("tile", 3.6)
 	m.set_shader_parameter("rough_mul", 0.3)
 	m.set_shader_parameter("normal_depth", 0.45)
@@ -377,7 +377,7 @@ void fragment() {
 	for p in [[Vector3(-10.4, 0, -6.9), 20.0], [Vector3(10.8, 0, -7.0), 140.0], [Vector3(10.8, 0, 6.2), 250.0]]:
 		_prop("pachira_aquatica_01", p[0], p[1], 2.3)
 	for p in [[Vector3(-1.0, 0, -7.2), 0.0], [Vector3(-10.4, 0, 5.5), 70.0], [Vector3(5.2, 0, -7.2), 200.0]]:
-		_prop("potted_plant_01", p[0], p[1], 1.5)
+		_prop("pachira_aquatica_01", p[0], p[1], 1.5)
 	_nav = NavigationRegion3D.new()
 	_vp.add_child(_nav)
 

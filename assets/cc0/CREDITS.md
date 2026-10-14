@@ -13,7 +13,7 @@ Everything in this folder is from [Poly Haven](https://polyhaven.com) and releas
 | textures/white_stucco_* | [White Stucco](https://polyhaven.com/a/white_stucco) | Ceiling, side wall |
 | textures/marble_01_* | [Marble 01](https://polyhaven.com/a/marble_01) | Counter top |
 | models/sofa_02, modern_arm_chair_01, modern_coffee_table_01, bar_chair_round_01, modern_ceiling_lamp_01 | Poly Haven models of the same names | Showroom lounge, counter stools, pendants |
-| models/pachira_aquatica_01, potted_plant_01, calathea_orbifolia_01 | Poly Haven models of the same names | Showroom planting |
+| models/pachira_aquatica_01, calathea_orbifolia_01 | Poly Haven models of the same names | Showroom planting |
 
 The full 2k/4k sources (more textures, HDRIs and models for the Blender background renders) are in the project's
 shared folder under chief-auto/cc0/.
