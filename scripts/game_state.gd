@@ -175,9 +175,9 @@ const ADS := [
 const DEALERSHIPS := [
 	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.9, "max_car": 50000,
 		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains, and auctions won't send you anything too fancy."},
-	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 2, "budget": 0.96, "max_car": 110000,
+	{"tier": 2, "name": "Street Showroom", "price": 75000, "level": 3, "rent": 4500, "cars": 4, "walkins": 2, "budget": 0.96, "max_car": 110000,
 		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, better budgets, pricier cars at auction, more showroom upgrades."},
-	{"tier": 3, "name": "Harbour Flagship", "price": 185000, "level": 6, "rent": 15000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
+	{"tier": 3, "name": "Harbour Flagship", "price": 350000, "level": 8, "rent": 25000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
 		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
 ]
 
@@ -489,6 +489,7 @@ func add_xp(amount: int) -> bool:
 		xp -= xp_to_next()
 		level += 1
 		leveled = true
+		Sfx.play("levelup")
 	emit_signal("changed")
 	return leveled
 
@@ -1306,6 +1307,7 @@ func buy_listing_now(l: Dictionary) -> String:
 		return "Not enough money."
 	l.sold = true
 	l.winner = "you"
+	Sfx.play("gavel")
 	l.current = int(l.buy_now)
 	l.my_bid = int(l.buy_now)
 	add_car(l.car, int(l.buy_now))
@@ -1366,6 +1368,8 @@ func close_auction(l: Dictionary) -> Array:
 	if l.winner == "":
 		l.winner = "no sale"
 		return []
+	if l.winner == "you":
+		Sfx.play("gavel")
 	if l.winner != "you":
 		if int(l.get("my_bid", 0)) > 0:
 			return [{"text": "%s won the %s for %s." % [l.winner, l.car.model, money_str(int(l.current))], "good": false}]
@@ -1533,9 +1537,16 @@ func save_game() -> void:
 	var data := {"version": 7}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
-	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if f:
-		f.store_string(JSON.stringify(data))
+	# write a temp file and swap it in, so a crash or power cut mid-write never leaves a half save
+	var tmp := SAVE_PATH + ".tmp"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		return
+	f.store_string(JSON.stringify(data))
+	f.close()
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.copy_absolute(SAVE_PATH, SAVE_PATH + ".bak")
+	DirAccess.rename_absolute(tmp, SAVE_PATH)
 
 
 func load_game() -> bool:
@@ -1545,6 +1556,8 @@ func load_game() -> bool:
 	if f == null:
 		return false
 	var data = JSON.parse_string(f.get_as_text())
+	if typeof(data) != TYPE_DICTIONARY and FileAccess.file_exists(SAVE_PATH + ".bak"):
+		data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH + ".bak"))   # damaged save: use the previous night's
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 5:   # the economy changed in 5; older saves start over
 		return false
 	new_game()
