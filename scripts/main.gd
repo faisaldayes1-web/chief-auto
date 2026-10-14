@@ -3853,18 +3853,12 @@ func _lobby_customer_panel(c: Dictionary) -> void:
 		if stage_s == "negotiate" or stage_s == "finance":
 			v.add_child(UI.gold_button("Back to the deal desk", func(): _open_customer(c), 0, 42))
 		else:
-			v.add_child(UI.gold_button("Greet and assist", func(): _open_customer(c), 0, 42))
+			v.add_child(UI.gold_button("Greet and make the sale", func(): _sale_game(c, "pitch"), 0, 42))
 			var g := UI.hbox(6)
-			var td := UI.button("Test drive", func():
-				_open_customer(c)
-				if not _cust_car().is_empty() and not "test_drive" in customer.get("used", []):
-					_pitch("test_drive"), 0, 38)
+			var td := UI.button("Test drive", func(): _sale_game(c, "pitch", "test_drive"), 0, 38)
 			td.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			g.add_child(td)
-			var tn := UI.button("Talk numbers", func():
-				_open_customer(c)
-				if not _cust_car().is_empty():
-					_start_negotiation(), 0, 38)
+			var tn := UI.button("Talk numbers", func(): _sale_game(c, "haggle"), 0, 38)
 			tn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			g.add_child(tn)
 			v.add_child(g)
@@ -4168,6 +4162,9 @@ func _handoff_chance(c: Dictionary, s: Dictionary) -> float:
 	p += (Game.skill(s, "rapport") - 50) / 500.0 * (1.0 - Game.BUYER_TYPES[c.type].tolerance + 0.5)
 	if c.type == "lowballer":
 		p -= 0.1
+	# warming them up in the sale minigame before the hand-off helps (or hurts) the closer
+	if c.has("interest"):
+		p += (float(c.interest) - 40.0) / 300.0
 	if c.type == "whale" or c.get("referral", false):
 		p += 0.08
 	match s.trait:
@@ -4178,6 +4175,21 @@ func _handoff_chance(c: Dictionary, s: Dictionary) -> float:
 		"VIP Relations":
 			if c.type in ["whale", "influencer", "local"]: p += 0.1
 	return clamp(p, 0.03, 0.95)
+
+
+## Walk-ins lead into the sale minigame (scripts/sale_game.gd): pitch cards, then the price needle. A deal goes on to
+## the finance desk and paperwork below. `first_card` plays a card straight away (the panel's Test drive button).
+func _sale_game(c: Dictionary, phase := "pitch", first_card := "") -> void:
+	_open_customer(c)
+	if customer.is_empty() or _cust_car().is_empty() or str(customer.get("stage", "")) != "browse":
+		return
+	UI.clear(overlay)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	var sg := SaleGame.new()
+	overlay.add_child(sg)
+	sg.setup(self, customer, _cust_car(), phase)
+	if first_card != "" and phase == "pitch" and not first_card in customer.used:
+		sg._play(first_card)
 
 
 func _open_customer(c: Dictionary) -> void:
@@ -4444,7 +4456,7 @@ func _actions_browse(r: Control) -> void:
 	_act(g, "Show the history report", "Hiding bad history risks a lawsuit", _pitch.bind("history"), "history" in used)
 	_act(g, "Throw in extras ($300)", "Floor mats and oil changes", _pitch.bind("extras"), "extras" in used)
 	var row := UI.hbox(6)
-	var talk := UI.gold_button("Talk numbers", func(): _start_negotiation(), 200, 44)
+	var talk := UI.gold_button("Make the sale", func(): _sale_game(c, "pitch"), 200, 44)
 	row.add_child(talk)
 	for s in Game.staff:
 		var free: bool = s.get("busy_until", 0.0) <= Game.clock or s.get("busy_day", 0) != Game.day

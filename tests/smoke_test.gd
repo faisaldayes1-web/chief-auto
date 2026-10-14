@@ -15,7 +15,7 @@ func check(ok: bool, what: String) -> void:
 func _initialize() -> void:
 	G = root.get_node("Game")
 	# every game script must parse (a typo in main.gd otherwise only shows up as a grey screen in the browser)
-	for path in ["res://scripts/main.gd", "res://scripts/ui.gd", "res://scripts/car3d_view.gd", "res://scripts/scene_art.gd", "res://scripts/person_art.gd", "res://scripts/car_art.gd", "res://scripts/world_look.gd"]:
+	for path in ["res://scripts/main.gd", "res://scripts/ui.gd", "res://scripts/car3d_view.gd", "res://scripts/scene_art.gd", "res://scripts/person_art.gd", "res://scripts/car_art.gd", "res://scripts/world_look.gd", "res://scripts/sale_game.gd"]:
 		var scr: GDScript = load(path)
 		check(scr != null and scr.can_instantiate(), "%s parses" % path)
 	G.new_game()
@@ -145,5 +145,27 @@ func _initialize() -> void:
 	opens[1].leader = ""
 	check(G.place_bid(opens[0]) == "", "first bid placed")
 	check(G.place_bid(opens[1]) != "", "second bid refused: cash already committed")
+	# sale minigame: a buyer's favourite card lifts interest more than a neutral one; repair quality matters
+	G.new_game()
+	var SG: GDScript = load("res://scripts/sale_game.gd")   # loaded late: it needs the Game autoload
+	var sc: Dictionary = G.make_car(30000)
+	for part in sc.parts:
+		sc.parts[part] = 95
+	sc.hidden = {}
+	var cn := {"type": "nerd", "interest": 40.0, "patience": 1.0, "happiness": 0.5, "finance": false, "used": []}
+	SG.play("features", cn, sc)
+	var good_gain: float = cn.interest - 40.0
+	var sc2: Dictionary = sc.duplicate(true)
+	for part in sc2.parts:
+		sc2.parts[part] = 50
+	var cn2 := {"type": "nerd", "interest": 40.0, "patience": 1.0, "happiness": 0.5, "finance": false, "used": []}
+	SG.play("features", cn2, sc2)
+	check(good_gain > cn2.interest - 40.0, "better repairs sell features harder (%.1f vs %.1f)" % [good_gain, cn2.interest - 40.0])
+	var cb := {"type": "lowballer", "interest": 40.0, "patience": 1.0, "happiness": 0.5, "finance": false, "used": []}
+	check(SG.play("urgency", cb, sc).backfire and cb.happiness < 0.5, "urgency backfires on a lowballer")
+	var ch := {"offer": 20000, "max_price": 24000, "threshold": 26000}
+	check(SG.lock(ch, 27000, 1) == "storm", "past the walkout line storms out")
+	check(SG.lock(ch, 25000, 1) == "counter", "amber zone counters")
+	check(SG.lock(ch, 23000, SG.SWINGS) == "deal", "green zone on the last swing closes")
 	print("smoke test: %s" % ("OK" if fails == 0 else "%d failures" % fails))
 	quit(1 if fails > 0 else 0)
