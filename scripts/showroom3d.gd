@@ -21,6 +21,10 @@ const SKY_HDR := "res://assets/cc0/sky/beach_1k.hdr"            # same place as 
 const ENV_TEX := "res://assets/cc0/sky/showroom_env.jpg"        # equirect of the hall + view, for web reflections
 const TEX := "res://assets/cc0/textures/%s_%s.jpg"             # Poly Haven maps: <name>_Diffuse / _nor_gl / _Rough
 const PROPS := "res://assets/cc0/models/%s/%s.gltf"
+const BAKE_INDEX := "res://assets/bake/hall_index.json"         # UV2 meshes of the hall baked in Cycles
+const BAKE_LIGHTMAP := "res://assets/bake/hall_lightmap.jpg"   # their lighting (0.5 = neutral)
+const BAKE_K := 0.7     # how much of the floor lightmap to use
+const BAKE_WALL := 1.7  # walls and ceiling: albedo gain under the lightmap multiply
 const SURFACE_SHADER := preload("res://shaders/env_surface.gdshader")
 const GLASS_SHADER := preload("res://shaders/env_glass.gdshader")
 const FLOOR_SHADER := preload("res://shaders/env_floor.gdshader")
@@ -69,6 +73,7 @@ func _init() -> void:
 	add_child(_overlay)
 	_build_env()
 	_build_room()
+	_apply_bake()
 	_cam = Camera3D.new()
 	_cam.fov = 52
 	_vp.add_child(_cam)
@@ -225,6 +230,44 @@ func _floor_material() -> Material:
 	m.set_shader_parameter("env_map", _env_tex())
 	m.set_shader_parameter("env_strength", _env_strength() * 0.8)
 	return m
+
+
+## Swaps the hall's floor, ceiling, beams, walls and desk for the same shapes with a lightmap UV (exported by
+## tests/_export_hall.tscn, baked in Blender Cycles) and multiplies in the baked shadows and bounce light.
+## Matches by position and size, so a moved or resized box just stays unbaked.
+func _apply_bake() -> void:
+	if not FileAccess.file_exists(BAKE_INDEX) or not ResourceLoader.exists(BAKE_LIGHTMAP):
+		return
+	var index = JSON.parse_string(FileAccess.get_file_as_string(BAKE_INDEX))
+	if typeof(index) != TYPE_ARRAY:
+		return
+	var lm: Texture2D = load(BAKE_LIGHTMAP)
+	for c in _vp.get_children():
+		var mi := c as MeshInstance3D
+		if mi == null or mi.mesh == null:
+			continue
+		var size := mi.mesh.get_aabb().size
+		for e in index:
+			var o := Vector3(e.origin[0], e.origin[1], e.origin[2])
+			var sz := Vector3(e.size[0], e.size[1], e.size[2])
+			var dv := (size - sz).abs()
+			if mi.position.distance_to(o) > 0.02 or maxf(dv.x, maxf(dv.y, dv.z)) > 0.05:
+				continue
+			mi.mesh = load(e.res)
+			var m := mi.material_override
+			if m is ShaderMaterial:
+				m.set_shader_parameter("lightmap", lm)
+				m.set_shader_parameter("lightmap_k", BAKE_K)
+			elif m is StandardMaterial3D:
+				var d := (m as StandardMaterial3D).duplicate() as StandardMaterial3D
+				d.detail_enabled = true
+				d.detail_uv_layer = BaseMaterial3D.DETAIL_UV_2
+				d.detail_blend_mode = BaseMaterial3D.BLEND_MODE_MUL
+				d.detail_albedo = lm
+				var a := d.albedo_color
+				d.albedo_color = Color(a.r * BAKE_WALL, a.g * BAKE_WALL, a.b * BAKE_WALL, a.a)   # 0.5 in the lightmap is about neutral
+				mi.material_override = d
+			break
 
 
 ## A soft dark ellipse on the floor under a car (stands in for the shadow map the web build can't afford).

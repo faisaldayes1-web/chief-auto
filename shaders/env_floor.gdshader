@@ -13,6 +13,9 @@ uniform float rough_mul = 0.35;
 uniform float normal_depth = 0.5;
 uniform sampler2D env_map : source_color, filter_linear_mipmap, repeat_enable, hint_default_black;
 uniform float env_strength = 1.0;
+// baked Cycles lighting on UV2 (tools: tests/_extract_bake.gd); 0.5 is neutral, so it is applied x2
+uniform sampler2D lightmap : source_color, filter_linear, hint_default_white;
+uniform float lightmap_k = 0.0;
 
 varying vec3 wp;
 void vertex() {
@@ -22,6 +25,7 @@ void vertex() {
 void fragment() {
 	vec2 uv = wp.xz / tile;
 	ALBEDO = texture(albedo_tex, uv).rgb * tint;
+	ALBEDO *= mix(vec3(1.0), texture(lightmap, UV2).rgb * 2.0, lightmap_k);
 	float r = clamp(texture(rough_tex, uv).r * rough_mul, 0.02, 1.0);
 	ROUGHNESS = r;
 	NORMAL_MAP = texture(normal_tex, uv).rgb;
