@@ -74,6 +74,10 @@ def paint_mat():
 def render_car(slug, out, cam, ground):
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=os.path.join(CARS, slug + ".glb"))
+    for m in bpy.data.materials:   # render backfaces: single-sided doors and panels must not show see-through holes
+        m.use_backface_culling = False
+        if hasattr(m, "use_backface_culling_shadow"):
+            m.use_backface_culling_shadow = False
     new = [o for o in bpy.data.objects if o not in before]
     meshes = [o for o in new if o.type == "MESH"]
     paint = [o for o in meshes if o.name.startswith(PAINT_PARTS)]

@@ -127,7 +127,7 @@ def noise_mat(name, c1, c2, scale, rough, detail=6, bump=0.0, metal=0.0, veins=F
 # ---------------------------------------------------------------- CC0 scanned materials and props (Poly Haven)
 # Real photo-scanned textures replace the procedural asphalt, concrete, walls, roof tiles, sand, grass, floors and
 # wood (apply_cc0 swaps them in by material name after the scene is built). Each is a Principled BSDF fed by the
-# colour, roughness and OpenGL normal maps, projected triplanar in world metres at the texture's real-world size,
+# colour, roughness and OpenGL normal maps, projected planar along each face's main axis in world metres at the texture's real-world size,
 # with a second rotated, rescaled sample blended in by a large noise and a soft brightness drift so no repeat shows.
 CC0 = os.environ.get("CC0", "/mnt/project-files/chief-auto/cc0")
 _tex_cache = {}
@@ -224,61 +224,23 @@ def cc0_mat(name, tex, size, tint=0.0, rough=None, nstr=1.0, old=None, mul=1.0):
     drift = nt.nodes.new("ShaderNodeMapRange")
     drift.inputs["To Min"].default_value, drift.inputs["To Max"].default_value = 0.86, 1.12
     nt.links.new(_noise(nt, P, 0.12 / size, 2.0).outputs["Fac"], drift.inputs["Value"])
-    # triplanar weights |N|^4, normalised
-    ws = [_math(nt, "POWER", _math(nt, "ABSOLUTE", sn.outputs[a]), 4.0) for a in "XYZ"]
-    tot = _math(nt, "ADD", _math(nt, "ADD", ws[0], ws[1]), _math(nt, "ADD", ws[2], 1e-5))
-    ws = [_math(nt, "DIVIDE", w, tot) for w in ws]
-    cols, rs, ns = [], [], []
-    for ax, (u, v) in enumerate((("Y", "Z"), ("X", "Z"), ("X", "Y"))):
-        uv = nt.nodes.new("ShaderNodeCombineXYZ")
-        nt.links.new(sp.outputs[u], uv.inputs[0])
-        nt.links.new(sp.outputs[v], uv.inputs[1])
-        rot = nt.nodes.new("ShaderNodeVectorRotate")
-        rot.rotation_type = "Z_AXIS"
-        rot.inputs["Angle"].default_value = 0.63 + ax * 0.9
-        nt.links.new(uv.outputs[0], rot.inputs["Vector"])
-        uv2 = nt.nodes.new("ShaderNodeVectorMath")
-        uv2.operation = "MULTIPLY_ADD"
-        uv2.inputs[1].default_value = (0.79, 0.79, 0.79)
-        uv2.inputs[2].default_value = (0.37 + ax * 0.21, 0.71, 0.0)
-        nt.links.new(rot.outputs[0], uv2.inputs[0])
-        per = []
-        for im in (dif, rgh, nor):
-            outs = []
-            for vec in (uv.outputs[0], uv2.outputs[0]):
-                t = nt.nodes.new("ShaderNodeTexImage")
-                t.image = im
-                t.interpolation = "Linear"
-                nt.links.new(vec, t.inputs["Vector"])
-                outs.append(t.outputs["Color"])
-            per.append(_mix(nt, mix_f, outs[0], outs[1]))
-        cols.append(per[0])
-        rs.append(per[1])
-        # tangent-space normal to world: (r,g) run along the projection's u,v; b along the face normal
-        tn = nt.nodes.new("ShaderNodeVectorMath")
-        tn.operation = "MULTIPLY_ADD"
-        tn.inputs[1].default_value = (2.0 * nstr, 2.0 * nstr, 2.0)
-        tn.inputs[2].default_value = (-nstr, -nstr, -1.0)
-        nt.links.new(per[2], tn.inputs[0])
-        st = nt.nodes.new("ShaderNodeSeparateXYZ")
-        nt.links.new(tn.outputs[0], st.inputs[0])
-        out_ax = "XYZ"[ax]
-        comps = {u: st.outputs["X"], v: st.outputs["Y"],
-                 out_ax: _math(nt, "MULTIPLY", st.outputs["Z"], _math(nt, "SIGN", sn.outputs[out_ax]))}
-        cw = nt.nodes.new("ShaderNodeCombineXYZ")
-        for k, s in comps.items():
-            nt.links.new(s, cw.inputs[k])
-        ns.append(cw.outputs[0])
+    # one planar projection per face, picked by the dominant normal axis (boxes, roads and terrain are all
+    # near axis-aligned; one sample set instead of three keeps the 2560x1440 renders affordable)
+    ab = [_math(nt, "ABSOLUTE", sn.outputs[a]) for a in "XYZ"]
+    wz = _math(nt, "MULTIPLY", _math(nt, "GREATER_THAN", ab[2], _math(nt, "SUBTRACT", ab[0], 1e-4)),
+               _math(nt, "GREATER_THAN", ab[2], _math(nt, "SUBTRACT", ab[1], 1e-4)))
+    wx = _math(nt, "MULTIPLY", _math(nt, "GREATER_THAN", ab[0], ab[1]), _math(nt, "SUBTRACT", 1.0, wz))
+    wy = _math(nt, "SUBTRACT", _math(nt, "SUBTRACT", 1.0, wz), wx)
+    ws = [wx, wy, wz]
 
-    def wsum(vals, kind):
+    def wsum(vals):
         acc = None
         for w, v in zip(ws, vals):
-            if kind == "rgb":
-                t = nt.nodes.new("ShaderNodeVectorMath")
-                t.operation = "SCALE"
-                nt.links.new(v, t.inputs[0])
-                nt.links.new(w, t.inputs["Scale"])
-                t = t.outputs[0]
+            t = nt.nodes.new("ShaderNodeVectorMath")
+            t.operation = "SCALE"
+            nt.links.new(v, t.inputs[0])
+            nt.links.new(w, t.inputs["Scale"])
+            t = t.outputs[0]
             if acc is None:
                 acc = t
             else:
@@ -289,7 +251,52 @@ def cc0_mat(name, tex, size, tint=0.0, rough=None, nstr=1.0, old=None, mul=1.0):
                 acc = a.outputs[0]
         return acc
 
-    col = wsum(cols, "rgb")
+    planes = (("Y", "Z"), ("X", "Z"), ("X", "Y"))
+    uvs = []
+    for u, v in planes:
+        c = nt.nodes.new("ShaderNodeCombineXYZ")
+        nt.links.new(sp.outputs[u], c.inputs[0])
+        nt.links.new(sp.outputs[v], c.inputs[1])
+        uvs.append(c.outputs[0])
+    uv = wsum(uvs)
+    rot = nt.nodes.new("ShaderNodeVectorRotate")
+    rot.rotation_type = "Z_AXIS"
+    rot.inputs["Angle"].default_value = 0.63
+    nt.links.new(uv, rot.inputs["Vector"])
+    uv2 = nt.nodes.new("ShaderNodeVectorMath")
+    uv2.operation = "MULTIPLY_ADD"
+    uv2.inputs[1].default_value = (0.79, 0.79, 0.79)
+    uv2.inputs[2].default_value = (0.37, 0.71, 0.0)
+    nt.links.new(rot.outputs[0], uv2.inputs[0])
+    per = []
+    for im in (dif, rgh, nor):
+        outs = []
+        for vec in (uv, uv2.outputs[0]):
+            t = nt.nodes.new("ShaderNodeTexImage")
+            t.image = im
+            t.interpolation = "Linear"
+            nt.links.new(vec, t.inputs["Vector"])
+            outs.append(t.outputs["Color"])
+        per.append(_mix(nt, mix_f, outs[0], outs[1]))
+    # tangent-space normal to world: (r,g) run along the projection's u,v; b along the face normal
+    tn = nt.nodes.new("ShaderNodeVectorMath")
+    tn.operation = "MULTIPLY_ADD"
+    tn.inputs[1].default_value = (2.0 * nstr, 2.0 * nstr, 2.0)
+    tn.inputs[2].default_value = (-nstr, -nstr, -1.0)
+    nt.links.new(per[2], tn.inputs[0])
+    st = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(tn.outputs[0], st.inputs[0])
+    ns = []
+    for ax, (u, v) in enumerate(planes):
+        out_ax = "XYZ"[ax]
+        comps = {u: st.outputs["X"], v: st.outputs["Y"],
+                 out_ax: _math(nt, "MULTIPLY", st.outputs["Z"], _math(nt, "SIGN", sn.outputs[out_ax]))}
+        cw = nt.nodes.new("ShaderNodeCombineXYZ")
+        for kk, sv in comps.items():
+            nt.links.new(sv, cw.inputs[kk])
+        ns.append(cw.outputs[0])
+
+    col = per[0]
     gain = [1.0, 1.0, 1.0]
     if tint > 0 and old is not None:
         gain = [1.0 + tint * (max(0.005, o) / max(0.005, d) - 1.0) for o, d in zip(old, dmean)]
@@ -300,14 +307,14 @@ def cc0_mat(name, tex, size, tint=0.0, rough=None, nstr=1.0, old=None, mul=1.0):
     col = _mix(nt, 1.0, g.outputs[0], drift.outputs["Result"], "MULTIPLY")
     nt.links.new(col, b.inputs["Base Color"])
     r = nt.nodes.new("ShaderNodeRGBToBW")
-    nt.links.new(wsum(rs, "rgb"), r.inputs[0])
+    nt.links.new(per[1], r.inputs[0])
     rv = r.outputs[0]
     if rough is not None:
         rv = _math(nt, "MULTIPLY", rv, rough / max(0.02, sum(rmean) / 3), clamp=True)
     nt.links.new(rv, b.inputs["Roughness"])
     nn = nt.nodes.new("ShaderNodeVectorMath")
     nn.operation = "NORMALIZE"
-    nt.links.new(wsum(ns, "rgb"), nn.inputs[0])
+    nt.links.new(wsum(ns), nn.inputs[0])
     nt.links.new(nn.outputs[0], b.inputs["Normal"])
     b.inputs["Metallic"].default_value = 0.0
     _mats[key] = m
