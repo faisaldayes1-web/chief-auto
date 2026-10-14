@@ -283,6 +283,16 @@ func _build_room() -> void:
 	# back-left: grooved concrete feature wall with the dealer sign; the left wall is plaster
 	_box(Vector3(7.0, 4.8, 0.4), Vector3(-7.7, 2.4, -7.9), feature)
 	_box(Vector3(0.4, 4.8, 15.6), Vector3(-11.4, 2.4, -0.4), stucco)
+	# front wall behind the lounge: one-sided (faces into the hall) so the wide camera outside it sees through
+	var fw := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(23.1, 4.8)
+	fw.mesh = fq
+	fw.material_override = stucco
+	fw.position = Vector3(0.15, 2.4, 7.4)
+	fw.rotation.y = PI   # quad faces +z by default; turn it to face -z, into the room
+	fw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_vp.add_child(fw)
 	_box(Vector3(7.0, 0.12, 0.42), Vector3(-7.7, 0.06, -7.68), frame, 0, false)
 	var sign := Label3D.new()
 	sign.text = "OC\nCHIEF AUTO"
@@ -359,7 +369,7 @@ void fragment() {
 		_prop("modern_ceiling_lamp_01", Vector3(x, 4.8, -5.6), 0.0, 1.05, true)
 	# lounge front right: a scanned sofa, two lounge chairs and a coffee table on the same footprints the
 	# customers' navigation already walks around
-	_prop("sofa_03", Vector3(7.4, 0, 6.0), 180.0, 0.0)
+	_prop("sofa_02", Vector3(7.4, 0, 6.0), 180.0, 0.0)
 	for z in [3.3, 4.6]:
 		_prop("modern_arm_chair_01", Vector3(9.9, 0, z), -90.0, 0.0)
 	_prop("modern_coffee_table_01", Vector3(7.3, 0, 4.2), 90.0, 0.0)

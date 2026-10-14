@@ -209,7 +209,7 @@ func refresh() -> void:
 				sm.shader = PAINT_SHADER
 				if not RenderQuality.is_forward_plus() and ResourceLoader.exists(GARAGE_ENV):
 					sm.set_shader_parameter("env_map", load(GARAGE_ENV))
-					sm.set_shader_parameter("env_strength", 0.8)
+					sm.set_shader_parameter("env_strength", 0.45)
 				_paint_mats[key] = sm
 				mi.material_override = sm
 			var panel: String = key

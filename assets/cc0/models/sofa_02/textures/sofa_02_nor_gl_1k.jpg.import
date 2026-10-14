@@ -2,26 +2,26 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dxuypyv0weou5"
-path="res://.godot/imported/sofa_03_diff_1k.jpg-cf4c6c17e32acdf4c3e0bd51f2e853f8.ctex"
+uid="uid://n5rfw6acfw6o"
+path="res://.godot/imported/sofa_02_nor_gl_1k.jpg-aeebfa537c9fdb5b43c3a517fc7a6922.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/cc0/models/sofa_03/textures/sofa_03_diff_1k.jpg"
-dest_files=["res://.godot/imported/sofa_03_diff_1k.jpg-cf4c6c17e32acdf4c3e0bd51f2e853f8.ctex"]
+source_file="res://assets/cc0/models/sofa_02/textures/sofa_02_nor_gl_1k.jpg"
+dest_files=["res://.godot/imported/sofa_02_nor_gl_1k.jpg-aeebfa537c9fdb5b43c3a517fc7a6922.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=0
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
