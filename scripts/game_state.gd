@@ -175,9 +175,9 @@ const ADS := [
 const DEALERSHIPS := [
 	{"tier": 1, "name": "Corner Lot", "price": 0, "level": 1, "rent": 2500, "cars": 3, "walkins": 0, "budget": 0.9, "max_car": 50000,
 		"desc": "A gravel lot, a sales trailer and a carport. Customers browse outside and expect bargains, and auctions won't send you anything too fancy."},
-	{"tier": 2, "name": "Street Showroom", "price": 60000, "level": 3, "rent": 4500, "cars": 4, "walkins": 2, "budget": 0.96, "max_car": 110000,
+	{"tier": 2, "name": "Street Showroom", "price": 75000, "level": 3, "rent": 4500, "cars": 4, "walkins": 2, "budget": 0.96, "max_car": 110000,
 		"desc": "A real building: an indoor showroom, an office for Marco and one service bay. +1 walk-in a day, better budgets, pricier cars at auction, more showroom upgrades."},
-	{"tier": 3, "name": "Harbour Flagship", "price": 185000, "level": 6, "rent": 15000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
+	{"tier": 3, "name": "Harbour Flagship", "price": 350000, "level": 8, "rent": 25000, "cars": 6, "walkins": 3, "budget": 1.0, "max_car": 0,
 		"desc": "The glass showroom on the marina: three service bays, a marble floor and a penthouse upstairs. +3 walk-ins a day, richer buyers, Cash Whales."},
 ]
 

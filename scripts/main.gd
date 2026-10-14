@@ -5244,6 +5244,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.stats.profit += profit
 	Game.stats.days_held += Game.day - car.day_bought
 	Game.record_sale("%s %s" % [car.get("year", ""), car.model], price, profit, seller, car.cls)
+	SteamBridge.on_sale(profit, car.cls)
 	var stars := Game.stars_from_happiness(happiness)
 	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
 	info.review = stars

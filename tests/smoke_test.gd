@@ -15,7 +15,7 @@ func check(ok: bool, what: String) -> void:
 func _initialize() -> void:
 	G = root.get_node("Game")
 	# every game script must parse (a typo in main.gd otherwise only shows up as a grey screen in the browser)
-	for path in ["res://scripts/main.gd", "res://scripts/ui.gd", "res://scripts/car3d_view.gd", "res://scripts/scene_art.gd", "res://scripts/person_art.gd", "res://scripts/car_art.gd", "res://scripts/world_look.gd", "res://scripts/sale_game.gd", "res://scripts/settings.gd", "res://scripts/sfx.gd", "res://scripts/pause_menu.gd"]:
+	for path in ["res://scripts/main.gd", "res://scripts/ui.gd", "res://scripts/car3d_view.gd", "res://scripts/scene_art.gd", "res://scripts/person_art.gd", "res://scripts/car_art.gd", "res://scripts/world_look.gd", "res://scripts/sale_game.gd", "res://scripts/settings.gd", "res://scripts/sfx.gd", "res://scripts/pause_menu.gd", "res://scripts/steam_bridge.gd"]:
 		var scr: GDScript = load(path)
 		check(scr != null and scr.can_instantiate(), "%s parses" % path)
 	G.new_game()
