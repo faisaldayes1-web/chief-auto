@@ -76,6 +76,8 @@ func set_car(c: Dictionary) -> void:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# the HD sprites (1280x720) are drawn at many sizes: mipmaps keep small cars crisp instead of shimmering
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	resized.connect(queue_redraw)
 
 

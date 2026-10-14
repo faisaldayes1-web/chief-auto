@@ -16,7 +16,7 @@ from mathutils import Vector
 HERE = os.path.dirname(os.path.abspath(__file__))
 CARS = os.path.join(HERE, "..", "assets", "cars3d")
 SAMPLES = int(os.environ.get("SAMPLES", 48))
-RES = (640, 360)
+RES = (1280, 720) if os.environ.get("HD") else (640, 360)   # HD: sharp on big screens (the lot draws cars large)
 PAINT_PARTS = ("part_hood", "part_door", "part_fender", "part_quarter", "part_roof", "part_trunk",
                "part_front_bumper", "part_rear_bumper", "part_tailgate", "part_bed", "part_rocker")
 
