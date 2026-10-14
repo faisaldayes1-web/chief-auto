@@ -832,6 +832,25 @@ class Shape2:
         taper = p.get("taper_f", 0.0) * max(0.0, 1 - x / (L * 0.45)) + p.get("taper_r", 0.0) * max(0.0, (x - L * 0.6) / (L * 0.4))
         return max(0.003, (W / 2 - taper) * f + flare * f)
 
+    def _round_end(self, x, pts, zb, zt):
+        """Rounds the bumper corners in 3D: near the nose and tail the outer corners pull in toward the mid height."""
+        p = self.sp["plan"]
+        k = p.get("round", 0.0)
+        if not k:
+            return pts
+        e = max(1 - x / p["cf"], (x - (self.L - p["cr"])) / p["cr"], 0.0)
+        if e <= 0:
+            return pts
+        zm = (zb + zt) / 2
+        hz = max(1e-3, (zt - zb) / 2)
+        hw = max(1e-3, self.hw(x))
+        out = []
+        for y, z in pts:
+            v = abs(z - zm) / hz
+            pull = k * e * e * (v ** 3)
+            out.append((y * (1 - pull), z))
+        return out
+
     def roof_hw(self, x):
         if self.roof_plan:
             return self.roof_plan(x)
@@ -868,7 +887,7 @@ class Shape2:
             return zbelt + (zt - zbelt) * (1 - (1 - u) ** p)
         flat = [(y6 * f, hood_z(y6 * f)) for f in (0.955, 0.85, 0.6, 0.3, 0.0)]
         if not self.in_gh(x):
-            return pts + flat
+            return self._round_end(x, pts + flat, zb, zt)
         rh = min(self.roof_hw(x), y6 - 0.04)
         gb = y6 - sec.get("glass_inset", 0.03) * k
         zr = zt
@@ -876,7 +895,7 @@ class Shape2:
         gh = [(gb, zbelt + 0.012), (rh, gtop), (rh - 0.035, max(gtop + 0.004, zr - 0.016)), (rh * 0.5, zr - 0.003), (0.0, zr)]
         full = max(0.1, self.H - zbelt)
         t = smooth((zr - zbelt) / (full * sec.get("blend", 0.3)))
-        return pts + [(lerp(a[0], b[0], t), lerp(a[1], b[1], t)) for a, b in zip(flat, gh)]
+        return self._round_end(x, pts, zb, zt) + [(lerp(a[0], b[0], t), lerp(a[1], b[1], t)) for a, b in zip(flat, gh)]
 
     def stations(self):
         sp = self.sp
@@ -1466,8 +1485,26 @@ class D2:
         if ob:
             self.parts[name] = ob
 
+    def arch_lips(self):
+        """Rolled painted lip round each wheel arch so the opening reads as a pressed edge, not a boolean hole."""
+        s = self.s
+        if self.sp.get("cladding"):
+            return
+        gap = self.sp.get("arch_gap", 0.035)
+        zc = s.r + self.sp.get("arch_lift", 0.015)
+        for wx, key in ((s.fw, "fender_f"), (s.rw, "quarter_r")):
+            for sd, sfx in ((1, "l"), (-1, "r")):
+                base = self.parts.get(key + sfx)
+                if not base:
+                    continue
+                hw = s.hw(wx)
+                ob = self.arch_flare(wx, sd, s.r + gap - 0.004, s.r + gap + 0.03, hw - 0.07, hw + 0.006,
+                                     base.data.materials[0], a0=-4, a1=184, segs=40, zc=zc)
+                self.add(key + sfx, ob)
+
     def run(self):
         self.wheels()
+        self.arch_lips()
         FEATURES[self.s.name](self)
         # join the decorative extras into the named parts the game knows about
         for target, objs in self.extra.items():
@@ -1672,7 +1709,7 @@ V2 = {
              (4.865, 1.0), (4.885, 0.92)],
         belt=[(0.0, 0.45), (0.04, 0.6), (0.13, 0.71), (0.45, 0.775), (0.9, 0.83), (1.3, 0.885), (1.65, 0.955),
               (1.9, 0.985), (2.8, 1.015), (3.8, 1.045), (4.4, 1.055), (4.75, 1.045), (4.85, 1.0), (4.885, 0.9)],
-        plan=dict(cf=0.42, nf=2.2, cr=0.4, nr=2.6, flare_f=0.012, flare_r=0.02),
+        plan=dict(cf=0.55, nf=2.0, cr=0.5, nr=2.3, flare_f=0.016, flare_r=0.026, round=0.35),
         sec=dict(tuck=0.08, rocker=0.12, maxw=0.72, shoulder=0.05, hood_p=2.0, upper=0.07, creases={6: 0.85, 7: 0.6}),
         gh=dict(g0=1.6, a_top=2.66, c_top=3.42, g1=4.27, tumble=0.25, dlo_f=1.78, dlo_r=4.02, pillars=[2.87, 3.72],
                 pillar_w=0.045, frame_black=True),
@@ -1689,7 +1726,7 @@ V2 = {
              (4.05, 1.28), (4.25, 1.17), (4.42, 1.1), (4.7, 1.085), (4.95, 1.092), (5.0, 1.088), (5.025, 1.04), (5.04, 0.95)],
         belt=[(0.0, 0.5), (0.03, 0.66), (0.12, 0.81), (0.5, 0.845), (1.0, 0.88), (1.5, 0.93), (1.9, 0.99), (2.2, 1.03),
               (3.5, 1.06), (4.4, 1.08), (4.9, 1.078), (5.0, 1.05), (5.04, 0.94)],
-        plan=dict(cf=0.34, nf=3.0, cr=0.3, nr=3.2, flare_f=0.014, flare_r=0.03, flare_len=0.65),
+        plan=dict(cf=0.42, nf=2.6, cr=0.38, nr=2.8, flare_f=0.018, flare_r=0.04, flare_len=0.65, round=0.25),
         sec=dict(tuck=0.07, rocker=0.13, maxw=0.7, shoulder=0.06, hood_p=2.0, upper=0.07, creases={6: 0.9, 7: 0.6}),
         gh=dict(g0=1.88, a_top=2.85, c_top=3.6, g1=4.42, tumble=0.27, dlo_f=2.05, dlo_r=4.02, pillars=[3.0],
                 pillar_w=0.05, frame_black=True),
@@ -1706,7 +1743,7 @@ V2 = {
              (3.7, 1.3), (3.95, 1.2), (4.15, 1.12), (4.3, 1.075), (4.5, 1.06), (4.62, 1.055), (4.67, 1.03), (4.694, 0.95)],
         belt=[(0.0, 0.42), (0.03, 0.52), (0.14, 0.64), (0.5, 0.71), (1.0, 0.82), (1.45, 0.92), (1.7, 0.96), (2.5, 0.99),
               (3.5, 1.02), (4.2, 1.04), (4.6, 1.035), (4.68, 0.99), (4.694, 0.92)],
-        plan=dict(cf=0.45, nf=2.3, cr=0.42, nr=2.4, flare_f=0.012, flare_r=0.018),
+        plan=dict(cf=0.6, nf=2.0, cr=0.5, nr=2.2, flare_f=0.016, flare_r=0.024, round=0.4),
         sec=dict(tuck=0.08, rocker=0.11, maxw=0.66, shoulder=0.045, hood_p=2.2, upper=0.08, creases={6: 0.6, 7: 0.6}),
         gh=dict(g0=1.45, a_top=2.5, c_top=3.25, g1=4.3, tumble=0.27, dlo_f=1.62, dlo_r=4.0, pillars=[2.78],
                 pillar_w=0.045, glass_roof=True, header=0.03, a_black=True, frame_black=True),
@@ -1723,7 +1760,7 @@ V2 = {
              (4.55, 1.5), (4.66, 1.36), (4.74, 1.22), (4.8, 1.12), (4.835, 1.06), (4.86, 0.98), (4.87, 0.85)],
         belt=[(0.0, 0.56), (0.04, 0.72), (0.15, 0.87), (0.6, 0.93), (1.0, 0.97), (1.5, 1.05), (1.75, 1.08), (3.0, 1.11),
               (4.2, 1.14), (4.6, 1.13), (4.8, 1.1), (4.87, 0.85)],
-        plan=dict(cf=0.4, nf=2.6, cr=0.3, nr=3.5, flare_f=0.012, flare_r=0.015),
+        plan=dict(cf=0.5, nf=2.3, cr=0.36, nr=3.0, flare_f=0.012, flare_r=0.015, round=0.25),
         sec=dict(tuck=0.06, rocker=0.14, maxw=0.7, shoulder=0.05, hood_p=2.2, upper=0.07, creases={6: 0.8, 7: 0.7}),
         gh=dict(g0=1.55, a_top=2.55, c_top=4.42, g1=4.8, tumble=0.19, dlo_f=1.72, dlo_r=4.56, pillars=[2.75, 3.72],
                 pillar_w=0.045, frame_black=True),
@@ -1924,7 +1961,7 @@ def feat_outback(D):
               D.blob("sill", rounded_poly([(s.fw + s.r + 0.08, 0.26), (s.rw - s.r - 0.08, 0.26), (s.rw - s.r - 0.08, 0.42),
                                            (s.fw + s.r + 0.08, 0.42)], 0.03), view, M["plastic"], off=0.003, n=40))
     D.add("pillars", None)
-    for ob in D.roof_rails(1.95, 4.3, 0.07, 0.06, M["satin"]):
+    for ob in D.roof_rails(2.62, 4.38, 0.07, 0.05, M["satin"]):
         D.add("pillars", ob)
     D.plate("plate_r", "rear", 0.0, 0.66)
     D.mirrors(1.82, 1.07, size=(0.22, 0.12, 0.14))

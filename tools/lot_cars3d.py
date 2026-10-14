@@ -36,7 +36,7 @@ SAMPLES = int(os.environ.get("SAMPLES", 32))
 SHADOW = float(os.environ.get("SHADOW", 0.55))
 IMAGE = (2560, 1440)
 NOSE_GAP = 0.15      # the nose stops this far past the rear-clearance line of a nose-out stall (over the wheel stop)
-FLIP = {"toyoda_camri"}   # models whose headlight objects sit at the back: their front is the other end
+FLIP = set()   # models whose headlight objects sit at the back (none since the 2026-10-14 rebuild; toyoda_camri was wrongly here)
 GLB = os.path.join(HERE, "..", "assets", "cars3d")
 PAINT_PARTS = ("part_hood", "part_door", "part_fender", "part_quarter", "part_roof", "part_trunk",
                "part_front_bumper", "part_rear_bumper", "part_tailgate", "part_bed", "part_rocker")
@@ -54,6 +54,10 @@ def load_glb(slug):
     """A game model (assets/cars3d) turned to face +X, centred, standing on z=0. Returns meshes, dims, paint set."""
     before = set(bpy.data.objects)
     bpy.ops.import_scene.gltf(filepath=os.path.join(GLB, slug + ".glb"))
+    for m in bpy.data.materials:   # render backfaces: single-sided doors and panels must not show see-through holes
+        m.use_backface_culling = False
+        if hasattr(m, "use_backface_culling_shadow"):
+            m.use_backface_culling_shadow = False
     new = [o for o in bpy.data.objects if o not in before]
     bpy.context.view_layer.update()
     meshes = [o for o in new if o.type == "MESH"]
