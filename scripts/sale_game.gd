@@ -197,7 +197,7 @@ func setup(main: Node, cust: Dictionary, the_car: Dictionary, start_phase := "pi
 	if not c.has("interest"):
 		c.interest = 40.0
 	c.sale_game = true
-	set_anchors_preset(Control.PRESET_FULL_RECT)
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	last_line = c.log[-1] if not c.get("log", []).is_empty() else ""
 	if start_phase == "haggle":
@@ -274,12 +274,12 @@ func _build() -> void:
 	back.texture = m.world_tex("dealdesk")
 	back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	back.modulate = Color(0.75, 0.75, 0.78)
 	add_child(back)
 	var shade := ColorRect.new()
-	shade.color = Color(0.015, 0.025, 0.05, 0.9)
-	shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	shade.color = Color(0.015, 0.025, 0.05, 0.78)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 	# ----- left: the customer, read -----
 	var left := UI.panel(UI.GLASS, UI.GLASS_RIM, 14)
@@ -394,7 +394,7 @@ func _build_pitch() -> void:
 		card.add_theme_stylebox_override("pressed", UI.box(Color(0.25, 0.2, 0.08, 0.95), UI.GOLD, 10, 2, 10))
 		card.pressed.connect(_play.bind(id))
 		var cv := UI.vbox(4)
-		cv.set_anchors_preset(Control.PRESET_FULL_RECT)
+		cv.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		cv.offset_left = 10
 		cv.offset_right = -10
 		cv.offset_top = 10
