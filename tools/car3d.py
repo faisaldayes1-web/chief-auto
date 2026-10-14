@@ -540,7 +540,7 @@ def separate_panels(body, names):
     core.data.materials.clear()
     core.data.materials.append(bpy.data.materials["seam"])
     disp = core.modifiers.new("shrink", "DISPLACE")
-    disp.strength = -0.004
+    disp.strength = -0.014
     disp.mid_level = 0
     apply_mods(core)
     return parts
@@ -1067,14 +1067,14 @@ def build_car2(name, mats):
     parts = separate_panels(body, names)
     # the dark core only shows through the panel gaps: keep it light
     dec = body.modifiers.new("dec", "DECIMATE")
-    dec.ratio = 0.12 if LOD < 2 else 0.6
+    dec.ratio = 0.2 if LOD < 2 else 0.6
     apply_mods(body)
     # separate greenhouse: the glass sits a little inside its pillars and frames, like bonded glass in a seal
     gl = parts.get("glass")
     if gl:
         gl.data.update()
         for v in gl.data.vertices:
-            v.co -= v.normal * 0.009
+            v.co -= v.normal * 0.004
     car = {"shape": s, "parts": parts}
     car["bvh"] = body_bvh(car)
     D2(car, mats).run()
@@ -2348,8 +2348,8 @@ def slim_for_web():
         if not textured:
             while ob.data.uv_layers:
                 ob.data.uv_layers.remove(ob.data.uv_layers[0])
-        ratio = 0.5 if ob.name.startswith("liner") else 0.45 if ob.name == "part_glass" else 0.62 if (
-            ob.name.startswith("part_") and ob.name not in ("part_underbody",)) else None
+        ratio = 0.5 if ob.name.startswith("liner") else 0.62 if (
+            ob.name.startswith("part_") and ob.name not in ("part_underbody", "part_glass")) else None
         if ratio and ob.data.users == 1:
             dec = ob.modifiers.new("dec", "DECIMATE")
             dec.ratio = ratio
