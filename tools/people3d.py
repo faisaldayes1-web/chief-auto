@@ -19,8 +19,8 @@ import bpy  # noqa: I001
 from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SAMPLES = int(os.environ.get("SAMPLES", 64))                       # bodies and faces
-PORTRAIT_SAMPLES = int(os.environ.get("PORTRAIT_SAMPLES", SAMPLES * 3))  # portraits and the hero, seen large
+SAMPLES = int(os.environ.get("SAMPLES", 96))                       # bodies and faces
+PORTRAIT_SAMPLES = int(os.environ.get("PORTRAIT_SAMPLES", SAMPLES * 2))  # portraits and the hero, seen large
 PARTS = os.environ.get("PARTS", "body,face,portrait").split(",")
 
 # Named staff built on a Rocketbox base avatar with recombined textures (tools/people_staff_tex.py) and props.
@@ -30,9 +30,9 @@ STAFF = {
     "marco": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.6, "hair_cards": False,
               "strand_hair": True, "head_maps": "Male_Adult_05",
               "stocky": True, "glasses": "clear", "watch": True},
-    # Maruchan: long straight dark strand hair to the shoulders, combed from a crown parting (long_hair), sunglasses
+    # Maruchan: Female_Adult_14's layered dark hair, dyed black (Faisal preferred it to the long_hair strands), sunglasses
     "maruchan": {"base": "Male_Adult_01", "legs": "Business_Male_01", "legs_tint": 0.7, "hair_cards": False,
-                 "long_hair": True, "head_maps": "Male_Adult_15",
+                 "hair_from": "Female_Adult_14", "hair_tint": (0.06, 0.055, 0.05), "head_maps": "Male_Adult_15",
                  "glasses": "sun", "watch": False},
 }
 SRCS = []
@@ -44,6 +44,7 @@ def reset():
 
 def _img(nt, path, non_color=False):
     n = nt.nodes.new("ShaderNodeTexImage")
+    n.interpolation = "Cubic"   # smooth texel filtering: cloth weave and prints stay crisp, no blocky texels
     n.image = bpy.data.images.load(path, check_existing=True)
     if non_color:
         n.image.colorspace_settings.name = "Non-Color"
@@ -67,7 +68,7 @@ def _map(nt, src, lo_in, hi_in, lo_out, hi_out):
 SURFACES = {
     "head": dict(rough=(0.6, 0.32), spec=(0.3, 0.85), normal=0.75, sss=0.85, sss_radius=(1.0, 0.42, 0.25),
                  sss_scale=0.0045, sheen=0.0),
-    "body": dict(rough=(0.88, 0.42), spec=(0.06, 0.6), normal=0.9, sss=0.2, sss_radius=(1.0, 0.42, 0.25),
+    "body": dict(rough=(0.86, 0.6), spec=(0.08, 0.4), normal=0.7, sss=0.2, sss_radius=(1.0, 0.42, 0.25),
                  sss_scale=0.004, sheen=0.15),
     "opacity": dict(rough=(0.52, 0.52), spec=(0.4, 0.4), normal=0.0, sss=0.0, sss_radius=(1, 1, 1),
                     sss_scale=0.0, sheen=0.0),
@@ -261,6 +262,11 @@ def studio(res):
     sc.cycles.device = "CPU"
     sc.cycles.samples = SAMPLES
     sc.cycles.use_denoising = True
+    sc.cycles.denoiser = "OPENIMAGEDENOISE"
+    sc.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"   # keeps fabric texture through the denoiser
+    sc.cycles.denoising_prefilter = "ACCURATE"
+    sc.cycles.adaptive_threshold = 0.008
+    sc.cycles.filter_width = 1.2
     sc.render.film_transparent = True
     sc.cycles.transparent_max_bounces = 128   # layered hair cards need many alpha bounces
     sc.render.resolution_x, sc.render.resolution_y = res
@@ -567,6 +573,25 @@ def stocky(arm, waist=1.1, chest=1.08, shoulders=1.06, limbs=1.07):
     bpy.context.view_layer.update()
 
 
+def _skin_bvh(arm):
+    """BVH of the posed body meshes (world space), for keeping props off the skin."""
+    from mathutils.bvhtree import BVHTree
+    dg = bpy.context.evaluated_depsgraph_get()
+    verts, polys = [], []
+    for ob in arm.children:
+        if ob.type != "MESH":
+            continue
+        skin = {i for i, sl in enumerate(ob.material_slots)
+                if sl.material and sl.material.name.split(".")[0].endswith(("head", "body"))}
+        ev = ob.evaluated_get(dg)
+        me = ev.to_mesh()
+        base = len(verts)
+        verts += [ob.matrix_world @ v.co for v in me.vertices]
+        polys += [[base + i for i in p.vertices] for p in me.polygons if p.material_index in skin]
+        ev.to_mesh_clear()
+    return BVHTree.FromPolygons(verts, polys)
+
+
 def add_glasses(arm, kind):
     """Rectangular glasses ('clear', thin dark frame) or sunglasses ('sun', dark lenses) in front of the eyes."""
     bpy.context.view_layer.update()
@@ -578,14 +603,36 @@ def add_glasses(arm, kind):
     across = (le - re).normalized()
     fwd = (fwd - across * fwd.dot(across)).normalized()
     if kind == "sun":
-        lw, lh, ft, dz, ahead = 0.054, 0.04, 0.0045, -0.003, 0.03
+        lw, lh, ft, dz, ahead = 0.047, 0.036, 0.004, -0.003, 0.022
         frame = _mat("sunframe", (0.012, 0.012, 0.014), 0.25, spec=0.6)
         lens = _glass("sunlens", (0.025, 0.025, 0.03), 0.3, refl=0.35)
     else:
-        lw, lh, ft, dz, ahead = 0.05, 0.03, 0.0026, 0.0, 0.03
+        lw, lh, ft, dz, ahead = 0.046, 0.03, 0.0026, 0.0, 0.022
         frame = _mat("frame", (0.06, 0.06, 0.065), 0.28, metal=1.0)
         lens = _glass("lens", (0.97, 0.98, 1.0), 0.02, refl=0.2)
-    wrap = 0.007   # outer edges sit further back, following the face
+    wrap = 0.004   # outer edges sit a little further back, following the face
+    skin = _skin_bvh(arm)
+
+    def gap(p):
+        """Signed distance from p to the skin (negative = inside the head)."""
+        hit = skin.find_nearest(p)
+        if hit[0] is None:
+            return 1.0
+        d = p - hit[0]
+        return d.length if d.dot(hit[1]) >= 0 else -d.length
+
+    # push the whole front forward until every rim corner clears the skin (brows, cheekbones, nose bridge) by 6 mm
+    for _ in range(40):
+        probe = []
+        for eye, out in ((le, across), (re, -across)):
+            c = eye + fwd * ahead + up * dz
+            for sx in (-0.5, 0.0, 0.5):
+                for sy in (-0.5, 0.0, 0.5):
+                    probe.append(c + out * lw * sx - fwd * (wrap if sx > 0 else 0) + up * lh * sy)
+        probe.append((le + re) / 2 + fwd * ahead + up * dz)
+        if min(gap(q) for q in probe) >= 0.0035 + ft:
+            break
+        ahead += 0.001
     corners = {}
     for eye, out in ((le, across), (re, -across)):
         c = eye + fwd * ahead + up * dz
@@ -606,8 +653,23 @@ def add_glasses(arm, kind):
     for k in (True, False):
         _, outer, out = corners[k]
         hinge = outer + out * 0.006 - fwd * 0.006
+        # temple arm runs back to the ear; each point is pushed outward until it clears the side of the head
+        pts = [hinge]
+        for i in range(1, 6):
+            t = i / 5
+            q = hinge - fwd * (ahead + 0.07) * t - out * 0.006 * t - up * 0.008 * t
+            for _ in range(40):
+                if gap(q) >= 0.0015 + ft:
+                    break
+                q += out * 0.0005
+            pts.append(q)
+        for i in range(1, len(pts)):   # never bend back inward once pushed out
+            o_prev = (pts[i - 1] - hinge).dot(out)
+            if (pts[i] - hinge).dot(out) < o_prev:
+                pts[i] += out * (o_prev - (pts[i] - hinge).dot(out))
         _beam("hinge", outer, hinge, ft, ft, up, frame)
-        _beam("temple", hinge, hinge - fwd * 0.1 + out * 0.004 - up * 0.008, ft * 0.8, ft * 1.1, up, frame)
+        for a, b in zip(pts, pts[1:]):
+            _beam("temple", a, b, ft * 0.8, ft * 1.1, up, frame)
 
 
 def add_watch(arm):
@@ -954,7 +1016,7 @@ PORTRAIT_LENS = 85
 
 def render_portrait(arm, meshes, cam, out, pid):
     sc = bpy.context.scene
-    sc.render.resolution_x, sc.render.resolution_y = 720, 900
+    sc.render.resolution_x, sc.render.resolution_y = 960, 1200
     sc.cycles.samples = PORTRAIT_SAMPLES
     cam.data.sensor_fit = "VERTICAL"
     cam.data.sensor_height = 24
@@ -1061,7 +1123,7 @@ def do_avatar(folder, out, pid, staff=None):
         long_hair(arm, meshes)
     if staff and staff.get("watch"):
         add_watch(arm)
-    cam = studio((520, 1100))
+    cam = studio((680, 1440))   # supersampled; people_post.py scales down
     ground = ground_shadow(meshes)
     if PARTS == ["hero"]:
         ground.hide_render = True
@@ -1084,7 +1146,7 @@ def do_avatar(folder, out, pid, staff=None):
         return
     # faces
     sc = bpy.context.scene
-    sc.render.resolution_x, sc.render.resolution_y = 384, 384
+    sc.render.resolution_x, sc.render.resolution_y = 448, 448
     hp = head_pos(arm)
     ftgt = hp + Vector((0, 0, 0.05)) - Vector((0, 0, 0.09))
     fpos = ftgt + fwd * 1.6 + side * 0.28 + Vector((0, 0, 0.04))
