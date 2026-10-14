@@ -89,6 +89,11 @@ func _build_env() -> void:
 	_env.tonemap_exposure = 0.95
 	_env.tonemap_white = 6.0
 	_env.glow_enabled = false
+	# web/compatibility: filtering the panorama sky's radiance map fails on WebGL (glBlitFramebuffer
+	# "missing color attachment") and the canvas stops presenting, freezing the game on this screen.
+	if not RenderQuality.is_forward_plus():
+		_env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+		_env.sky = null
 	var we := WorldEnvironment.new()
 	we.environment = _env
 	_vp.add_child(we)
