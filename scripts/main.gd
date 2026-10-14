@@ -59,6 +59,7 @@ var sale: Dictionary = {}      # paperwork state
 var dialogue_queue: Array = []
 var dialogue_done: Callable
 var closing := false
+var pause_menu: PauseMenu
 
 
 func _ready() -> void:
@@ -87,6 +88,10 @@ func _ready() -> void:
 	overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(overlay)
 
+	pause_menu = PauseMenu.new()
+	pause_menu.quit_to_title.connect(func(): show_screen("title"))
+	add_child(pause_menu)
+
 	Game.changed.connect(_refresh_hud)
 	_refresh_hud()
 	show_screen("title")
@@ -103,7 +108,7 @@ func _process(delta: float) -> void:
 	if _overlay_open() or closing:
 		return
 	# the clock only runs while nothing is waiting on the player
-	Game.clock += delta * MINUTES_PER_SECOND
+	Game.clock += delta * MINUTES_PER_SECOND * Settings.clock_speed()
 	_tick_walkins()
 	_check_restock_nudge()
 	if Game.clock >= Game.LAST_CALL_MIN and Game.clock < Game.CLOSE_MIN - 1.0 and _last_call_day != Game.day and not Game.went_home:
@@ -175,6 +180,10 @@ func _build_hud() -> Control:
 	hud.add_child(lv)
 	hud_rep = UI.label("", 18, UI.GOLD)
 	hud.add_child(hud_rep)
+	var menu := UI.button("☰", func(): pause_menu.open(), 48, 44)
+	menu.tooltip_text = "Menu (Esc)"
+	menu.add_theme_font_size_override("font_size", 22)
+	hud.add_child(menu)
 	return p
 
 
@@ -309,6 +318,10 @@ func show_screen(name: String) -> void:
 		# leaving home without pressing Sleep still starts the new day
 		sleeping = false
 		closing = false
+	if name != current and current != "":
+		Sfx.play("whoosh")
+	Sfx.screen(name)
+	pause_menu.in_game = name != "title"
 	current = name
 	auction_view = {}
 	auction_detail = {}
@@ -351,14 +364,14 @@ func _screen_title() -> void:
 	set_bg("lot", 0.5)
 	var center := CenterContainer.new()
 	content.add_child(center)
-	var v := UI.vbox(14)
+	var v := UI.vbox(10)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
 	center.add_child(v)
 	var logo := TextureRect.new()
 	logo.texture = LOGO
 	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	logo.custom_minimum_size = Vector2(380, 420)
+	logo.custom_minimum_size = Vector2(320, 340)
 	v.add_child(logo)
 	var has_save := Game.day > 1 or Game.cars.size() > 0 or Game.seen_intro
 	if has_save:
@@ -369,7 +382,10 @@ func _screen_title() -> void:
 	else:
 		v.add_child(UI.gold_button("Start", _start_game, 320))
 	v.add_child(UI.button("Leaderboard", _leaderboard, 320))
-	var tag := UI.label("Prototype build · %s, Tewport Beach" % Game.dealer_name if has_save else "Prototype build · Tewport Beach", 14, UI.MUTED)
+	v.add_child(UI.button("Settings", func(): pause_menu.open(true), 320))
+	if Settings.is_desktop():
+		v.add_child(UI.button("Quit", func(): get_tree().quit(), 320))
+	var tag := UI.label("v%s · %s, Tewport Beach" % [Settings.VERSION, Game.dealer_name] if has_save else "v%s · Tewport Beach" % Settings.VERSION, 14, UI.MUTED)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tag)
 
@@ -2026,8 +2042,10 @@ func _place_bid(l: Dictionary) -> void:
 		return
 	var why := Game.place_bid(l)
 	if why != "":
+		Sfx.play("error")
 		toast(why)
 		return
+	Sfx.play("bid", 0.06)
 	_refresh_live()
 
 
@@ -3574,6 +3592,7 @@ func _fix_panel(car: Dictionary, panel: String, kind: String, cost: int, mech: D
 		toast("Not enough money for that job.")
 		return
 	car.spent += cost
+	Sfx.play("wrench")
 	var gain := Game.fix_panel(car, panel, kind)
 	var name: String = Game.PANEL_NAMES.get(panel, panel)
 	if randf() < mech.botch * 0.6:
@@ -3601,6 +3620,7 @@ func _repair(car: Dictionary, part: String, mech: Dictionary) -> void:
 		toast("Not enough money for that job.")
 		return
 	car.spent += cost
+	Sfx.play("wrench")
 	var gain := randi_range(mech.min, mech.max)
 	var msg := ""
 	if car.hidden.has(part) and randf() < mech.find:
@@ -4063,6 +4083,7 @@ func _tick_walkins() -> void:
 		var c := Game.make_customer()
 		lobby.append(c)
 		Game.stats.buyers += 1
+		Sfx.play("door")
 		if current != "showroom":
 			toast("%s just walked into the showroom." % c.name)
 		elif lobby_stage:
@@ -4993,6 +5014,7 @@ func _sig_box(title: String, key: String) -> Control:
 		line.add_child(sig)
 	else:
 		var b := UI.button("Sign here", func():
+			Sfx.play("sign")
 			sale.signed[key] = true
 			_render_paperwork(), 150, 34)
 		b.add_theme_font_size_override("font_size", 14)
@@ -5226,6 +5248,7 @@ func _complete_sale(car: Dictionary, income: Dictionary, happiness: float, selle
 	Game.add_review(info.get("cust", {"name": info.get("customer", "Customer")}), stars, car.model, seller if seller != "you" else "")
 	info.review = stars
 	Game.remove_car(car)
+	Sfx.play("cash")
 	var leveled := Game.add_xp(Game.sale_xp(profit))
 	Game.save_game()
 	if seller != "you":
