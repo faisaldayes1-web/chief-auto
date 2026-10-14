@@ -292,6 +292,7 @@ var referrals := 0                # happy customers send friends tomorrow
 var pending_referrals := 0        # today's walk-ins who were referred
 var memberships: Array = ["autobidz"]
 var dealership := 1               # tier of the dealership building (see DEALERSHIPS)
+var flagship_day := -1            # the day the player moved into the flagship (grand-opening week), -1 if never
 var apartment := 1                # tier of the rooftop apartment (see APARTMENTS)
 var loan := 0                     # TewportBank line of credit you owe; interest is billed on the 1st
 var run_id := 0                   # identifies this dealership's row on the leaderboard
@@ -379,6 +380,7 @@ func new_game() -> void:
 	upgrades = []
 	ads_active = []
 	dealership = 1
+	flagship_day = -1
 	apartment = 1
 	loan = 0
 	pending_referrals = 0
@@ -722,6 +724,11 @@ func dealership_info(tier := -1) -> Dictionary:
 	return DEALERSHIPS[clamp(t, 1, DEALERSHIPS.size()) - 1]
 
 
+## The first game week at the flagship: bunting, balloons and a GRAND OPENING banner go up on the lot.
+func grand_opening() -> bool:
+	return dealership >= DEALERSHIPS.size() and flagship_day >= 0 and day - flagship_day < 7
+
+
 ## File suffix for this tier's renders: "_t1", "_t2", or "" for the flagship.
 func world_suffix() -> String:
 	return "" if dealership >= DEALERSHIPS.size() else "_t%d" % dealership
@@ -809,6 +816,8 @@ func upgrade_dealership() -> bool:
 	money -= nxt.price
 	log_money("shop", -nxt.price)
 	dealership += 1
+	if dealership >= DEALERSHIPS.size():
+		flagship_day = day
 	add_xp(100)
 	save_game()
 	emit_signal("changed")
@@ -1461,7 +1470,7 @@ func legal_exposure() -> int:
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule", "cls_sales",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "month_profit_start", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
-	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start"]
+	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start", "flagship_day"]
 
 
 func save_game() -> void:

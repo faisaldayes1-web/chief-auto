@@ -351,6 +351,7 @@ func _start_game() -> void:
 			Game.money += 50000
 		if Game.debug_tier > 0:
 			Game.dealership = clampi(Game.debug_tier, 1, 3)
+			Game.flagship_day = Game.day if Game.dealership == 3 else -1   # debug: show the grand-opening week
 		if Game.debug_name != "":
 			Game.dealer_name = Game.debug_name
 		if Game.debug_busy:
@@ -540,7 +541,36 @@ func _screen_lot() -> void:
 	])
 	col.add_child(menu)
 	col.add_child(_lot_summary())
+	_grand_opening_overlay(yard)
 	_park_cars(yard)
+
+
+## The flagship's first week: bunting, balloons and a GRAND OPENING banner (bg_lot_opening*.png, rendered with
+## alpha from the same camera) laid over the lot render, under the parked cars.
+func _grand_opening_overlay(yard: Control) -> void:
+	if not Game.grand_opening():
+		return
+	var night := Game.night_amount() > 0.5
+	var path := "res://assets/world/bg_lot_opening%s.png" % ("_night" if night else "")
+	if not ResourceLoader.exists(path):
+		path = "res://assets/world/bg_lot_opening.png"
+	if not ResourceLoader.exists(path):
+		return
+	var tr := TextureRect.new()
+	tr.texture = load(path)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	if not night and WorldLook.night_tex("lot") != null:
+		tr.modulate = Color.WHITE.lerp(Color(0.3, 0.33, 0.48), Game.night_amount())
+	yard.add_child(tr)
+	var place := func():
+		var cover := _bg_cover_rect()
+		tr.position = cover.position - yard.global_position
+		tr.size = cover.size
+	yard.resized.connect(place)
+	place.call_deferred()
+
 
 
 ## Low stock: under half the lot (or 2 cars or fewer) while customers are still coming.
@@ -732,7 +762,6 @@ func _park_cars(yard: Control) -> void:
 		b.add_theme_stylebox_override("hover", StyleBoxEmpty.new())
 		b.add_theme_stylebox_override("pressed", StyleBoxEmpty.new())
 		b.pressed.connect(func(): _car_menu(car, b.get_global_mouse_position()))
-		b.tooltip_text = "%d %s · click for options" % [car.year, car.model]
 		var art := CarArt.new()
 		art.quarter = true
 		art.set_car(car)
@@ -749,6 +778,7 @@ func _park_cars(yard: Control) -> void:
 		tag.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.45))
 		tag.rotation_degrees = -5.0
 		tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tag.visible = false   # the price shows with the model when you point at the car
 		b.add_child(tag)
 		# a longer car keeps its tail at the wheel stop, a taller one is centred higher (the sprites are framed on
 		# each car's own length and on 0.42 of its height)
@@ -763,7 +793,7 @@ func _park_cars(yard: Control) -> void:
 			var n1 := _v2(st.nose[1])
 			pad = [_v2(st.ground) + _v2(st.fwd) * (dims[0] - ref.length) / 2.0,
 				((n0 + n1) / 2.0 - _v2(st.ground)) * dims[0] / ref.length, (n0 - n1) / 2.0 * dims[1] / ref.width]
-		items.append({"button": b, "art": art, "tag": tag, "target": target, "frame_w": frame_w, "order": int(st.get("order", i)), "pad": pad})
+		items.append({"button": b, "art": art, "tag": tag, "target": target, "frame_w": frame_w, "order": int(st.get("order", i)), "pad": pad, "hover": false})
 	# a soft dark pad under every car, drawn before the sprites, so they sit on the asphalt of the render
 	var pads := Control.new()
 	pads.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -783,6 +813,13 @@ func _park_cars(yard: Control) -> void:
 					var a := TAU * j / 24.0
 					poly.append(c + (ax * cos(a) + ay * sin(a)) * (1.3 - k * 0.1))
 				pads.draw_colored_polygon(poly, Color(0, 0, 0, 0.11))
+			if it.hover:   # the car you point at gets a warm gold glow on the asphalt
+				for k in 4:
+					var ring := PackedVector2Array()
+					for j in 32:
+						var a := TAU * j / 32.0
+						ring.append(c + (ax * cos(a) + ay * sin(a)) * (1.45 - k * 0.09))
+					pads.draw_colored_polygon(ring, Color(1.0, 0.78, 0.3, 0.12))
 			# a tight dark core where the tyres meet the asphalt
 			for k in 3:
 				var core := PackedVector2Array()
@@ -808,6 +845,39 @@ func _park_cars(yard: Control) -> void:
 	drawn.sort_custom(func(a, b): return a.order < b.order)
 	for it in drawn:
 		yard.add_child(it.button)
+	# pointing at a car lights it up and shows its model and price; a click opens it
+	var info := UI.panel(Color(0.05, 0.06, 0.08, 0.9), UI.GOLD, 10)
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var iv := UI.vbox(2)
+	iv.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info.add_child(iv)
+	var i_model := UI.label("", 17, UI.TEXT, true)
+	var i_price := UI.label("", 22, Color("ffe14a"), true)
+	var i_hint := UI.label("Click to open", 12, UI.MUTED)
+	for l in [i_model, i_price, i_hint]:
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		iv.add_child(l)
+	info.visible = false
+	yard.add_child(info)
+	for it in items:
+		var art: CarArt = it.art
+		var base_mod := art.modulate
+		it.button.mouse_entered.connect(func():
+			it.hover = true
+			art.modulate = base_mod * Color(1.28, 1.24, 1.15)
+			var car: Dictionary = art.car
+			i_model.text = "%d %s" % [car.year, car.model]
+			i_price.text = Game.money_str(car.get("sticker", 0))
+			info.visible = true
+			info.reset_size()
+			var at: Vector2 = it.button.position + Vector2(it.button.size.x / 2.0 - info.size.x / 2.0, -info.size.y - 6)
+			info.position = Vector2(clampf(at.x, 4, yard.size.x - info.size.x - 4), maxf(at.y, 4))
+			pads.queue_redraw())
+		it.button.mouse_exited.connect(func():
+			it.hover = false
+			art.modulate = base_mod
+			info.visible = false
+			pads.queue_redraw())
 	var place := func():
 		var cover := _bg_cover_rect()
 		if cover.size == Vector2.ZERO:

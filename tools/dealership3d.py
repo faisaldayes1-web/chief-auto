@@ -8,6 +8,8 @@ the same room can be upgraded visually in the game; the showroom tiers work the 
 Usage (bpy venv):  python tools/dealership3d.py <out_dir> [view ...]
 Views: lot, showroom, office, garage, desk, dealdesk (add _t1 / _t2 for the starting and mid-size
 dealerships), apartment1, apartment2, apartment3.  SAMPLES env sets quality, PREVIEW=1 renders 640x360.
+OPENING=1 renders only the grand-opening dressing (bunting, balloons, banner) of the lot view as bg_lot_opening.png
+with alpha, for the game to lay over the lot during the player's first week at the flagship.
 NIGHT=1 renders the same views at night as bg_<view>_night.jpg (make_night: dark blue starry sky, no sun, lit
 street lamps, pole sign and lot lights, interiors at full light); the game crossfades day to night by the clock.
 The lot views also write stalls_<view>.json next to the render: where the game parks each owned car (see LOT_ROWS).
@@ -25,6 +27,9 @@ SAMPLES = int(os.environ.get("SAMPLES", 96))
 # 2560x1440 so the backgrounds stay sharp on big fullscreen monitors (the game stretches its 1280x720 canvas)
 RES = (640, 360) if os.environ.get("PREVIEW") else ((1920, 1080) if os.environ.get("HD") else (2560, 1440))
 TIER_COLLECTIONS = {}
+LOT_HIDE = []      # flagship objects left out of the lot views (rooftop apartment, interior-only glass)
+LOT_ONLY = []      # exterior-only flagship objects (storefront band, reflective street-level glass)
+OPENING = bool(os.environ.get("OPENING"))   # render the grand-opening overlay (bg_lot_opening*.png) instead
 
 
 # ---------------------------------------------------------------- materials
@@ -1598,15 +1603,50 @@ def build_site3_front():
         box("planter_soil", (x - 2.05, -4.65, 0.5), (x + 2.05, -3.15, 0.53), mat("bark_mulch", (0.16, 0.1, 0.06), rough=0.95))
         for k, dx in enumerate((-1.4, 1.4)):
             shrub(x + dx, -3.9, 0.6, 0.8, seed=k + x * 3, z=0.5)
-    for i, x in enumerate((-22, -9, 9, 27, 44)):
-        palm((x, -3.9 if abs(x) < 40 else 6, 0), h=9 + (i % 3) * 1.4, seed=i)
+    # palms frame the building (its flanks and behind the roof), none stand in front of the glass
+    for i, (x, y) in enumerate(((-22, -3.9), (-19.5, 6.0), (-18.5, 15.0), (36.0, -2.0), (44, 6), (-6.0, 21.0), (8.0, 20.0), (22.0, 20.5))):
+        palm((x, y, 0), h=9 + (i % 3) * 1.4, seed=i)
     light_pole(-22.5, -4.2, 8.0, ((0, -1),))
     pole_sign(19.0, -8.0, h=10.0, w=4.0, sh=3.2)
     # bunting along the showroom front between two poles, under the fascia and behind the parked cars (the game
     # draws the cars over the render, so nothing may stand between the lot camera and a stall)
+    # grand-opening dressing lives in its own collection: rendered only as the transparent overlay
+    # bg_lot_opening*.png (OPENING=1) that the game shows during the player's first week at the flagship
+    global COL
+    keep, COL = COL, tier_collection("fest")
+    build_grand_opening()
+    COL = keep
+
+
+def build_grand_opening():
+    """Bunting, balloon arch and clusters, and a GRAND OPENING banner under the fascia sign."""
     t0, t1 = flag_pole(-21.0, -4.4, 6.4), flag_pole(13.5, -4.4, 6.4)
     bunting_line(t0, t1, sag=0.9)
     bunting_line(t1, (16.5, -2.6, 6.6), sag=0.15)
+    bunting_line((16.0, -2.7, 6.1), (33.4, -0.7, 6.2), sag=0.5)
+    cols = [mat("balloon_r", (0.75, 0.04, 0.05), rough=0.18), mat("balloon_w", (0.93, 0.93, 0.92), rough=0.18),
+            mat("balloon_b", (0.05, 0.16, 0.62), rough=0.18), mat("balloon_g", (0.9, 0.66, 0.2), rough=0.2, metal=0.8)]
+    rnd = random.Random(11)
+    # an arch of balloons over the entry canopy
+    n = 34
+    for k in range(n + 1):
+        a = math.pi * k / n
+        x, z = -5.0 * math.cos(a), 4.15 * math.sin(a)
+        for j in range(3):
+            sphere("balloon", (x + rnd.uniform(-0.18, 0.18), -4.45 + rnd.uniform(-0.15, 0.15), z + rnd.uniform(-0.18, 0.18)),
+                   (0.3, 0.3, 0.34), cols[(k + j) % 4], seg=16)
+    # clusters on strings tied to the flag poles and the planters
+    for bx, by in ((-21.0, -4.4), (13.5, -4.4), (-9.0, -4.0), (9.0, -4.0), (27.0, -4.0)):
+        for j in range(7):
+            top = Vector((bx + rnd.uniform(-0.9, 0.9), by + rnd.uniform(-0.6, 0.4), rnd.uniform(3.2, 4.4)))
+            sphere("balloon", top, (0.32, 0.32, 0.38), cols[j % 4], seg=16)
+            tube("balloon_string", [Vector((bx, by, 0.6)), (Vector((bx, by, 0.6)) + top) / 2 + Vector((0.08, 0, 0)), top - Vector((0, 0, 0.36))],
+                 0.008, mat("rope", (0.12, 0.12, 0.12), rough=0.6), sides=4)
+    red = mat("banner_red", (0.68, 0.04, 0.05), rough=0.6)
+    box("banner", (-2.8, -2.95, 4.45), (5.8, -2.88, 5.55), red)
+    for x in (-2.8, 5.8):
+        tube("banner_tie", [Vector((x, -2.9, 5.55)), Vector((x, -2.75, 5.7))], 0.01, mat("rope", (0.12, 0.12, 0.12)), sides=4)
+    text("banner_txt", "GRAND OPENING", (1.5, -2.97, 4.72), 0.62, mat("banner_white", (0.97, 0.97, 0.95), rough=0.5), extrude=0.005)
 
 
 # ---------------------------------------------------------------- the PCH site: road, ocean, planted hillside, villas
@@ -2073,7 +2113,16 @@ def build_dealership():
     for x in range(-12, 14, 4):
         for y in (3, 7, 11, 14):
             cyl("downlight", (x, y, 5.88), 0.18, 0.02, lamp, verts=16)
-    glass_wall("front", (-15, 0), (15, 0), 0, 6, every=3)
+    LOT_HIDE.append(glass_wall("front", (-15, 0), (15, 0), 0, 6, every=3))
+    # seen from the lot only: the storefront is glass at street level under a solid band, the west end is a solid
+    # clad wall, and the street-level glass reflects the lot like real storefront glazing
+    shop = mat("shopfront_glass", (0.55, 0.6, 0.66), rough=0.03, metal=0.42, trans=1.0)
+    LOT_ONLY.append(box("front_reflect", (-10.0, -0.025, 0.05), (15, -0.015, 4.4), shop))
+    LOT_ONLY[-1].visible_shadow = False
+    LOT_ONLY.append(box("front_band", (-15.0, -0.32, 4.4), (15.0, -0.05, 5.75), clad))
+    LOT_ONLY.append(box("front_west_solid", (-15.0, -0.32, 0), (-10.0, -0.05, 4.4), clad))
+    LOT_ONLY.append(box("front_band_led", (-10.0, -0.34, 4.36), (15.0, -0.3, 4.42), mat("fascia_led", (1, 1, 1), emit=3.0, ecol=(1.0, 0.92, 0.8))))
+    LOT_ONLY.append(box("roof_parapet", (-16.5, 16.6, 6.8), (16.5, 17.0, 7.4), clad))
     glass_wall("rear", (-8, 16), (15, 16), 0, 6, every=3)
     box("west", (-15.3, 0, 0), (-15, 16, 6), white)
     box("east", (15, 0, 0), (15.3, 16, 6), white)
@@ -2082,8 +2131,8 @@ def build_dealership():
     for x in (-15.45, 15.45):   # corner piers carrying the fascia, like the mockup
         box("pier", (x - 0.35, -2.75, 0), (x + 0.35, -2.4, 5.7), clad)
     sign_lit = mat("sign_white_lit", (1, 1, 1), emit=6.0, ecol=(1.0, 0.98, 0.94))
-    text("sign", "CHIEF AUTO", (1.5, -2.8, 6.05), 1.15, sign_lit, extrude=0.06)
-    text("sign_sub", "TEWPORT BEACH", (12.2, -2.8, 6.3), 0.3, sign_lit)
+    text("sign", "OC CHIEF AUTO", (1.5, -2.8, 6.05), 1.15, sign_lit, extrude=0.06)
+    text("sign_sub", "TEWPORT BEACH", (12.6, -2.8, 6.3), 0.3, sign_lit)
     # entry doors
     for x0, x1 in ((-1.6, -1.5), (-0.03, 0.03), (1.5, 1.6)):
         box("door_frame", (x0, -0.08, 0), (x1, 0.08, 3.1), dark)
@@ -2157,7 +2206,9 @@ def build_dealership():
     # ---- PC desk nook (back of showroom, east), the game's office PC view
     box("pc_desk", (9.5, 14.0, 0), (13.5, 15.2, 0.76), wood)
     box("pc_top", (9.4, 13.9, 0.76), (13.6, 15.3, 0.8), wood)
-    # ---- roof-top apartment: shell is shared, furniture is per tier
+    # ---- roof-top apartment: shell is shared, furniture is per tier (the lot view leaves it out: from the street
+    # the flagship is one storey)
+    n0 = set(bpy.data.objects.keys())
     build_apartment_shell(white, dark, wood)
     # the roof-top apartment wears the same dark cladding outside (its rooms stay white inside)
     box("apt_clad_w_lo", (AX0 - 0.45, AY0 - 0.15, AZ0), (AX0 - 0.25, AY1 + 3.5, AZ0 + 0.45), clad)
@@ -2166,6 +2217,7 @@ def build_dealership():
     box("apt_clad_roof", (AX0 - 0.65, AY0 - 0.7, AZ1 + 0.02), (AX1 + 0.65, AY0 - 0.55, AZ1 + 0.45), clad)
     box("apt_clad_sill", (AX0, AY0 - 0.05, AZ0), (AX1, AY0, AZ0 + 0.45), clad)
     box("apt_clad_head", (AX0, AY0 - 0.05, AZ1 - 0.35), (AX1, AY0, AZ1), clad)
+    LOT_HIDE.extend(bpy.data.objects[k] for k in set(bpy.data.objects.keys()) - n0)
 
 
 def planter(x, y):
@@ -3114,7 +3166,13 @@ def render_view(cam, name, out):
         elif tier == "1":
             sets.add("s1o")
     pos, tgt, lens, exp = VIEWS[key]
+    if OPENING:
+        sets.add("fest")
     show_sets(sets)
+    for o in LOT_HIDE:
+        o.hide_render = name == "lot"
+    for o in LOT_ONLY:
+        o.hide_render = name != "lot"
     desk_seat(name == "desk_t1")
     golden_hour(name.startswith("showroom"))
     cam.location = pos
@@ -3123,6 +3181,12 @@ def render_view(cam, name, out):
     cam.rotation_euler = (Vector(tgt) - Vector(pos)).to_track_quat("-Z", "Y").to_euler()
     bpy.context.scene.view_settings.exposure = exp - 0.6   # daylight is bright; keep whites from blowing out
     bpy.context.scene.render.filepath = os.path.join(out, "bg_%s%s.jpg" % (name, "_night" if NIGHT else ""))
+    if OPENING:
+        bpy.context.scene.render.filepath = os.path.join(out, "bg_%s_opening%s.png" % (name, "_night" if NIGHT else ""))
+        if NIGHT:
+            bpy.context.scene.view_settings.exposure = exp - 0.2
+        bpy.ops.render.render(write_still=True)
+        return
     if NIGHT:
         bpy.context.scene.view_settings.exposure = exp - 0.2
         bpy.ops.render.render(write_still=True)
@@ -3165,6 +3229,8 @@ def build():
             lo = bpy.data.objects.new("fill", ld)
             lo.location = loc
             TIER_COLLECTIONS[key].objects.link(lo)
+            if key == "s3" and loc[2] > 7:
+                LOT_HIDE.append(lo)
 
 
 NIGHT = bool(os.environ.get("NIGHT"))
@@ -3263,6 +3329,16 @@ def main():
     if NIGHT:
         make_night()
     cam = setup_render()
+    if OPENING:
+        # only the grand-opening dressing shows; everything else cuts it out (holdout) where it stands in front
+        fest = set(TIER_COLLECTIONS["fest"].all_objects)
+        for o in bpy.data.objects:
+            if o.type in ("MESH", "CURVE", "FONT") and o not in fest:
+                o.is_holdout = True
+        sc = bpy.context.scene
+        sc.render.film_transparent = True
+        sc.render.image_settings.file_format = "PNG"
+        sc.render.image_settings.color_mode = "RGBA"
     for v in views:
         render_view(cam, v, out)
 
