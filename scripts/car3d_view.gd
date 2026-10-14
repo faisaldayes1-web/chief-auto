@@ -37,6 +37,7 @@ var _drag_moved := 0.0
 var _smoke: CPUParticles3D
 var _floor: MeshInstance3D
 var _auto_spin := true
+var pickable := true   # false: skip reading triangles for picking (showroom display cars)
 
 
 func _init() -> void:
@@ -136,8 +137,9 @@ func set_car(c: Dictionary) -> void:
 	_collect(_model)
 	# Read every clickable mesh's triangles now, before the car is drawn. get_faces() reads the vertex
 	# buffers back from the GPU; done later (on the first hover) each read stalls behind a rendered frame.
-	for pk in _pickables:
-		_pick_data(pk[0])
+	if pickable:
+		for pk in _pickables:
+			_pick_data(pk[0])
 	# center and size the floor shadow to the car
 	var aabb := AABB()
 	var first := true
@@ -150,6 +152,19 @@ func set_car(c: Dictionary) -> void:
 	dist = max(7.0, aabb.size.x * 1.95)
 	_pivot.position.y = 0.0
 	refresh()
+
+
+## A styled copy of the car's model (paint, damage, trim, rims, glass) for another 3D scene, e.g. the showroom.
+## The model's local origin sits at the car's footprint centre on the ground.
+static func build_model(c: Dictionary) -> Node3D:
+	var v := Car3DView.new()
+	v.pickable = false
+	v.set_car(c)
+	var m := v._model
+	if m:
+		v._pivot.remove_child(m)
+	v.free()
+	return m
 
 
 func _collect(node: Node) -> void:
@@ -239,8 +254,17 @@ func refresh() -> void:
 				gm.emission = h
 				gm.emission_energy_multiplier = 0.3
 				mi.material_override = gm
-			elif mi.material_override != null:
-				mi.material_override = null
+			else:
+				# tinted, glossy safety glass: dark enough to read as glass, reflective at grazing angles
+				var gl: StandardMaterial3D = _cached_mat("glass_clear")
+				if gl.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
+					gl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+					gl.albedo_color = Color(0.04, 0.06, 0.07, 0.62)
+					gl.metallic = 0.25
+					gl.roughness = 0.03
+					gl.metallic_specular = 0.9
+				if mi.material_override != gl:
+					mi.material_override = gl
 	# engine smoke from under the hood when the engine is in bad shape
 	var smoke_on: bool = car.parts.engine < 35
 	if smoke_on and _smoke == null and _meshes.has("hood"):
