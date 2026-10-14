@@ -190,14 +190,27 @@ def regions(shape):
     }
 
 
-def cloth(src, mask, rgb, close=11, contrast=1.15, lo=0.4, hi=1.25):
-    """Repaints fabric in one flat colour, keeping the folds (thin stripes are closed away first)."""
+def knit(shape, seed=3):
+    """Fine pique-knit grain in about 0.97..1.03: a two-pixel checker broken up by soft noise, so flat repainted
+    fabric reads as cloth instead of plastic."""
+    h, w = shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    check = ((xx // 2 + yy // 2) % 2).astype(np.float32) - 0.5
+    rng = np.random.default_rng(seed)
+    n = Image.fromarray((rng.random(shape) * 255).astype(np.uint8)).filter(ImageFilter.GaussianBlur(0.8))
+    n = np.asarray(n, np.float32) / 255.0 - 0.5
+    return 1.0 + check * 0.035 + n * 0.05
+
+
+def cloth(src, mask, rgb, close=11, contrast=1.15, lo=0.4, hi=1.25, smooth=2):
+    """Repaints fabric in one flat colour, keeping the folds (thin stripes are closed away first, then the shading
+    is smoothed so no stripe or compression blotch survives) with a fine knit grain on top."""
     L = Image.fromarray(np.clip(lum(src), 0, 255).astype(np.uint8))
-    L = L.filter(ImageFilter.MaxFilter(close)).filter(ImageFilter.MinFilter(close)).filter(ImageFilter.GaussianBlur(2))
+    L = L.filter(ImageFilter.MaxFilter(close)).filter(ImageFilter.MinFilter(close)).filter(ImageFilter.GaussianBlur(smooth))
     Lc = np.asarray(L, np.float32)
     ref = np.percentile(Lc[mask], 60) if mask.any() else 128
     shade = np.clip(Lc / max(ref, 1), lo, hi) ** contrast
-    return np.array(rgb, np.float32) * shade[..., None]
+    return np.array(rgb, np.float32) * (shade * knit(shade.shape))[..., None]
 
 
 def body(rb, head_rgb, shirt, trousers, shoes, decal):
@@ -210,7 +223,7 @@ def body(rb, head_rgb, shirt, trousers, shoes, decal):
     shoe = R["shoebox"] & lowsat & filled
     out = src.copy()
     shirt_m = (R["torso"] | R["sleeves"]) & filled
-    out[shirt_m] = cloth(src, shirt_m, shirt)[shirt_m]
+    out[shirt_m] = cloth(src, shirt_m, shirt, close=19, smooth=6)[shirt_m]
     tr = (R["shorts"] | R["calves"]) & filled
     out[tr] = cloth(src, tr, trousers, close=3, contrast=1.3)[tr]
     out[shoe] = cloth(src, shoe, shoes, close=3, contrast=1.4, lo=0.3)[shoe]
