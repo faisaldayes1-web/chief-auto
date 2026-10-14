@@ -28,7 +28,7 @@ var cars: Array = []            # [{car, node, card, pos, yaw, aabb}]
 var npcs := {}                  # customer id -> Customer3D
 var _vp: SubViewport
 var _cam: Camera3D
-var _cam_pos := Vector3(0.5, 3.0, 10.8)
+var _cam_pos := Vector3(0.5, 2.7, 9.4)
 var _cam_tgt := Vector3(0.3, 1.1, -2.2)
 var _cam_goal_pos := _cam_pos
 var _cam_goal_tgt := _cam_tgt
@@ -41,6 +41,7 @@ var _pending_nav := true
 var _frames_seen := 0
 var _slow_frames := 0
 var _yaw_off := 0.0
+var _quality := 0
 
 
 func _init() -> void:
@@ -107,11 +108,11 @@ func _build_env() -> void:
 	fill.light_color = Color(0.85, 0.9, 1.0)
 	_vp.add_child(fill)
 	# warm downlights over the display floor (no shadows: cheap on the web)
-	for p in [Vector3(-4.6, 4.2, -3.0), Vector3(2.2, 4.2, -3.4), Vector3(-8.0, 4.2, 1.6), Vector3(7.4, 4.2, 0.6), Vector3(0, 4.2, 2.5)]:
+	for p in [Vector3(-3.5, 4.2, -2.5), Vector3(4.0, 4.2, -2.5)]:
 		var l := OmniLight3D.new()
 		l.position = p
-		l.omni_range = 7.5
-		l.light_energy = 0.55
+		l.omni_range = 10.0
+		l.light_energy = 0.7
 		l.light_color = Color(1.0, 0.88, 0.72)
 		_vp.add_child(l)
 	# Forward+ / Godot 4.4+ Compatibility use this; the 4.3 web build falls back to the panorama sky reflections
@@ -186,6 +187,7 @@ func _build_room() -> void:
 	fl.mesh = pm
 	fl.position = Vector3(0, 0, -0.5)
 	fl.material_override = _floor_material()
+	fl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(fl)
 	# ceiling: dark slats with a warm wood soffit and recessed light discs
 	_box(Vector3(24, 0.2, 17), Vector3(0, 4.8, -0.5), dark, 0, false)
@@ -284,6 +286,7 @@ func _build_room() -> void:
 			lm.size = Vector3(0.5, 0.04, 3.0)
 			leaf.mesh = lm
 			leaf.material_override = frond
+			leaf.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			leaf.position = p + Vector3(0, 9.0, 0)
 			leaf.rotation = Vector3(deg_to_rad(28 + (k % 3) * 9), TAU * k / 9.0, 0)
 			leaf.translate_object_local(Vector3(0, 0, 1.4))
@@ -554,7 +557,7 @@ func set_preset(p: String, target = null) -> void:
 	match p:
 		"wide":
 			focus_car = {}
-			_cam_goal_pos = Vector3(0.5, 3.0, 10.8)
+			_cam_goal_pos = Vector3(0.5, 2.7, 9.4)
 			_cam_goal_tgt = Vector3(0.3, 1.1, -2.2)
 		"customer":
 			if target is Dictionary and not target.is_empty():
@@ -569,7 +572,10 @@ func set_preset(p: String, target = null) -> void:
 			away.y = 0
 			if away.length() < 0.1:
 				away = Vector3(0, 0, 1)
-			away = away.normalized().lerp(Vector3(0, 0, 1), 0.35).normalized()
+			# three-quarter view: their face and the car they're looking at, from the open-floor side
+			var a1: Vector3 = away.normalized().rotated(Vector3.UP, 1.15)
+			var a2: Vector3 = away.normalized().rotated(Vector3.UP, -1.15)
+			away = a1 if a1.z > a2.z else a2
 			_cam_goal_pos = at + away * 3.6 + Vector3(0, 1.55, 0)
 			_cam_goal_tgt = _cam_goal_tgt.lerp(npc.look_at_pt + Vector3(0, 0.8, 0) if npc else _cam_goal_tgt, 0.25)
 		"inspect":
@@ -588,7 +594,7 @@ func set_preset(p: String, target = null) -> void:
 			# front three-quarter view of the car
 			var dir := Vector3(0.55, 0, 1).rotated(Vector3.UP, cd.yaw + _yaw_off).normalized()
 			_cam_goal_tgt = centre
-			_cam_goal_pos = centre + dir * max(5.0, ab.size.x * 1.15) + Vector3(0, 0.9, 0)
+			_cam_goal_pos = centre + dir * max(5.4, ab.size.x * 1.2) + Vector3(0, 1.7, 0)
 
 
 func _apply_cam() -> void:
@@ -606,14 +612,19 @@ func _process(delta: float) -> void:
 	_cam_pos = _cam_pos.lerp(_cam_goal_pos, k)
 	_cam_tgt = _cam_tgt.lerp(_cam_goal_tgt, k)
 	_apply_cam()
-	# software GL / weak GPUs: drop MSAA when most frames are slow
-	if _vp.msaa_3d != Viewport.MSAA_DISABLED:
+	# software GL / weak GPUs: step quality down while most frames are slow
+	# (1: no MSAA, 2: half-resolution 3D, 3: no sun shadows)
+	if _quality < 3:
 		_frames_seen += 1
-		if delta > 0.07:
+		if delta > 0.06:
 			_slow_frames += 1
-		if _frames_seen >= 30:
-			if _slow_frames >= 20:
-				_vp.msaa_3d = Viewport.MSAA_DISABLED
+		if _frames_seen >= 20:
+			if _slow_frames >= 14:
+				_quality += 1
+				match _quality:
+					1: _vp.msaa_3d = Viewport.MSAA_DISABLED
+					2: stretch_shrink = 2
+					3: _sun.shadow_enabled = false
 			_frames_seen = 0
 			_slow_frames = 0
 	_place_overlays()
