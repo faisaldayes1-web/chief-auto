@@ -298,7 +298,9 @@ def render_home(name):
     os.makedirs(d, exist_ok=True)
     build = {"tv": b_tv, "couch": b_couch, "homepc": b_homepc}[name]
     # the apartment camera stands at eye level; seen a little from above and from the left
-    render_cut(build, (0, 0, 0.5), (-0.35, -1, 0.42), 40, os.path.join(d, name + ".png"), res=800, dist=7.0)
+    # the couch is seen from behind, facing the TV across the room
+    d_ = (0.35, 1, 0.42) if name == "couch" else (-0.35, -1, 0.42)
+    render_cut(build, (0, 0, 0.5), d_, 40, os.path.join(d, name + ".png"), res=800, dist=7.0)
 
 
 if __name__ == "__main__":

@@ -106,7 +106,7 @@ func _process(delta: float) -> void:
 	Game.clock += delta * MINUTES_PER_SECOND
 	_tick_walkins()
 	_check_restock_nudge()
-	if Game.clock >= Game.LAST_CALL_MIN and _last_call_day != Game.day and not Game.went_home:
+	if Game.clock >= Game.LAST_CALL_MIN and Game.clock < Game.CLOSE_MIN - 1.0 and _last_call_day != Game.day and not Game.went_home:
 		_last_call_day = Game.day
 		toast("6:00 PM. The dealership closes at 7. Wrap up your deals.")
 	if Game.clock >= Game.CLOSE_MIN:
@@ -275,7 +275,7 @@ const DEALER_SCREENS := ["lot", "garage", "showroom", "marco", "staff"]
 
 ## Once you've gone home (or the dealership has closed for the night) you can't go back until the morning.
 func dealer_locked() -> bool:
-	return sleeping or Game.went_home
+	return sleeping or closing or Game.went_home
 
 
 ## The Home button: going upstairs ends your day at the dealership (asks first while it's still open).
@@ -5363,7 +5363,7 @@ const NEWS := ["Local news: gas prices are up again. Economy cars are the talk o
 
 func _watch_tv() -> void:
 	var line: String = NEWS[(Game.day * 7 + Game.apartment) % NEWS.size()]
-	play_dialogue([["TV", "Tewport Beach Tonight", line]], func(): pass)
+	toast(line)
 
 
 ## Home PC: the market forecast and one reply to a bad review a day.
@@ -5397,16 +5397,20 @@ func _home_pc() -> void:
 ## The apartment's bought furniture, drawn on the floor of the apartment render (tools/deskview3d.py home renders).
 class HomeFurniture extends Control:
 	# id -> [centre x, base y, height] as fractions of the stage
-	const SPOTS := {"homepc": [0.33, 0.97, 0.36], "tv": [0.52, 0.66, 0.2], "couch": [0.53, 0.99, 0.33]}
+	const SPOTS := {"homepc": [0.31, 0.95, 0.34], "tv": [0.5, 0.66, 0.17], "couch": [0.53, 1.0, 0.3]}
 
 	static func tex(id: String) -> Texture2D:
 		var p := "res://assets/home/%s.png" % id
 		return load(p) if ResourceLoader.exists(p) else null
 
 	func _ready() -> void:
-		resized.connect(queue_redraw)
+		resized.connect(_layout)
+		_layout()
 
-	func _draw() -> void:
+	## TextureRect children (a plain draw_texture_rect here came out as white boxes on the web build)
+	func _layout() -> void:
+		for c in get_children():
+			c.queue_free()
 		for id in ["tv", "couch", "homepc"]:
 			if not Game.has_home(id):
 				continue
@@ -5416,8 +5420,16 @@ class HomeFurniture extends Control:
 			var sp: Array = SPOTS[id]
 			var hh: float = size.y * sp[2]
 			var ww: float = hh * t.get_width() / t.get_height()
-			var tint := Color(0.55, 0.6, 0.8) if Game.night_amount() > 0.5 else Color.WHITE
-			draw_texture_rect(t, Rect2(size.x * sp[0] - ww / 2, size.y * sp[1] - hh, ww, hh), false, tint)
+			var r := TextureRect.new()
+			r.texture = t
+			r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			r.stretch_mode = TextureRect.STRETCH_SCALE
+			r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			r.position = Vector2(size.x * sp[0] - ww / 2, size.y * sp[1] - hh)
+			r.size = Vector2(ww, hh)
+			if Game.night_amount() > 0.5:
+				r.modulate = Color(0.55, 0.6, 0.8)
+			add_child(r)
 
 
 func _stat_row(parent: Control, name: String, val: String, pct: float) -> void:
@@ -5652,7 +5664,7 @@ func _night_report(today: String, ledger: Dictionary, notes: Array) -> void:
 	p.custom_minimum_size = Vector2(620, 0)
 	var v := UI.vbox(8)
 	p.add_child(v)
-	v.add_child(UI.header("Closing report · %s · 9:00 PM" % today))
+	v.add_child(UI.header("Closing report · %s · 7:00 PM" % today))
 	# the finished day as end_day() left it: includes the daily-goal bonus, lawsuits and month-end bills
 	var ld: Dictionary = Game.last_day if not Game.last_day.is_empty() else {"ledger": ledger, "sales": [], "buyers": 0, "walked": 0}
 	var lg: Dictionary = ld.ledger
@@ -5784,6 +5796,8 @@ func _closed_down() -> void:
 	v.add_child(UI.gold_button("Start over", func():
 		_close_overlay()
 		Game.reset_save()
+		closing = false
+		sleeping = false
 		show_screen("lot")
 		_name_dealership(), 0, 52))
 
