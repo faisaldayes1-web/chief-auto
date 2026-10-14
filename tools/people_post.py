@@ -9,6 +9,8 @@ Usage:  python3 tools/people_post.py <render_dir> <assets/people> [src_pid=dst_p
 With no pairs every pid in the render dir is copied under its own name. Missing renders are skipped, so a
 portrait-only render (PARTS=portrait) only updates portraits.
 
+  --grade r,g,b             multiplies every render's colour first (Marco's scan renders: --grade 0.83,0.80,0.76
+                            keeps him toned down and warm like the shipped art)
   --dialogue <assets_dir>   also writes <assets_dir>/portrait_<pid>.jpg for marco and maruchan: the portrait on a dark
                             panel-coloured backdrop (the dialogue box loads these by name).
 """
@@ -110,7 +112,25 @@ def main():
         i = args.index("--dialogue")
         dialogue = args[i + 1]
         del args[i:i + 2]
+    grade = None
+    if "--grade" in args:
+        i = args.index("--grade")
+        grade = [float(v) for v in args[i + 1].split(",")]
+        del args[i:i + 2]
     src, out = args[0], args[1]
+    if grade:
+        import tempfile
+        tmp = tempfile.mkdtemp()
+        for f in os.listdir(src):
+            if f.endswith(".png"):
+                im = Image.open(os.path.join(src, f)).convert("RGBA")
+                r, g, b, a = im.split()
+                r, g, b = [c.point(lambda v, k=k: min(255, round(v * k))) for c, k in zip((r, g, b), grade)]
+                Image.merge("RGBA", (r, g, b, a)).save(os.path.join(tmp, f))
+            elif f.endswith(".json"):
+                import shutil
+                shutil.copy(os.path.join(src, f), tmp)
+        src = tmp
     pairs = [a.split("=") for a in args[2:]]
     if not pairs:
         ids = sorted({f.rsplit("_", 1)[0] for f in os.listdir(src) if f.endswith("_portrait.png")} |

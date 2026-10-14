@@ -29,7 +29,7 @@ import marco_rig  # noqa: E402  proximity-weighted skinning: arms down / hand at
 GLB = "/mnt/project-files/human+figure+3d+model.glb"
 OUT = sys.argv[1]
 PREVIEW = len(sys.argv) > 2
-SAMPLES = 16 if PREVIEW else 128
+SAMPLES = 16 if PREVIEW else 200
 os.makedirs(OUT, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -73,6 +73,13 @@ sc.render.engine = "CYCLES"
 sc.cycles.device = "CPU"
 sc.cycles.samples = SAMPLES
 sc.cycles.use_denoising = True
+sc.cycles.denoising_input_passes = "RGB_ALBEDO_NORMAL"   # keeps the fabric texture through the denoiser
+sc.cycles.denoising_prefilter = "ACCURATE"
+sc.cycles.adaptive_threshold = 0.008
+for m in bpy.data.materials:   # smooth texel filtering on the scan's maps: no blocky, blotchy cloth up close
+    for n in (m.node_tree.nodes if m.use_nodes else []):
+        if n.type == "TEX_IMAGE":
+            n.interpolation = "Cubic"
 sc.render.film_transparent = True
 sc.view_settings.view_transform = "AgX"
 sc.view_settings.look = "AgX - Medium High Contrast"
@@ -128,14 +135,14 @@ so.rotation_euler = (math.radians(40), 0, math.radians(-150))
 sc.collection.objects.link(so)
 # full body: eye-level-ish camera, slight three-quarter (people3d.py's framing); arms relaxed at his sides
 set_pose(RELAXED, head_roll=2.5)
-shot("marco_body.png", (680, 1100), 2.05, 0.93, 13, ortho_up=0.35)
+shot("marco_body.png", (1020, 1650), 2.05, 0.93, 13, ortho_up=0.35)
 ground.hide_render = True
 # hero: head to mid-thigh, slight three-quarter, one hand at his pocket, head a touch tilted
 set_pose(HERO, head_roll=3.5, head_pitch=1.5)
-shot("marco_hero.png", (1100, 1500), 1.32, TOP + 0.03 - 0.66, 15)
+shot("marco_hero.png", (1320, 1800), 1.32, TOP + 0.03 - 0.66, 15)
 # portrait: head and shoulders, face centred, same span as people3d.py portraits
 set_pose(RELAXED, head_roll=2.5)
-shot("marco_portrait.png", (720, 900), 0.62, TOP + 0.05 - 0.31, 10)
+shot("marco_portrait.png", (960, 1200), 0.62, TOP + 0.05 - 0.31, 10)
 # faces: neutral; happy = chin up, mouth corners lifted, warmer key; angry = brows down and knit, head down, cooler key
 key = [o for o in sc.objects if o.type == "LIGHT" and o.data.type == "AREA"][0]
 for mood, head, col, energy in (("neutral", dict(head_roll=2.5), (1.0, 0.9, 0.76), 1250),
@@ -143,4 +150,4 @@ for mood, head, col, energy in (("neutral", dict(head_roll=2.5), (1.0, 0.9, 0.76
                                 ("angry", dict(head_roll=-1.0, head_pitch=-7.0, head_yaw=-3.0), (0.9, 0.9, 0.95), 1100)):
     set_pose(RELAXED, mood, **head)
     key.data.color, key.data.energy = col, energy
-    shot("marco_face_%s.png" % mood, (384, 384), 0.34, TOP - 0.13 - (0.01 if mood == "angry" else 0.0), 10)
+    shot("marco_face_%s.png" % mood, (448, 448), 0.34, TOP - 0.13 - (0.01 if mood == "angry" else 0.0), 10)
