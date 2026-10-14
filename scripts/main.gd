@@ -106,6 +106,9 @@ func _process(delta: float) -> void:
 	Game.clock += delta * MINUTES_PER_SECOND
 	_tick_walkins()
 	_check_restock_nudge()
+	if Game.clock >= Game.LAST_CALL_MIN and _last_call_day != Game.day and not Game.went_home:
+		_last_call_day = Game.day
+		toast("6:00 PM. The dealership closes at 7. Wrap up your deals.")
 	if Game.clock >= Game.CLOSE_MIN:
 		Game.clock = Game.CLOSE_MIN
 		_close_for_night()
@@ -215,7 +218,7 @@ func _build_nav() -> Control:
 	nav.alignment = BoxContainer.ALIGNMENT_CENTER
 	p.add_child(nav)
 	for item in [["Lot", "lot"], ["Office PC", "pc"], ["Garage", "garage"], ["Showroom", "showroom"], ["Marco", "marco"], ["Staff", "staff"], ["Home", "home"]]:
-		var b := UI.button(item[0], show_screen.bind(item[1]), 120, 52)
+		var b := UI.button(item[0], _go_home if item[1] == "home" else show_screen.bind(item[1]), 120, 52)
 		b.set_meta("screen", item[1])
 		b.icon = icon_tex(item[1])
 		b.expand_icon = false
@@ -266,8 +269,43 @@ func _margins(px: int) -> void:
 		content.add_theme_constant_override("margin_" + side, px)
 
 
+var _last_call_day := 0
+const DEALER_SCREENS := ["lot", "garage", "showroom", "marco", "staff"]
+
+
+## Once you've gone home (or the dealership has closed for the night) you can't go back until the morning.
+func dealer_locked() -> bool:
+	return sleeping or Game.went_home
+
+
+## The Home button: going upstairs ends your day at the dealership (asks first while it's still open).
+func _go_home() -> void:
+	if dealer_locked() or current == "home":
+		show_screen("home")
+		return
+	var p := _modal()
+	var v := UI.vbox(10)
+	p.add_child(v)
+	v.add_child(UI.header("Head home?"))
+	v.add_child(UI.para("Once you're upstairs the dealership is off-limits until tomorrow morning. Staff keep the showroom running until 7 PM.", 15))
+	var h := UI.hbox(10)
+	v.add_child(h)
+	h.add_child(UI.button("Stay at work", _close_overlay, 0, 44))
+	h.add_child(UI.gold_button("Go home", func():
+		_close_overlay()
+		Game.went_home = true
+		Game.save_game()
+		show_screen("home"), 0, 44))
+
+
 func show_screen(name: String) -> void:
-	if sleeping and name != "home":
+	if name in DEALER_SCREENS and dealer_locked():
+		if current in ["", "title"]:
+			name = "home"   # a save made after going home loads upstairs
+		else:
+			toast("The dealership is closed to you until tomorrow. Sleep to start the next day.")
+			return
+	if sleeping and not name in ["home", "pc"]:
 		# leaving home without pressing Sleep still starts the new day
 		sleeping = false
 		closing = false
@@ -5219,12 +5257,23 @@ func _screen_home() -> void:
 	set_bg("apartment%d" % Game.apartment, 0.0)
 	if sleeping:
 		bg.modulate = Color(0.3, 0.36, 0.6)
+	var furn := HomeFurniture.new()
+	furn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(furn)
 	var h := UI.hbox(16)
 	content.add_child(h)
 	var rows := [["sleep", "Sleep (end the day)", _wake_up if sleeping else _close_for_night],
-		["pc", "Computer (Office PC)", show_screen.bind("pc")],
-		["lot", "Go to the dealership", show_screen.bind("lot")],
-		["marco", "Call Marco", func(): play_dialogue(_marco_tips(), func(): pass)]]
+		["pc", "Computer (Office PC)", show_screen.bind("pc")]]
+	if Game.has_home("tv"):
+		rows.append(["star", "Watch the news", _watch_tv])
+	if Game.has_home("homepc"):
+		rows.append(["pc", "Home PC", _home_pc])
+	rows.append(["home", "Furnish the apartment", _furnish])
+	if dealer_locked():
+		rows.append(["lot", "Dealership closed till morning", null])
+	else:
+		rows.append(["lot", "Go to the dealership", show_screen.bind("lot")])
+	rows.append(["marco", "Call Marco", func(): play_dialogue(_marco_tips(), func(): pass)])
 	h.add_child(_menu_panel(Game.apartment_info().name.to_upper(), rows))
 	h.add_child(UI.spacer())
 	var p := _glass_panel()
@@ -5266,6 +5315,109 @@ func _screen_home() -> void:
 		v.add_child(b)
 	else:
 		v.add_child(UI.label("You own the best address in Tewport Beach.", 14, UI.GOOD))
+
+
+## Furniture shop for the apartment (rudimentary: three pieces, bought once).
+func _furnish() -> void:
+	var p := _modal()
+	p.custom_minimum_size = Vector2(560, 0)
+	var v := UI.vbox(10)
+	p.add_child(v)
+	v.add_child(UI.header("Furnish the apartment"))
+	for it in Game.HOME_ITEMS:
+		var r := UI.hbox(12)
+		var t := TextureRect.new()
+		t.texture = HomeFurniture.tex(it.id)
+		t.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		t.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		t.custom_minimum_size = Vector2(96, 72)
+		r.add_child(t)
+		var c := UI.vbox(2)
+		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		c.add_child(UI.label(it.name, 17, UI.TEXT, true))
+		c.add_child(UI.para(it.desc, 13, UI.MUTED))
+		r.add_child(c)
+		if Game.has_home(it.id):
+			r.add_child(UI.label("Owned", 15, UI.GOOD, true))
+		else:
+			var id: String = it.id
+			var b := UI.gold_button(Game.money_str(it.price), func():
+				if Game.buy_home(id):
+					_close_overlay()
+					toast("Delivered: %s." % Game.HOME_ITEMS.filter(func(x): return x.id == id)[0].name)
+					show_screen("home")
+				else:
+					toast("Not enough cash."), 110, 40)
+			b.disabled = Game.money < it.price
+			r.add_child(b)
+		v.add_child(r)
+	v.add_child(UI.button("Close", _close_overlay, 0, 44))
+
+
+const NEWS := ["Local news: gas prices are up again. Economy cars are the talk of the town.",
+	"Channel 7: a celebrity was spotted in a convertible on Coast Highway. Sports cars are trending.",
+	"Weather: storm season next week. Everyone suddenly wants a truck.",
+	"Business desk: Tewport families are growing. SUVs fly off the lots.",
+	"Late show: \"Why does every car salesman have a bobblehead?\" Big laugh."]
+
+
+func _watch_tv() -> void:
+	var line: String = NEWS[(Game.day * 7 + Game.apartment) % NEWS.size()]
+	play_dialogue([["TV", "Tewport Beach Tonight", line]], func(): pass)
+
+
+## Home PC: the market forecast and one reply to a bad review a day.
+func _home_pc() -> void:
+	var p := _modal()
+	p.custom_minimum_size = Vector2(560, 0)
+	var v := UI.vbox(10)
+	p.add_child(v)
+	v.add_child(UI.header("Home PC"))
+	v.add_child(UI.label("MARKET FORECAST", 13, UI.GOLD, true))
+	if sleeping:
+		v.add_child(UI.para("Tomorrow is %s. Hot class: %s. Price them a little higher." % [Game.date_str(), _class_name(Game.hot_class)], 15))
+	else:
+		v.add_child(UI.para("Tomorrow's hot class looks like: %s." % _class_name(Game.next_hot), 15))
+	v.add_child(UI.rule(UI.GOLD_DIM))
+	v.add_child(UI.label("YOLP · REPLY TO A REVIEW", 13, UI.GOLD, true))
+	v.add_child(UI.para("A polite public reply takes the sting out of the newest bad review (it counts half). Once a day.", 13, UI.MUTED))
+	var b := UI.gold_button("Write a reply", func():
+		var r := Game.reply_to_review()
+		_close_overlay()
+		if r.is_empty():
+			toast("No bad reviews left to answer today.")
+		else:
+			toast("Replied to %s. Rating now %.1f." % [r.name, Game.reputation])
+			show_screen("home"), 0, 44)
+	b.disabled = Game.home_pc_day == Game.day
+	v.add_child(b)
+	v.add_child(UI.button("Close", _close_overlay, 0, 44))
+
+
+## The apartment's bought furniture, drawn on the floor of the apartment render (tools/deskview3d.py home renders).
+class HomeFurniture extends Control:
+	# id -> [centre x, base y, height] as fractions of the stage
+	const SPOTS := {"homepc": [0.33, 0.97, 0.36], "tv": [0.52, 0.66, 0.2], "couch": [0.53, 0.99, 0.33]}
+
+	static func tex(id: String) -> Texture2D:
+		var p := "res://assets/home/%s.png" % id
+		return load(p) if ResourceLoader.exists(p) else null
+
+	func _ready() -> void:
+		resized.connect(queue_redraw)
+
+	func _draw() -> void:
+		for id in ["tv", "couch", "homepc"]:
+			if not Game.has_home(id):
+				continue
+			var t := tex(id)
+			if t == null:
+				continue
+			var sp: Array = SPOTS[id]
+			var hh: float = size.y * sp[2]
+			var ww: float = hh * t.get_width() / t.get_height()
+			var tint := Color(0.55, 0.6, 0.8) if Game.night_amount() > 0.5 else Color.WHITE
+			draw_texture_rect(t, Rect2(size.x * sp[0] - ww / 2, size.y * sp[1] - hh, ww, hh), false, tint)
 
 
 func _stat_row(parent: Control, name: String, val: String, pct: float) -> void:
@@ -5476,8 +5628,8 @@ func _close_for_night() -> void:
 	var today := Game.date_str()
 	var ledger: Dictionary = Game.ledger_day.duplicate()
 	notes += Game.end_day()
-	show_screen("lot")
-	# the lot after dark
+	# 7 PM: the dealership locks up and you're sent home
+	show_screen("home")
 	bg.modulate = Color(0.32, 0.38, 0.6)
 	_night_report(today, ledger, notes)
 

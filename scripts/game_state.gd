@@ -8,7 +8,8 @@ const LEADERBOARD_PATH := "user://chief_auto_leaderboard.json"
 const CURRENT_YEAR := 2026
 const START_UNIX := 1790812800  # Oct 1, 2026 (UTC)
 const OPEN_MIN := 8 * 60        # dealership opens 8:00
-const CLOSE_MIN := 21 * 60      # closes 21:00
+const CLOSE_MIN := 19 * 60      # closes 19:00: everyone goes home (the evening is spent upstairs)
+const LAST_CALL_MIN := 18 * 60  # 18:00: "closing at 7" warning
 const PARTS := ["engine", "transmission", "body", "interior", "tires"]
 const PART_NAMES := {
 	"engine": "Engine", "transmission": "Transmission", "body": "Body & Paint",
@@ -134,7 +135,7 @@ const DESK_ITEMS := [
 	{"id": "bobble_surfer", "slot": "decor", "name": "Surfer bobblehead", "price": 75, "desc": "Hangs ten on your desk. Never shows up for work."},
 	{"id": "bobble_lifeguard", "slot": "decor", "name": "Lifeguard bobblehead", "price": 75, "desc": "Watches your margins. Blows the whistle on lowballers."},
 	{"id": "hula", "slot": "decor", "name": "Dashboard hula girl", "price": 60, "desc": "Rescued from a trade-in. Still dancing."},
-	{"id": "photo_marco", "slot": "decor", "name": "Framed Marco portrait", "price": 300, "desc": "Walnut frame. His eyes follow you around the office."},
+	{"id": "photo_marco", "slot": "decor", "name": "Framed first sale", "price": 300, "desc": "Walnut frame. The first car that ever left this lot with a SOLD sign on it."},
 	{"id": "photo_lot", "slot": "decor", "name": "Framed dealership photo", "price": 250, "desc": "The lot on a good day. Proof it happens."},
 	{"id": "first_dollar", "slot": "decor", "name": "Framed first dollar", "price": 100, "desc": "Cost you a hundred. Worth a dollar. Worth a dollar. Priceless."},
 	{"id": "globe", "slot": "decor", "name": "Desk globe", "price": 350, "desc": "For planning the Chief Auto world takeover."},
@@ -238,6 +239,46 @@ func goals() -> Array:
 		["Open the heritage gallery", has_upgrade("gallery")], ["Fill the overflow lot across PCH", has_upgrade("expand3")]]
 
 
+## Apartment furniture (bought at home, drawn in the apartment). The home PC unlocks two small evening tools.
+const HOME_ITEMS := [
+	{"id": "couch", "name": "Couch & rug", "price": 600, "desc": "Somewhere to sit that isn't a folding chair."},
+	{"id": "tv", "name": "Flatscreen TV", "price": 900, "desc": "Local news every night: what Tewport Beach is buying."},
+	{"id": "homepc", "name": "Home PC", "price": 2000, "desc": "Unlocks the market forecast (tomorrow's hot class) and replying to a bad Yolp review once a day."},
+]
+
+
+func has_home(id: String) -> bool:
+	return id in home_items
+
+
+func buy_home(id: String) -> bool:
+	for it in HOME_ITEMS:
+		if it.id == id and not has_home(id) and money >= it.price:
+			money -= it.price
+			log_money("shop", -it.price)
+			home_items.append(id)
+			save_game()
+			emit_signal("changed")
+			return true
+	return false
+
+
+## Home PC: a public reply to the newest review under 3 stars halves its weight. Once a day. Returns the review or {}.
+func reply_to_review() -> Dictionary:
+	if home_pc_day == day:
+		return {}
+	for i in range(reviews.size() - 1, -1, -1):
+		var r: Dictionary = reviews[i]
+		if r.stars < 3 and not r.get("replied", false):
+			r.replied = true
+			r.weight = float(r.weight) * 0.5
+			home_pc_day = day
+			_recompute_rep()
+			save_game()
+			return r
+	return {}
+
+
 ## Where you sleep: the apartment on the showroom roof. Each tier is a visual upgrade of the same room.
 const APARTMENTS := [
 	{"tier": 1, "name": "Starter apartment", "price": 0, "monthly": 0, "fresh": 0.0,
@@ -266,6 +307,10 @@ var clock: float = OPEN_MIN
 var cars: Array = []
 var listings: Array = []
 var hot_class: String = "suv"
+var next_hot: String = "suv"      # tomorrow's hot class (the home PC's market forecast shows it)
+var went_home := false            # went home today: the dealership is off-limits until the morning
+var home_items: Array = []        # apartment furniture bought (see HOME_ITEMS)
+var home_pc_day := 0              # day the home PC's review reply was last used
 var next_id: int = 1
 var stats := {"sold": 0, "buyers": 0, "profit": 0, "days_held": 0, "goal_sold_today": 0, "walked": 0, "lawsuits": 0}
 var seen_intro := false
@@ -382,6 +427,9 @@ func new_game() -> void:
 	dealership = 1
 	flagship_day = -1
 	apartment = 1
+	went_home = false
+	home_items = []
+	home_pc_day = 0
 	loan = 0
 	pending_referrals = 0
 	# a starter dealership: just you and Jeff. Amna and Maruchan are on StaffHire until you hire them.
@@ -396,6 +444,7 @@ func new_game() -> void:
 		reviews.append({"stars": r[0], "name": r[1], "text": r[2], "day": 0, "pid": PersonArt.pool_pid(r[1].length() * 7, r[1]), "weight": 1, "fixed": false})
 	_recompute_rep()
 	hot_class = ["economy", "truck", "suv"].pick_random()
+	next_hot = ["economy", "truck", "suv", "sport", "exotic"].pick_random()
 	generate_listings()
 	# day one is a lesson, not a trap: the opening lane has no flood cars or hidden faults
 	for l in listings:
@@ -1392,7 +1441,9 @@ func end_day() -> Array:
 	day += 1
 	clock = OPEN_MIN
 	stats.goal_sold_today = 0
-	hot_class = ["economy", "truck", "suv", "sport", "exotic"].pick_random()
+	went_home = false
+	hot_class = next_hot
+	next_hot = ["economy", "truck", "suv", "sport", "exotic"].pick_random()
 	if date_dict().day == 1:
 		var b := monthly_bills()
 		money -= b.total
@@ -1470,12 +1521,12 @@ func legal_exposure() -> int:
 const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars", "listings", "hot_class", "next_id",
 	"stats", "seen_intro", "owned", "equipped", "decor_on", "desk_slots", "upgrades", "ads_active", "staff", "candidates", "walkin_schedule", "cls_sales",
 	"ledger_day", "ledger_month", "month_walked", "month_sold", "month_profit_start", "liabilities", "reviews", "referrals", "memberships", "apartment", "dealer_name", "tutorial", "dealership",
-	"loan", "pending_referrals", "run_id", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start", "flagship_day"]
+	"loan", "pending_referrals", "run_id", "next_hot", "went_home", "home_items", "home_pc_day", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start", "flagship_day"]
 
 
 func save_game() -> void:
 	update_leaderboard("Closed down" if not bankrupt.is_empty() else "Open")
-	var data := {"version": 6}
+	var data := {"version": 7}
 	for k in SAVE_KEYS:
 		data[k] = get(k)
 	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -1500,6 +1551,8 @@ func load_game() -> bool:
 			set(k, _fix_ints(data[k]))
 	reputation = float(reputation)
 	clock = float(clock)
+	if int(data.get("version", 1)) < 7:   # 7: home furniture, went-home lock, forecast; closing moved to 7 PM
+		clock = minf(clock, CLOSE_MIN - 30.0)
 	if int(data.get("version", 1)) < 6:   # 6 put collectibles in desk slots; older saves place what was on the desk
 		desk_slots = {}
 		for id in decor_on.duplicate():

@@ -568,8 +568,21 @@ def _photo(path, crop, out):
 
 
 def b_photo_marco():
+    """"Framed first sale" (the id is kept for saves): a snapshot of the lot with a red SOLD banner across it."""
+    from PIL import Image, ImageDraw, ImageFont
     os.makedirs(TMP, exist_ok=True)
-    p = _photo(MARCO_REF, (560, 60, 800, 380), os.path.join(TMP, "marco_face.jpg"))
+    p = _photo(LOT_BG, (500, 250, 1300, 1050), os.path.join(TMP, "first_sale.jpg"))
+    im = Image.open(p).convert("RGB")
+    d = ImageDraw.Draw(im)
+    W, H = im.size
+    d.rectangle((0, int(H * 0.38), W, int(H * 0.62)), fill=(200, 24, 30))
+    try:
+        f = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", int(H * 0.17))
+    except OSError:
+        f = ImageFont.load_default()
+    d.text((W / 2, H / 2), "SOLD!", fill=(255, 255, 255), font=f, anchor="mm")
+    d.rectangle((0, 0, W - 1, H - 1), outline=(245, 240, 225), width=int(W * 0.04))   # photo-print border
+    im.save(p, quality=92)
     w, h = 0.12, 0.16
     frame("f", (0, 0, 0.1), w, h, 0.016, WALNUT(), 0.014)
     plane("pic", (0, -0.0075, 0.1), w, h, img_mat("pic", p))

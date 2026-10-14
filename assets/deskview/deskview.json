@@ -2,5 +2,57 @@
  "edge_oak": 0.4165,
  "edge_carbon": 0.4106,
  "edge_glass": 0.4146,
- "edge_folding": 0.4406
+ "edge_folding": 0.4406,
+ "monitor_crt": {
+  "screen": [
+   0.0908,
+   0.1364,
+   0.9056,
+   0.842
+  ],
+  "screen2": null
+ },
+ "monitor_lcd": {
+  "screen": [
+   0.0281,
+   0.039,
+   0.9675,
+   0.6933
+  ],
+  "screen2": null
+ },
+ "monitor_dual": {
+  "screen": [
+   0.0182,
+   0.0686,
+   0.4646,
+   0.6672
+  ],
+  "screen2": [
+   0.5357,
+   0.0686,
+   0.9779,
+   0.6672
+  ]
+ },
+ "monitor_ultra": {
+  "screen": [
+   0.0104,
+   0.0499,
+   0.985,
+   0.6946
+  ],
+  "screen2": null
+ },
+ "keyboard": {},
+ "shelfunit": {
+  "shelves": [
+   0.9427,
+   0.6607,
+   0.3719,
+   0.0877
+  ],
+  "shelf_l": 0.0189,
+  "shelf_r": 0.9778
+ }
 }

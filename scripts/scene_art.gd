@@ -44,7 +44,21 @@ func _compute() -> void:
 			monitor_rect = Rect2(w * 0.05, h * 0.04, w * 0.9, h * 0.76)
 		else:
 			monitor_rect = Rect2(w * 0.15, h * 0.04, w * 0.7, h * 0.76)
-		desk_top = monitor_rect.end.y + h * (0.1 if desk_view else 0.07)
+		# the rendered monitor's screen keeps its own shape: fit it inside the box, centred
+		var mt := _deskview("monitor_" + mon)
+		var ms: Array = _monitor_meta(mon).get("screen", [])
+		if mt != null and ms.size() == 4:
+			var asp: float = (ms[2] - ms[0]) * mt.get_width() / maxf(1.0, (ms[3] - ms[1]) * mt.get_height())
+			var r := monitor_rect
+			var nw: float = minf(r.size.x, r.size.y * asp)
+			var nh: float = nw / asp
+			monitor_rect = Rect2(r.get_center().x - nw / 2, r.position.y + (r.size.y - nh) * 0.5, nw, nh)
+			# the desk's back edge runs just behind the stand's foot
+			desk_top = monitor_tex_rect(mt, ms).end.y - h * 0.012
+			if not desk_view:
+				desk_top = minf(desk_top, monitor_rect.end.y + h * 0.07)   # at the PC the stand runs down past the desk edge
+		else:
+			desk_top = monitor_rect.end.y + h * (0.1 if desk_view else 0.07)
 	elif mode == "lobby":
 		podiums = []
 		podium_targets = []
@@ -233,10 +247,15 @@ func _draw_desk() -> void:
 	_cover(_tex("desk"))
 	var m := monitor_rect
 	if desk_view or m.position.x > w * 0.1:
-		# right wall shelf
-		var sr := shelf_rect()
-		draw_rect(sr, Color("6b4a2f"))
-		draw_rect(Rect2(sr.position + Vector2(0, sr.size.y), Vector2(sr.size.x, 4)), Color(0, 0, 0, 0.25))
+		# a freestanding walnut shelf unit behind the desk on the right (the wall there is all window)
+		var su := _deskview("shelfunit")
+		var ur := shelf_unit_rect()
+		if su != null:
+			if ur.size.x > 30:
+				draw_texture_rect(su, ur, false)
+		else:
+			var sr := shelf_rect()
+			draw_rect(sr, Color("6b4a2f"))
 	# desk surface
 	var desk: String = Game.equipped.get("desk", "folding")
 	var top := desk_top
@@ -252,32 +271,56 @@ func _draw_desk() -> void:
 		_draw_flat_desk(desk, col, top, w, h)
 	# monitor(s)
 	var mon: String = Game.equipped.get("monitor", "crt")
-	if mon == "dual":
-		var side := Rect2(m.end.x - 10, m.position.y + 30, w - m.end.x - 4, m.size.y - 50)
-		draw_rect(side.grow(10), Color("111214"))
-		draw_rect(side, Color("0f2a44"))
-		_text(side.position + Vector2(12, 28), "AutoBidz watchlist", 13, Color("9cc7f0"))
-		for i in 5:
-			draw_rect(Rect2(side.position + Vector2(12, 44 + i * 26), Vector2(side.size.x - 30, 16)), Color(0.4, 0.6, 0.9, 0.25))
-	var bezel: float = {"crt": 22.0, "lcd": 12.0, "dual": 12.0, "ultra": 10.0}[mon]
-	var bezel_col := Color("cfc6a8") if mon == "crt" else Color("111214")
-	draw_rect(m.grow(bezel), bezel_col)
-	if mon == "crt":
-		draw_rect(m.grow(bezel), Color(0, 0, 0, 0.2), false, 3.0)
-		_text(Vector2(m.get_center().x - 30, m.end.y + bezel - 5), "TEWTRON", 12, Color("6a6450"))
-	if desk_view:
-		# the PC is on: a dim desktop with the logo while you look at the desk
-		var g := m.grow(-2)
-		_vgrad(g, Color("1d3550"), Color("0b1522"))
-		_text(Vector2(g.get_center().x - 58, g.get_center().y + 8), "CHIEF AUTO", 22, Color(1, 0.85, 0.6, 0.55))
-	# stand
-	draw_rect(Rect2(m.get_center().x - 18, m.end.y + bezel, 36, top - m.end.y - bezel), bezel_col.darkened(0.2))
-	draw_rect(Rect2(m.get_center().x - 70, top - 8, 140, 10), bezel_col.darkened(0.3))
-	# keyboard
-	draw_rect(Rect2(m.get_center().x - 160, top + 18, 320, 34), Color("26282c"))
-	for r in 3:
-		for k in 14:
-			draw_rect(Rect2(m.get_center().x - 152 + k * 22.5, top + 22 + r * 10, 19, 7), Color("3d4046"))
+	var mtex := _deskview("monitor_" + mon)
+	var msc: Array = _monitor_meta(mon).get("screen", [])
+	if mtex != null and msc.size() == 4:
+		# rendered from the chair (tools/deskview3d.py): its screen lands exactly on monitor_rect
+		var mr := monitor_tex_rect(mtex, msc)
+		draw_texture_rect(mtex, mr, false)
+		var s2 = _monitor_meta(mon).get("screen2", null)
+		if s2 is Array and s2.size() == 4:
+			var side := Rect2(mr.position + Vector2(s2[0], s2[1]) * mr.size, Vector2(s2[2] - s2[0], s2[3] - s2[1]) * mr.size)
+			_vgrad(side, Color("123250"), Color("0a1828"))
+			if side.position.x < w - 40:
+				_text(side.position + Vector2(12, 28), "AutoBidz watchlist", 13, Color("9cc7f0"))
+				for i in 5:
+					draw_rect(Rect2(side.position + Vector2(12, 44 + i * 26), Vector2(side.size.x - 30, 16)), Color(0.4, 0.6, 0.9, 0.25))
+		if desk_view:
+			var g := m
+			_vgrad(g, Color("1d3550"), Color("0b1522"))
+			_text(Vector2(g.get_center().x - 58, g.get_center().y + 8), "CHIEF AUTO", 22, Color(1, 0.85, 0.6, 0.55))
+	else:
+		if mon == "dual":
+			var side := Rect2(m.end.x - 10, m.position.y + 30, w - m.end.x - 4, m.size.y - 50)
+			draw_rect(side.grow(10), Color("111214"))
+			draw_rect(side, Color("0f2a44"))
+			_text(side.position + Vector2(12, 28), "AutoBidz watchlist", 13, Color("9cc7f0"))
+			for i in 5:
+				draw_rect(Rect2(side.position + Vector2(12, 44 + i * 26), Vector2(side.size.x - 30, 16)), Color(0.4, 0.6, 0.9, 0.25))
+		var bezel: float = {"crt": 22.0, "lcd": 12.0, "dual": 12.0, "ultra": 10.0}[mon]
+		var bezel_col := Color("cfc6a8") if mon == "crt" else Color("111214")
+		draw_rect(m.grow(bezel), bezel_col)
+		if mon == "crt":
+			draw_rect(m.grow(bezel), Color(0, 0, 0, 0.2), false, 3.0)
+			_text(Vector2(m.get_center().x - 30, m.end.y + bezel - 5), "TEWTRON", 12, Color("6a6450"))
+		if desk_view:
+			# the PC is on: a dim desktop with the logo while you look at the desk
+			var g := m.grow(-2)
+			_vgrad(g, Color("1d3550"), Color("0b1522"))
+			_text(Vector2(g.get_center().x - 58, g.get_center().y + 8), "CHIEF AUTO", 22, Color(1, 0.85, 0.6, 0.55))
+		# stand
+		draw_rect(Rect2(m.get_center().x - 18, m.end.y + bezel, 36, top - m.end.y - bezel), bezel_col.darkened(0.2))
+		draw_rect(Rect2(m.get_center().x - 70, top - 8, 140, 10), bezel_col.darkened(0.3))
+
+	# keyboard (and mouse), rendered at the same angle as the desk
+	var ktex := _deskview("keyboard")
+	if ktex != null:
+		var kw: float = m.size.x * (0.95 if desk_view else 0.55)
+		kw = minf(kw, w * 0.42)
+		var kh: float = kw * ktex.get_height() / ktex.get_width()
+		draw_texture_rect(ktex, Rect2(m.get_center().x - kw * 0.42, top + (h - top) * (0.1 if desk_view else 0.25), kw, kh), false)
+	else:
+		draw_rect(Rect2(m.get_center().x - 160, top + 18, 320, 34), Color("26282c"))
 	# collectibles in their slots, back row first so the front ones overlap them
 	for slot in Game.DESK_SLOTS:
 		var id: String = Game.desk_slots.get(slot, "")
@@ -332,6 +375,35 @@ func _draw_flat_desk(desk: String, col: Color, top: float, w: float, h: float) -
 		"folding":
 			draw_line(Vector2(w * 0.1, top), Vector2(w * 0.14, h), Color("4a4d52"), 4.0)
 			draw_line(Vector2(w * 0.9, top), Vector2(w * 0.86, h), Color("4a4d52"), 4.0)
+
+
+## Where the monitor render goes so that its screen (fractions msc of the image) covers monitor_rect.
+func monitor_tex_rect(t: Texture2D, msc: Array) -> Rect2:
+	var sw: float = monitor_rect.size.x / (msc[2] - msc[0])
+	var sh: float = monitor_rect.size.y / (msc[3] - msc[1])
+	return Rect2(monitor_rect.position - Vector2(msc[0] * sw, msc[1] * sh), Vector2(sw, sh))
+
+
+func _monitor_meta(mon: String) -> Dictionary:
+	var d = _deskview_meta().get("monitor_" + mon, {})
+	return d if d is Dictionary else {}
+
+
+## The freestanding shelf unit (desk mode): right of the monitor, its legs hidden behind the desk.
+func shelf_unit_rect() -> Rect2:
+	var t := _deskview("shelfunit")
+	if t == null:
+		return Rect2()
+	var x0 := monitor_rect.end.x + size.x * 0.03
+	var x1 := size.x * 0.995
+	if desk_view:
+		x0 = maxf(x0, size.x * 0.76)
+	var ww := minf(x1 - x0, size.y * 0.36)
+	var hh := ww * t.get_height() / t.get_width()
+	# the third shelf from the floor sits a little above the desk's back edge
+	var shelves: Array = _deskview_meta().get("shelfunit", {}).get("shelves", [0.94, 0.66, 0.37, 0.09])
+	var y: float = desk_top - size.y * (0.16 if desk_view else 0.2) - hh * float(shelves[2])
+	return Rect2(x1 - ww, y, ww, hh)
 
 
 var _dv := {}
@@ -390,11 +462,19 @@ func slot_rect(slot: String) -> Rect2:
 	var px := 0.0
 	var desk_scale: float = {"folding": 0.92, "oak": 1.0, "glass": 1.0, "carbon": 1.06}.get(Game.equipped.get("desk", "folding"), 1.0)
 	if slot == "shelf":
-		var sr := shelf_rect()
-		if sr.size.x < 40:
-			return Rect2()
-		base = Vector2(sr.get_center().x, sr.position.y)
-		px = min(h * 0.24, sr.size.x * 0.9)
+		var ur := shelf_unit_rect()
+		if ur.size.x > 0:
+			if ur.size.x < 40:
+				return Rect2()
+			var shelves: Array = _deskview_meta().get("shelfunit", {}).get("shelves", [0.94, 0.66, 0.37, 0.09])
+			base = Vector2(ur.get_center().x, ur.position.y + ur.size.y * float(shelves[2]) + 2)
+			px = min(h * 0.22, ur.size.x * 0.75)
+		else:
+			var sr := shelf_rect()
+			if sr.size.x < 40:
+				return Rect2()
+			base = Vector2(sr.get_center().x, sr.position.y)
+			px = min(h * 0.24, sr.size.x * 0.9)
 	elif desk_view:
 		var back := slot.ends_with("b")
 		var left := slot.begins_with("l")
