@@ -10,6 +10,12 @@ uniform float rough_v = 0.15;
 uniform sampler2D env_map : source_color, filter_linear_mipmap, repeat_enable, hint_default_black;
 uniform float env_strength = 1.0;
 uniform vec3 glow = vec3(0.0);
+// pushes the surface along its normals: negative tucks trim that sits flush with a panel behind it
+uniform float grow = 0.0;
+
+void vertex() {
+	VERTEX += NORMAL * grow;
+}
 
 void fragment() {
 	vec4 a = albedo * texture(albedo_tex, UV);

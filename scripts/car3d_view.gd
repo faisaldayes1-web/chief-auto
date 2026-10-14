@@ -7,6 +7,9 @@ signal part_clicked(part: String)
 signal part_hovered(part: String)
 
 const PAINT_SHADER := preload("res://shaders/car_paint.gdshader")
+const SURFACE_SHADER := preload("res://shaders/env_surface.gdshader")
+const GLASS_SHADER := preload("res://shaders/env_glass.gdshader")
+const TIRE_SHADER := preload("res://shaders/car_tire.gdshader")
 const GARAGE_HDR := "res://assets/cc0/sky/autoshop_1k.hdr"     # Poly Haven "Autoshop 01" (CC0): desktop sky light
 const GARAGE_ENV := "res://assets/cc0/sky/autoshop_env.jpg"    # same, tone-mapped: hand-rolled paint reflections on the web
 const PAINT_PARTS := ["front_bumper", "hood", "fender_fl", "fender_fr", "door_fl", "door_fr", "door_rl", "door_rr",
@@ -40,6 +43,7 @@ var _smoke: CPUParticles3D
 var _floor: MeshInstance3D
 var _auto_spin := true
 var pickable := true   # false: skip reading triangles for picking (showroom display cars)
+var _env: Texture2D     # web only: the garage HDRI the hand-rolled reflections sample
 
 
 func _init() -> void:
@@ -207,9 +211,10 @@ func refresh() -> void:
 			if sm == null:
 				sm = ShaderMaterial.new()
 				sm.shader = PAINT_SHADER
-				if not RenderQuality.is_forward_plus() and ResourceLoader.exists(GARAGE_ENV):
-					sm.set_shader_parameter("env_map", load(GARAGE_ENV))
+				if _env_map():
+					sm.set_shader_parameter("env_map", _env_map())
 					sm.set_shader_parameter("env_strength", 0.45)
+					sm.set_shader_parameter("clearcoat_k", 0.0)
 				_paint_mats[key] = sm
 				mi.material_override = sm
 			var panel: String = key
@@ -227,56 +232,30 @@ func refresh() -> void:
 			var kind: String = car.get("trim", "chrome")
 			if key == "grille" and kind == "body":
 				kind = "black"
-			var tm := _trim_mat(kind, paint)
+			var tm: Material = _trim_mat(kind, paint)
+			if key == "grille" and tm is ShaderMaterial:
+				# grilles sit flush inside the bumper skin; tucked a few millimetres in, only the parts that
+				# stand proud show instead of z-fighting through the paint
+				tm = _env_surf("trim:grille:" + kind, Color(0.82, 0.83, 0.86) if kind == "chrome" else Color(0.025, 0.025, 0.03),
+					1.0 if kind == "chrome" else 0.0, 0.06 if kind == "chrome" else 0.1)
+				tm.set_shader_parameter("grow", -0.004)
 			if mi.material_override != tm:
 				mi.material_override = tm
 		elif key.begins_with("headlight") or key.begins_with("taillight"):
-			var broken: bool = car.damage.has(key)
-			# one cached material per light; emission stays enabled (black when off) so highlighting
-			# only changes uniforms and never compiles a new shader variant
-			var m: StandardMaterial3D = _cached_mat("light:" + key)
-			m.emission_enabled = true
-			if key.begins_with("head"):
-				m.albedo_color = Color(0.25, 0.25, 0.27) if broken else Color(0.92, 0.94, 0.98)
-				m.metallic = 0.0 if broken else 0.7
-				m.roughness = 0.8 if broken else 0.05
-				m.emission = Color.BLACK if broken else Color(0.9, 0.95, 1.0)
-				m.emission_energy_multiplier = 0.25
-			else:
-				m.albedo_color = Color(0.2, 0.05, 0.05) if broken else Color(0.75, 0.04, 0.03)
-				m.roughness = 0.8 if broken else 0.1
-				m.emission = Color.BLACK if broken else Color(0.8, 0.0, 0.0)
-				m.emission_energy_multiplier = 0.3
-			var h := _hl(key, key)
-			if h.a > 0:
-				m.emission = h
-				m.emission_energy_multiplier = 0.6
-			if mi.material_override != m:
-				mi.material_override = m
+			_style_light(mi, key)
 		elif key.begins_with("wheel_"):
 			_style_wheel(mi, key)
 		elif key == "glass":
+			# tinted, glossy safety glass: dark enough to read as glass, reflective at grazing angles
 			var h := _hl(key, "interior")
-			if h.a > 0:
-				var gm: StandardMaterial3D = _cached_mat("glass")
-				gm.albedo_color = Color(0.05, 0.08, 0.1)
-				gm.metallic = 0.2
-				gm.roughness = 0.05
-				gm.emission_enabled = true
-				gm.emission = h
-				gm.emission_energy_multiplier = 0.3
-				mi.material_override = gm
-			else:
-				# tinted, glossy safety glass: dark enough to read as glass, reflective at grazing angles
-				var gl: StandardMaterial3D = _cached_mat("glass_clear")
-				if gl.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED:
-					gl.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-					gl.albedo_color = Color(0.04, 0.06, 0.07, 0.62)
-					gl.metallic = 0.25
-					gl.roughness = 0.03
-					gl.metallic_specular = 0.9
-				if mi.material_override != gl:
-					mi.material_override = gl
+			var gl := _glass_mat()
+			gl.set_shader_parameter("tint", Color(0.05, 0.08, 0.1, 0.85) if h.a > 0 else Color(0.03, 0.045, 0.055, 0.66))
+			gl.set_shader_parameter("glow", _glow(h, 0.3))
+			for i in mi.mesh.get_surface_count():
+				if mi.get_surface_override_material(i) != gl:
+					mi.set_surface_override_material(i, gl)
+		elif key == "core" or key.begins_with("liner") or key in ["underbody", "pillars", "arch", "plate_r"]:
+			_style_detail(mi, key, paint)
 	# engine smoke from under the hood when the engine is in bad shape
 	var smoke_on: bool = car.parts.engine < 35
 	if smoke_on and _smoke == null and _meshes.has("hood"):
@@ -314,6 +293,139 @@ func refresh() -> void:
 		_smoke.emitting = smoke_on
 
 
+## Web builds sample this for reflections; desktop (Forward+) has real sky reflections, so null there.
+func _env_map() -> Texture2D:
+	if _env == null and not RenderQuality.is_forward_plus() and ResourceLoader.exists(GARAGE_ENV):
+		_env = load(GARAGE_ENV)
+	return _env
+
+
+## A cached glossy surface (chrome, alloy, lamp reflector, gloss plastic) that reflects the garage.
+## "env_k" meta marks it so the showroom can point it at its own hall reflections.
+func _env_surf(id: String, color: Color, metal: float, rough: float, tex: Texture2D = null) -> ShaderMaterial:
+	var m: ShaderMaterial = _mat_cache.get(id)
+	if m == null:
+		m = ShaderMaterial.new()
+		m.shader = SURFACE_SHADER
+		var env := _env_map()
+		m.set_shader_parameter("env_map", env)
+		m.set_shader_parameter("env_strength", 0.8 if env else 0.0)
+		m.set_meta("env_k", 0.8)
+		_mat_cache[id] = m
+	m.set_shader_parameter("albedo", color)
+	m.set_shader_parameter("albedo_tex", tex)
+	m.set_shader_parameter("metallic_v", metal)
+	m.set_shader_parameter("rough_v", rough)
+	return m
+
+
+func _glass_mat() -> ShaderMaterial:
+	var m: ShaderMaterial = _mat_cache.get("glass")
+	if m == null:
+		m = ShaderMaterial.new()
+		m.shader = GLASS_SHADER
+		var env := _env_map()
+		m.set_shader_parameter("env_map", env)
+		m.set_shader_parameter("env_strength", 0.9 if env else 0.0)
+		m.set_shader_parameter("rough_v", 0.02)
+		m.set_meta("env_k", 0.9)
+		_mat_cache["glass"] = m
+	return m
+
+
+func _glow(h: Color, k: float) -> Vector3:
+	return Vector3(h.r, h.g, h.b) * h.a * k
+
+
+## Lamps per surface: dark housing, mirror reflector behind a clear lens, glowing LED strips.
+## Broken lamps go dull and dark. Models with a single lamp surface get the lens-over-reflector look.
+func _style_light(mi: MeshInstance3D, key: String) -> void:
+	var broken: bool = car.damage.has(key)
+	var head := key.begins_with("head")
+	var g := _glow(_hl(key, key), 0.6)
+	for i in mi.mesh.get_surface_count():
+		var base: Material = mi.mesh.surface_get_material(i)
+		var nm := String(base.resource_name) if base else ""
+		var id := "light:%s:%d" % [key, i]
+		var m: ShaderMaterial
+		if broken:
+			m = _env_surf(id, Color(0.2, 0.2, 0.21) if head else Color(0.18, 0.05, 0.05), 0.0, 0.75)
+			m.set_shader_parameter("glow", g)
+		elif nm == "lamp_housing" or nm == "gloss_black":
+			m = _env_surf(id, Color(0.025, 0.026, 0.03), 0.0, 0.25)
+			m.set_shader_parameter("glow", g)
+		elif nm == "drl" or nm == "tail_led":
+			m = _env_surf(id, Color(1, 1, 1) if nm == "drl" else Color(1.0, 0.1, 0.06), 0.0, 0.2)
+			m.set_shader_parameter("glow", (Vector3(0.95, 0.97, 1.0) * 1.6 if nm == "drl" else Vector3(1.0, 0.05, 0.02) * 1.3) + g)
+		elif nm == "tail_dark":
+			m = _env_surf(id, Color(0.16, 0.01, 0.01), 0.0, 0.06)
+			m.set_shader_parameter("glow", Vector3(0.12, 0.0, 0.0) + g)
+		elif nm == "reverse":
+			m = _env_surf(id, Color(0.75, 0.76, 0.78), 0.6, 0.05)
+			m.set_shader_parameter("glow", g)
+		elif head:
+			# lens over a chrome reflector: mirror-bright with a faint cool glow
+			m = _env_surf(id, Color(0.86, 0.88, 0.92), 1.0, 0.05)
+			m.set_shader_parameter("glow", Vector3(0.16, 0.17, 0.19) + g)
+		else:
+			# red lens: glossy, deep, lit from inside
+			m = _env_surf(id, Color(0.55, 0.03, 0.02), 0.0, 0.05)
+			m.set_shader_parameter("glow", Vector3(0.42, 0.0, 0.0) + g)
+		if mi.get_surface_override_material(i) != m:
+			mi.set_surface_override_material(i, m)
+	if mi.material_override:
+		mi.material_override = null
+
+
+## Trim, interior and underbody bits that came from source models with flat or placeholder colours:
+## chrome and alloy reflect, gloss black shines, carbon and carpet go dark, panel-gap seams take a
+## shadowed paint colour so they read as gaps rather than drawn black lines. Unknown materials stay as made.
+func _style_detail(mi: MeshInstance3D, key: String, paint: Color) -> void:
+	for i in mi.mesh.get_surface_count():
+		var base := mi.mesh.surface_get_material(i) as BaseMaterial3D
+		if base == null:
+			continue
+		var nm := String(base.resource_name).to_lower()
+		var tex := base.albedo_texture
+		var id := "detail:%s:%d" % [key, i]
+		var m: Material = null
+		if nm == "seam":
+			var sm := _cached_mat(id)
+			sm.albedo_color = paint.darkened(0.8)
+			sm.roughness = 0.6
+			m = sm
+		elif key == "underbody":
+			if not nm.contains("chrome"):
+				continue
+			# its chrome strips sit flush with the bumper skin and z-fight through the paint: tuck them a
+			# few millimetres inside so only the parts that stand proud show
+			var um := _cached_mat(id)
+			um.albedo_color = Color(0.7, 0.71, 0.74)
+			um.metallic = 1.0
+			um.roughness = 0.15
+			um.grow = true
+			um.grow_amount = -0.004
+			m = um
+		elif nm.contains("chrome") or nm.contains("miroir") or nm == "mirror" or nm.contains("metal_alu"):
+			var c := base.albedo_color
+			if c.get_luminance() < 0.3 or tex == null:
+				c = Color(0.82, 0.83, 0.86)   # source "Chrome" materials are often black placeholders
+			m = _env_surf(id, c, 1.0, 0.18 if nm.contains("blurry") else 0.06, tex)
+		elif nm.contains("satin"):
+			m = _env_surf(id, base.albedo_color, 1.0, 0.32, tex)
+		elif nm.contains("gloss") and nm.contains("black"):
+			m = _env_surf(id, Color(0.02, 0.02, 0.024), 0.0, 0.08)
+		elif nm.contains("carbon"):
+			m = _env_surf(id, Color(0.05, 0.05, 0.055), 0.2, 0.3, tex if base.albedo_color.get_luminance() < 0.5 else null)
+		elif nm.contains("carpet"):
+			var cm := _cached_mat(id)
+			cm.albedo_color = Color(0.06, 0.06, 0.065)
+			cm.roughness = 1.0
+			m = cm
+		if m and mi.get_surface_override_material(i) != m:
+			mi.set_surface_override_material(i, m)
+
+
 func _hl(key: String, panel: String) -> Color:
 	if key == selected or panel == selected:
 		return Color(1.0, 0.78, 0.25, 0.9)
@@ -330,62 +442,70 @@ func _cached_mat(id: String) -> StandardMaterial3D:
 	return m
 
 
-func _trim_mat(kind: String, paint: Color) -> StandardMaterial3D:
-	var id := "trim:%s:%s" % [kind, paint.to_html() if kind != "chrome" and kind != "black" else ""]
+func _trim_mat(kind: String, paint: Color) -> Material:
+	match kind:
+		"chrome":
+			return _env_surf("trim:chrome", Color(0.82, 0.83, 0.86), 1.0, 0.06)
+		"black":
+			return _env_surf("trim:black", Color(0.025, 0.025, 0.03), 0.0, 0.1)
+	var id := "trim:body:" + paint.to_html()
 	if _mat_cache.has(id):
 		return _mat_cache[id]
 	var m := _cached_mat(id)
-	match kind:
-		"chrome":
-			m.albedo_color = Color(0.8, 0.81, 0.84)
-			m.metallic = 1.0
-			m.roughness = 0.12
-		"black":
-			m.albedo_color = Color(0.03, 0.03, 0.035)
-			m.metallic = 0.2
-			m.roughness = 0.15
-		_:
-			m.albedo_color = paint
-			m.metallic = 0.35
-			m.roughness = 0.28
+	m.albedo_color = paint
+	m.metallic = 0.35
+	m.roughness = 0.28
 	return m
 
 
 func _style_wheel(mi: MeshInstance3D, key: String) -> void:
 	var worn: float = 1.0 - car.parts.tires / 100.0
-	var hl := _hl(key, "tires")
+	var g := _glow(_hl(key, "tires"), 0.25)
+	var rims: String = car.get("rims", "silver")
 	for i in mi.mesh.get_surface_count():
 		var base: Material = mi.mesh.surface_get_material(i)
 		var name := String(base.resource_name) if base else ""
 		var cid := "wheel:%s:%d" % [key, i]
-		var m: StandardMaterial3D = _mat_cache.get(cid)
-		if m == null:
-			m = (base.duplicate() if base is StandardMaterial3D else StandardMaterial3D.new())
-			_mat_cache[cid] = m
-			if not m.emission_enabled:
-				# keep emission on (black) so the hover glow is a uniform change, not a shader recompile
-				m.emission_enabled = true
-				m.emission = Color.BLACK
-				m.emission_energy_multiplier = 0.0
-			_mat_cache[cid + ":base"] = [m.emission, m.emission_energy_multiplier]
-		var eb: Array = _mat_cache[cid + ":base"]
-		m.emission = eb[0]
-		m.emission_energy_multiplier = eb[1]
+		var m: Material
 		if name == "rim":
-			m.albedo_color = RIM_COLORS.get(car.get("rims", "silver"), RIM_COLORS.silver)
-			m.metallic = 0.9 if car.get("rims", "silver") in ["silver", "gold"] else 0.5
-			m.roughness = 0.2 if car.get("rims", "silver") != "black" else 0.45
-		elif name == "rubber":
-			# bald tires go grey and shiny, flat ones sag
-			m.albedo_color = Color(0.03, 0.03, 0.03).lerp(Color(0.16, 0.16, 0.16), worn)
-			m.roughness = lerp(0.9, 0.55, worn)
+			# polished alloy (or painted black / gunmetal / gold) that reflects the garage
+			m = _env_surf(cid, RIM_COLORS.get(rims, RIM_COLORS.silver), 1.0 if rims in ["silver", "gold"] else 0.6,
+				0.12 if rims != "black" else 0.35)
+		elif name == "rim_dark":
+			m = _env_surf(cid, Color(0.06, 0.06, 0.07), 0.5, 0.3)
 		elif name == "disc":
-			m.albedo_color = Color(0.35, 0.35, 0.36).lerp(Color(0.42, 0.22, 0.1), clamp(worn * 1.4 - 0.4, 0, 1))
-			m.metallic = lerp(0.9, 0.2, worn)
-		if hl.a > 0:
-			m.emission_enabled = true
-			m.emission = hl
-			m.emission_energy_multiplier = 0.25
+			# brake disc: machined steel, rusting as the tyres and brakes wear
+			m = _env_surf(cid, Color(0.42, 0.42, 0.43).lerp(Color(0.4, 0.21, 0.1), clamp(worn * 1.4 - 0.4, 0, 1)),
+				lerp(0.9, 0.2, worn), 0.35)
+		elif name == "rubber":
+			var tm: ShaderMaterial = _mat_cache.get(cid)
+			if tm == null:
+				tm = ShaderMaterial.new()
+				tm.shader = TIRE_SHADER
+				# the axle is the wheel's thinnest dimension; tread width and radius follow from the bounds
+				var ab := mi.mesh.get_aabb()
+				var sz := ab.size
+				var ax := Vector3.RIGHT if sz.x <= sz.y and sz.x <= sz.z else (Vector3.FORWARD if sz.z <= sz.y else Vector3.UP)
+				tm.set_shader_parameter("center", ab.get_center())
+				tm.set_shader_parameter("axis", ax.abs())
+				tm.set_shader_parameter("half_width", sz.dot(ax.abs()) * 0.5)
+				tm.set_shader_parameter("radius", maxf(sz.x, maxf(sz.y, sz.z)) * 0.5)
+				_mat_cache[cid] = tm
+			tm.set_shader_parameter("wear", worn)
+			m = tm
+		else:
+			# calipers and anything else keep their own look; hover glow on a cached copy
+			var sm: StandardMaterial3D = _mat_cache.get(cid)
+			if sm == null:
+				sm = (base.duplicate() if base is StandardMaterial3D else StandardMaterial3D.new())
+				sm.emission_enabled = true
+				sm.emission = Color.BLACK
+				_mat_cache[cid] = sm
+			sm.emission = Color(g.x, g.y, g.z)
+			sm.emission_energy_multiplier = 1.0
+			m = sm
+		if m is ShaderMaterial:
+			(m as ShaderMaterial).set_shader_parameter("glow", g)
 		if mi.get_surface_override_material(i) != m:
 			mi.set_surface_override_material(i, m)
 	var flat: bool = car.parts.tires < 25 and key == "wheel_fl"
