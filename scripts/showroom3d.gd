@@ -13,6 +13,8 @@ signal car_clicked(car: Dictionary)
 signal empty_clicked
 
 const VIEW_TEX := "res://assets/world/view_hills.jpg"
+const REFLECT_TEX := "res://assets/world/showroom_reflect.png"   # equirect of the hall itself, for paint/floor reflections
+const FLOOR_TEX := "res://assets/world/showroom_floor_%s.png"     # 2.4 m square: 2 x 2 tiles of 1.2 m porcelain
 const PEOPLE := {"f": ["p00", "p03", "p07", "p10"], "m": ["p12", "p13", "p15", "p19"]}
 const SPOTS := [  # display car positions (x, z) and yaw in degrees, back row first
 	[-5.2, -3.6, 24.0], [1.4, -4.3, -8.0], [6.6, -2.9, -34.0], [-7.4, 1.8, 58.0]]
@@ -67,7 +69,7 @@ func _init() -> void:
 # ---------------------------------------------------------------- room
 
 func _build_env() -> void:
-	var view: Texture2D = load(VIEW_TEX) if ResourceLoader.exists(VIEW_TEX) else null
+	var view: Texture2D = load(REFLECT_TEX) if ResourceLoader.exists(REFLECT_TEX) else null
 	_env = Environment.new()
 	_env.background_mode = Environment.BG_COLOR
 	_env.background_color = Color(0.05, 0.05, 0.06)
@@ -95,12 +97,12 @@ func _build_env() -> void:
 	_sun.rotation_degrees = Vector3(-34, 150, 0)
 	_sun.light_energy = 0.9
 	_sun.light_color = Color(1.0, 0.86, 0.7)
-	_sun.shadow_enabled = true
-	_sun.shadow_blur = 2.2
-	_sun.shadow_bias = 0.08
-	_sun.shadow_normal_bias = 2.5
-	_sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	_sun.directional_shadow_max_distance = 26.0
+	# no shadow map: on the web it gave acne stripes and a hard lit/unlit split across the floor.
+	# Cars and people sit on soft contact-shadow decals instead.
+	_sun.shadow_enabled = RenderQuality.is_forward_plus()
+	_sun.shadow_bias = 0.03
+	_sun.shadow_normal_bias = 1.0
+	_sun.light_energy = 0.6
 	_vp.add_child(_sun)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-60, -30, 0)
@@ -115,14 +117,8 @@ func _build_env() -> void:
 		l.light_energy = 0.7
 		l.light_color = Color(1.0, 0.88, 0.72)
 		_vp.add_child(l)
-	# Forward+ / Godot 4.4+ Compatibility use this; the 4.3 web build falls back to the panorama sky reflections
-	var probe := ReflectionProbe.new()
-	probe.size = Vector3(22, 5, 15)
-	probe.position = Vector3(0, 2.5, -0.5)
-	probe.box_projection = true
-	probe.update_mode = ReflectionProbe.UPDATE_ONCE
-	probe.interior = true
-	_vp.add_child(probe)
+	# desktop Forward+ gets SSR/SSAO and a reflection probe; the web build keeps the panorama reflections
+	RenderQuality.apply_environment(_env, _vp, _sun, Vector3(22, 5, 15))
 
 
 func _mat(col: Color, rough := 0.6, metal := 0.0) -> StandardMaterial3D:
@@ -146,33 +142,37 @@ func _box(size: Vector3, pos: Vector3, m: Material, rot_y := 0.0, shadow := true
 	return mi
 
 
-func _floor_material() -> ShaderMaterial:
-	var sh := Shader.new()
-	sh.code = """
-shader_type spatial;
-render_mode diffuse_burley, specular_schlick_ggx;
-varying vec3 wp;
-float h(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
-float n(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
-void vertex() { wp = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz; }
-void fragment() {
-	vec2 p = wp.xz;
-	vec2 tile = floor(p / 1.2);
-	vec2 g = abs(fract(p / 1.2) - 0.5);
-	float joint = smoothstep(0.488, 0.497, max(g.x, g.y));
-	float v = n(p * 1.7 + tile * 3.1) * 0.6 + n(p * 5.0) * 0.3;
-	float vein = 0.0;
-	vec3 base = mix(vec3(0.52, 0.5, 0.47), vec3(0.6, 0.58, 0.55), v) * (1.0 - 0.06 * h(tile));
-	base = mix(base, vec3(0.3, 0.29, 0.28), vein);
-	ALBEDO = mix(base, vec3(0.2, 0.19, 0.18), joint);
-	ROUGHNESS = mix(0.16, 0.5, joint) + v * 0.06;
-	SPECULAR = 0.6;
-}
-"""
-	var m := ShaderMaterial.new()
-	m.shader = sh
+func _floor_material() -> StandardMaterial3D:
+	# large-format polished porcelain: albedo, roughness and normal maps (subtle grout), sky-panorama reflections
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(FLOOR_TEX % "albedo")
+	m.roughness_texture = load(FLOOR_TEX % "rough")
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.roughness = 1.0
+	m.normal_enabled = true
+	m.normal_texture = load(FLOOR_TEX % "normal")
+	m.normal_scale = 0.6
+	m.metallic_specular = 0.6
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	m.uv1_scale = Vector3(24.0 / 2.4, 17.0 / 2.4, 1)
 	return m
+
+
+## A soft dark ellipse on the floor under a car (stands in for the shadow map the web build can't afford).
+func _contact_shadow(size: Vector2, alpha := 0.6) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var qm := QuadMesh.new()
+	qm.size = size
+	qm.orientation = PlaneMesh.FACE_Y
+	mi.mesh = qm
+	var sm := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = "shader_type spatial;\nrender_mode unshaded, blend_mix, depth_draw_never, cull_disabled;\nuniform float strength = 0.6;\nvoid fragment() { vec2 q = abs(UV - 0.5) * 2.0; float d = length(pow(q, vec2(2.5))); ALBEDO = vec3(0.0); ALPHA = strength * (1.0 - smoothstep(0.35, 1.0, d)); }"
+	sm.shader = sh
+	sm.set_shader_parameter("strength", alpha)
+	mi.material_override = sm
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return mi
 
 
 func _build_room() -> void:
@@ -231,66 +231,50 @@ func _build_room() -> void:
 	sub.position = Vector3(-7.7, 1.85, -7.68)
 	sub.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sub)
-	# glass: the back wall right of the sign and the whole right wall, with slim black mullions
-	var glass := StandardMaterial3D.new()
-	glass.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	glass.albedo_color = Color(0.75, 0.85, 0.9, 0.07)
-	glass.roughness = 0.02
-	glass.metallic_specular = 1.0
-	glass.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# glass: the back wall right of the sign and the whole right wall. Faint green-grey tint, more reflective
+	# at grazing angles (fresnel), slim black mullions with a head and sill rail.
+	var glass := ShaderMaterial.new()
+	var gsh := Shader.new()
+	gsh.code = """
+shader_type spatial;
+render_mode blend_mix, depth_draw_never, cull_disabled, specular_schlick_ggx;
+void fragment() {
+	float f = pow(1.0 - clamp(abs(dot(NORMAL, VIEW)), 0.0, 1.0), 4.0);
+	ALBEDO = vec3(0.55, 0.62, 0.62);
+	ROUGHNESS = 0.03;
+	METALLIC = 0.0;
+	SPECULAR = 0.9;
+	ALPHA = 0.06 + 0.4 * f;
+}
+"""
+	glass.shader = gsh
 	var gb := _box(Vector3(15.8, 4.6, 0.04), Vector3(3.8, 2.3, -7.9), glass, 0, false)
 	gb.sorting_offset = -1.0
 	_box(Vector3(0.04, 4.6, 15.6), Vector3(11.7, 2.3, -0.4), glass, 0, false)
 	for x in range(-4, 12, 3):
-		_box(Vector3(0.12, 4.8, 0.14), Vector3(x, 2.4, -7.9), frame, 0, false)
+		_box(Vector3(0.1, 4.8, 0.16), Vector3(x, 2.4, -7.9), frame, 0, false)
 	for z in range(-7, 8, 3):
-		_box(Vector3(0.14, 4.8, 0.12), Vector3(11.7, 2.4, z), frame, 0, false)
-	_box(Vector3(15.8, 0.12, 0.14), Vector3(3.8, 0.06, -7.9), frame)
-	_box(Vector3(0.14, 0.12, 15.6), Vector3(11.7, 0.06, -0.4), frame)
-	# outside: the hillside photo on two big cards beyond the glass, with a paved apron and a kerb in front
-	var view: Texture2D = load(VIEW_TEX) if ResourceLoader.exists(VIEW_TEX) else null
+		_box(Vector3(0.16, 4.8, 0.1), Vector3(11.7, 2.4, z), frame, 0, false)
+	for y in [0.06, 4.55]:
+		_box(Vector3(15.8, 0.12, 0.16), Vector3(3.8, y, -7.9), frame, 0, false)
+		_box(Vector3(0.16, 0.12, 15.6), Vector3(11.7, y, -0.4), frame, 0, false)
+	# outside: one continuous curved backdrop of the hillside, far enough that parallax between panes is
+	# small, at the photo's own aspect, horizon a little above eye level; a paved apron runs out to it
 	_view_mat = StandardMaterial3D.new()
 	_view_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	_view_mat.albedo_texture = view
+	_view_mat.albedo_texture = load(VIEW_TEX) if ResourceLoader.exists(VIEW_TEX) else null
 	_view_mat.albedo_color = Color(1, 1, 1)
-	for spec in [[Vector3(-2, 7.6, -40), 0.0, Vector2(74, 29.6)], [Vector3(44, 7.6, 0), -90.0, Vector2(74, 29.6)]]:
-		var q := MeshInstance3D.new()
-		var qm := QuadMesh.new()
-		qm.size = spec[2]
-		q.mesh = qm
-		q.material_override = _view_mat
-		q.position = spec[0]
-		q.rotation.y = deg_to_rad(spec[1])
-		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		_vp.add_child(q)
-	var paving := _mat(Color(0.32, 0.31, 0.3), 0.85)
-	_box(Vector3(60, 0.1, 30), Vector3(0, -0.12, -23.5), paving, 0, false)
-	_box(Vector3(30, 0.1, 60), Vector3(27.5, -0.12, 0), paving, 0, false)
-	# outdoor palms just past the glass: trunks and frond fans
-	var trunk := _mat(Color(0.42, 0.34, 0.25), 0.9)
-	var frond := _mat(Color(0.18, 0.3, 0.12), 0.8)
-	for p in [Vector3(-1.5, 0, -12.0), Vector3(7.0, 0, -14.5), Vector3(15.0, 0, -6.0), Vector3(16.5, 0, 6.0)]:
-		var t := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.16
-		cm.bottom_radius = 0.26
-		cm.height = 9.0
-		cm.radial_segments = 8
-		t.mesh = cm
-		t.material_override = trunk
-		t.position = p + Vector3(0, 4.5, 0)
-		_vp.add_child(t)
-		for k in 9:
-			var leaf := MeshInstance3D.new()
-			var lm := BoxMesh.new()
-			lm.size = Vector3(0.5, 0.04, 3.0)
-			leaf.mesh = lm
-			leaf.material_override = frond
-			leaf.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			leaf.position = p + Vector3(0, 9.0, 0)
-			leaf.rotation = Vector3(deg_to_rad(28 + (k % 3) * 9), TAU * k / 9.0, 0)
-			leaf.translate_object_local(Vector3(0, 0, 1.4))
-			_vp.add_child(leaf)
+	_view_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_view_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var bd := MeshInstance3D.new()
+	bd.mesh = _backdrop_mesh(40.0, deg_to_rad(-60.0), deg_to_rad(110.0), 2.5, 10.5, 0.45)
+	bd.material_override = _view_mat
+	bd.position = Vector3(1.0, 0, -1.0)
+	bd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_vp.add_child(bd)
+	var paving := _mat(Color(0.6, 0.57, 0.52), 0.85)
+	_box(Vector3(30, 0.1, 9), Vector3(2, -0.06, -12.5), paving, 0, false)
+	_box(Vector3(9, 0.1, 26), Vector3(16.3, -0.06, -1), paving, 0, false)
 	# reception counter at the feature wall, a lounge corner front right, planters
 	_box(Vector3(3.6, 1.05, 0.9), Vector3(-8.4, 0.525, -5.6), wood)
 	_box(Vector3(3.8, 0.06, 1.0), Vector3(-8.4, 1.08, -5.6), _mat(Color(0.9, 0.88, 0.84), 0.2))
@@ -317,6 +301,28 @@ func _build_room() -> void:
 			_vp.add_child(s)
 	_nav = NavigationRegion3D.new()
 	_vp.add_child(_nav)
+
+
+## An open vertical cylinder segment (inside faces) carrying the view photo once, left to right.
+## a0/a1: azimuth range (0 = straight down -z, positive towards +x); aspect: image width / height;
+## eye_top: the y where the image row `top_frac` should sit (keeps the horizon at a sane height).
+func _backdrop_mesh(r: float, a0: float, a1: float, aspect: float, eye_top: float, top_frac: float) -> ArrayMesh:
+	var h := r * (a1 - a0) / aspect
+	var y_top := eye_top + top_frac * h
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var seg := 48
+	for i in seg:
+		var u0 := float(i) / seg
+		var u1 := float(i + 1) / seg
+		var p0 := Vector3(sin(lerp(a0, a1, u0)) * r, 0, -cos(lerp(a0, a1, u0)) * r)
+		var p1 := Vector3(sin(lerp(a0, a1, u1)) * r, 0, -cos(lerp(a0, a1, u1)) * r)
+		var quad := [[p0, u0, 0.0], [p1, u1, 0.0], [p1, u1, 1.0], [p0, u0, 0.0], [p1, u1, 1.0], [p0, u0, 1.0]]
+		for v in quad:
+			st.set_uv(Vector2(v[1], v[2]))
+			st.add_vertex(v[0] + Vector3(0, y_top - v[2] * h, 0))
+	st.generate_normals()
+	return st.commit()
 
 
 ## Day/night: the view card and light follow Game.night_amount().
@@ -349,6 +355,10 @@ func set_cars(shown: Array) -> void:
 		if model:
 			holder.add_child(model)
 			aabb = _model_aabb(model)
+			_polish(model)
+		var cs := _contact_shadow(Vector2(aabb.size.x + 0.5, aabb.size.z + 0.4), 0.7)
+		cs.position = Vector3(aabb.get_center().x, 0.008, aabb.get_center().z)
+		holder.add_child(cs)
 		var plinth := MeshInstance3D.new()
 		var cm := CylinderMesh.new()
 		cm.top_radius = max(aabb.size.x, aabb.size.z) * 0.5
@@ -363,6 +373,46 @@ func set_cars(shown: Array) -> void:
 		_overlay.add_child(card)
 		cars.append({"car": car, "node": holder, "plinth": plinth, "card": card, "pos": pos, "yaw": deg_to_rad(sp[2]), "aabb": aabb})
 	_pending_nav = true
+
+
+## Showroom finish on a display car: deeper gloss and metal flake in the paint, darker tinted glass, chrome
+## or alloy rims, matte rubber and lit lamps. Every material here belongs to this car's own copy.
+func _polish(n: Node) -> void:
+	var stack: Array = [n]
+	while not stack.is_empty():
+		var x: Node = stack.pop_back()
+		stack.append_array(x.get_children())
+		if not x is MeshInstance3D:
+			continue
+		var mi := x as MeshInstance3D
+		var key := String(mi.name).trim_prefix("part_")
+		var mo := mi.material_override
+		if mo is ShaderMaterial:
+			mo.set_shader_parameter("rough_v", 0.16)
+			mo.set_shader_parameter("metallic_v", 0.55)
+		elif key == "glass" and mo is StandardMaterial3D:
+			var g: StandardMaterial3D = mo.duplicate()
+			g.albedo_color = Color(0.015, 0.02, 0.025, 0.8)
+			g.roughness = 0.02
+			g.metallic = 0.5
+			mi.material_override = g
+		elif (key.begins_with("headlight") or key.begins_with("taillight")) and mo is StandardMaterial3D:
+			mo.emission_energy_multiplier = 0.9
+		elif key.begins_with("wheel_"):
+			for i in mi.get_surface_override_material_count():
+				var m := mi.get_surface_override_material(i) as StandardMaterial3D
+				var base: Material = mi.mesh.surface_get_material(i)
+				var nm := String(base.resource_name) if base else ""
+				if m == null:
+					continue
+				if nm == "rim":
+					m.metallic = 1.0
+					m.roughness = minf(m.roughness, 0.18)
+					m.metallic_specular = 0.8
+				elif nm == "rubber":
+					m.albedo_color = Color(0.035, 0.035, 0.037)
+					m.roughness = 0.82
+					m.metallic = 0.0
 
 
 func _model_aabb(n: Node) -> AABB:
@@ -470,6 +520,7 @@ func sync(lobby: Array, states: Dictionary) -> void:
 			_overlay.add_child(npc.marker)
 			npcs[id] = npc
 		npc.cust = c
+		npc.blockers = cars
 		npc.set_state(states.get(id, "browsing"), _spot_for(c, states.get(id, "browsing")), _look_for(c))
 	for id in npcs.keys():
 		if not keep.has(id):
@@ -744,7 +795,30 @@ class Customer3D extends CharacterBody3D:
 	var playback: AnimationNodeStateMachinePlayback
 	var _anim := ""
 	var _wander_t := 0.0
+	var blockers: Array = []   # the showroom's display cars: [{pos, yaw, aabb}]
 	const SPEED := 1.25
+	const CLEAR := 0.45        # body radius kept clear of a car's footprint
+
+	## p moved out of any car footprint (rotated box plus CLEAR), along the shortest way out.
+	func off_cars(p: Vector3) -> Vector3:
+		for cd in blockers:
+			var ab: AABB = cd.aabb
+			var l: Vector3 = (p - cd.pos * Vector3(1, 0, 1)).rotated(Vector3.UP, -cd.yaw)
+			var lo := Vector2(ab.position.x - CLEAR, ab.position.z - CLEAR)
+			var hi := Vector2(ab.end.x + CLEAR, ab.end.z + CLEAR)
+			if l.x > lo.x and l.x < hi.x and l.z > lo.y and l.z < hi.y:
+				var outs := [lo.x - l.x, hi.x - l.x, lo.y - l.z, hi.y - l.z]
+				var best := 0
+				for i in 4:
+					if absf(outs[i]) < absf(outs[best]):
+						best = i
+				if best < 2:
+					l.x += outs[best] + signf(outs[best]) * 0.02
+				else:
+					l.z += outs[best] + signf(outs[best]) * 0.02
+				p = cd.pos * Vector3(1, 0, 1) + l.rotated(Vector3.UP, cd.yaw)
+				p.y = 0
+		return p
 
 	func _ready() -> void:
 		motion_mode = CharacterBody3D.MOTION_MODE_FLOATING
@@ -810,7 +884,8 @@ class Customer3D extends CharacterBody3D:
 
 	func set_state(s: String, spot: Vector3, look: Vector3) -> void:
 		look_at_pt = look
-		if s == state and goal.distance_to(spot) < 0.1:
+		spot = off_cars(spot)
+		if s == state and home.distance_to(spot) < 0.1:
 			return
 		state = s
 		goal = spot
@@ -847,6 +922,8 @@ class Customer3D extends CharacterBody3D:
 				velocity = dir * SPEED
 				move_and_slide()
 				position.y = 0
+				if state != "leaving":
+					position = off_cars(position)
 				rotation.y = lerp_angle(rotation.y, atan2(dir.x, dir.z), min(1.0, delta * 8.0))
 			_play("walk")
 		else:
@@ -867,6 +944,6 @@ class Customer3D extends CharacterBody3D:
 				if _wander_t <= 0.0:
 					_wander_t = randf_range(8.0, 16.0)
 					var side := Vector3(randf_range(-1.2, 1.2), 0, randf_range(-0.4, 0.4))
-					goal = home + side
+					goal = off_cars(home + side)
 					agent.target_position = goal
 		visible = not (state == "test" and not far)
