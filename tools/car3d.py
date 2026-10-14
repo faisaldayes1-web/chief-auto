@@ -722,6 +722,11 @@ def add_wheel(car, mats, center, side, m):
         v.co = Vector((v.co.x, face_y + s * (0.02 + v.co.z), v.co.y))
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     spokes = new_obj("spokes", bm, mats["rim"], smooth_shade=False)
+    if len(spokes.data.polygons):
+        bv = spokes.modifiers.new("bevel", "BEVEL")   # chamfered edges: the spokes catch light as 3D bars
+        bv.width = 0.006
+        bv.segments = 1
+        apply_mods(spokes)
     disc = lathe("disc", [(0.05, -0.012), (rim_r - 0.06, -0.012), (rim_r - 0.06, 0.012), (0.05, 0.012)], SEG // 2, mats["disc"])
     disc.location.y = s * 0.0
     bm = bmesh.new()
@@ -1062,8 +1067,14 @@ def build_car2(name, mats):
     parts = separate_panels(body, names)
     # the dark core only shows through the panel gaps: keep it light
     dec = body.modifiers.new("dec", "DECIMATE")
-    dec.ratio = 0.3 if LOD < 2 else 0.6
+    dec.ratio = 0.12 if LOD < 2 else 0.6
     apply_mods(body)
+    # separate greenhouse: the glass sits a little inside its pillars and frames, like bonded glass in a seal
+    gl = parts.get("glass")
+    if gl:
+        gl.data.update()
+        for v in gl.data.vertices:
+            v.co -= v.normal * 0.009
     car = {"shape": s, "parts": parts}
     car["bvh"] = body_bvh(car)
     D2(car, mats).run()
@@ -1109,7 +1120,7 @@ def grille_mat(name, pattern):
     m = bpy.data.materials.get(name)
     if m:
         return m
-    m = mat(name, (0.006, 0.006, 0.007), metallic=1.0, rough=0.45)
+    m = mat(name, (0.004, 0.004, 0.005), metallic=0.0, rough=0.75)   # flat matte black backing (also in the .glb)
     nt = m.node_tree
     b = nt.nodes["Principled BSDF"]
     tc = nt.nodes.new("ShaderNodeTexCoord")
@@ -1222,7 +1233,71 @@ class D2:
 
     # -- primitives
     def blob(self, name, outline, view, material, off=0.004, rings=4, skirt=0.012, bulge=0.0, n=40, dirn=None):
-        """Fills a closed outline (view-plane coordinates) and projects it onto the body."""
+        """Fills a closed outline (view-plane coordinates) and projects it onto the body.
+
+        A grille_mesh fill becomes real geometry: the dark backing goes to the underbody (the game styles the whole
+        grille node with one trim material, so the backing must live elsewhere to stay dark) and the returned
+        object is a set of 3D bars standing proud of it, clipped to the outline."""
+        if material is not None and material.name.startswith("grille_mesh") and getattr(self, "_holes", False):
+            self.add("underbody", self._blob(name, outline, view, material, max(off, 0.011), rings, skirt + 0.008, bulge, n, dirn))
+            return None
+        if material is not None and material.name.startswith("grille_mesh") and not getattr(self, "_raw", False):
+            self._raw = True
+            try:
+                # the game's paint shader swells the panels a little, so the backing must clear the skin by ~1 cm
+                back = self.blob(name, outline, view, material, off=max(off, 0.011), rings=rings, skirt=skirt + 0.008,
+                                 bulge=bulge, n=n, dirn=dirn)
+                bars = self.grille_bars(outline, view, max(off, 0.011) + 0.008, dirn)
+            finally:
+                self._raw = False
+            if bars is None:
+                return back
+            self.add("underbody", back)
+            return bars
+        return self._blob(name, outline, view, material, off, rings, skirt, bulge, n, dirn)
+
+    def grille_bars(self, outline, view, off, dirn=None):
+        """Slats (horizontal bars) or a cross-hatched mesh (bars both ways) clipped to a closed outline."""
+        pat = self.sp.get("grille_pattern", "hex")
+        pts = resample(outline, 64)
+        xs = [p[0] for p in pts]
+        ys = [p[1] for p in pts]
+
+        def scan(c, axis):
+            # intervals of the outline along the line coordinate[axis] == c
+            hits = []
+            m = len(pts)
+            for i in range(m):
+                a, b = pts[i], pts[(i + 1) % m]
+                pa, pb = a[axis], b[axis]
+                if (pa - c) * (pb - c) < 0:
+                    t = (c - pa) / (pb - pa)
+                    hits.append(a[1 - axis] + (b[1 - axis] - a[1 - axis]) * t)
+            hits.sort()
+            return [(hits[k], hits[k + 1]) for k in range(0, len(hits) - 1, 2)]
+        obs = []
+        pitch = 0.032 if pat == "slats" else 0.045
+        w = 0.011 if pat == "slats" else 0.008
+        dirs = [1] if pat == "slats" else [1, 0]
+        if view == "top":
+            dirs = [0]
+        for axis in dirs:   # axis 1: horizontal bars at fixed height; axis 0: vertical bars at fixed width
+            lo, hi = (min(ys), max(ys)) if axis == 1 else (min(xs), max(xs))
+            nb = int((hi - lo) / pitch)
+            for k in range(1, nb + 1):
+                c = lo + (hi - lo) * k / (nb + 1)
+                for a, b in scan(c, axis):
+                    if b - a < 0.03:
+                        continue
+                    a, b = a + 0.008, b - 0.008
+                    path = [(a, c), (b, c)] if axis == 1 else [(c, a), (c, b)]
+                    ob = self.band("bar", path, w, view, self.mats["satin"], off=off, n=max(2, int((b - a) / 0.08)) + 1,
+                                   skirt=0.014, dirn=dirn)
+                    if ob:
+                        obs.append(ob)
+        return join(obs, "grille_bars") if obs else None
+
+    def _blob(self, name, outline, view, material, off=0.004, rings=4, skirt=0.012, bulge=0.0, n=40, dirn=None):
         d, org = self.VIEWS[view]
         d = Vector(dirn or d).normalized()
         if LOD < 2:
@@ -1428,9 +1503,16 @@ class D2:
     # -- standard pieces
     def wheels(self):
         s = self.s
-        for wx in (s.fw, s.rw):
-            for side in (-1, 1):
-                wheel2(self.car, self.mats, Vector((self.X(wx), side * (s.W / 2 - self.sp.get("wheel_in", 0.125)), s.r)), side, self.sp)
+        # front wheels are built; the rear ones share their mesh (linked copies, one mesh per side in the .glb)
+        for side in (-1, 1):
+            c = Vector((self.X(s.fw), side * (s.W / 2 - self.sp.get("wheel_in", 0.125)), s.r))
+            wf = wheel2(self.car, self.mats, c, side, self.sp)
+            wr = wf.copy()
+            bpy.context.scene.collection.objects.link(wr)
+            wr.location = Vector((self.X(s.rw), c.y, c.z))
+            key = "wheel_r" + ("l" if side > 0 else "r")
+            wr.name = key
+            self.parts[key] = wr
         for wx in (s.fw, s.rw):
             for side in (-1, 1):
                 bpy.ops.mesh.primitive_cylinder_add(vertices=48, radius=s.r + 0.05, depth=0.02,
@@ -1624,6 +1706,11 @@ def wheel2(car, mats, center, side, sp):
             spoke(a + math.pi / 8, 0.12, 0.13, rr * 0.6, rr, depth=0.012)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
     spokes = new_obj("spokes", bm, mats["rim"], smooth_shade=False)
+    if len(spokes.data.polygons):
+        bv = spokes.modifiers.new("bevel", "BEVEL")   # chamfered edges: the spokes catch light as 3D bars
+        bv.width = 0.006
+        bv.segments = 1
+        apply_mods(spokes)
     for ob in (lip,):
         orient(ob, lambda c: Vector((0, sg, 0)))
     parts = [tire, lip, barrel, spokes]
@@ -1880,7 +1967,7 @@ def feat_charger(D):
         D.add("underbody", D.blob("side_in", rounded_poly(sym(sd, [(0.68, 0.3), (0.86, 0.32), (0.87, 0.5), (0.7, 0.47)]), 0.03),
                                   "front", M["grille_mesh"]))
     # one wide recessed opening across the whole nose: grille in the middle, lamps at the ends
-    g1 = D.blob("grille", rounded_poly([(-0.92, 0.68), (0.92, 0.68), (0.94, 0.82), (-0.94, 0.82)], 0.03), "front", M["grille_mesh"], n=80)
+    g1 = D.blob("grille", rounded_poly([(-0.56, 0.69), (0.56, 0.69), (0.57, 0.815), (-0.57, 0.815)], 0.02), "front", M["grille_mesh"], n=80)
     surround = D.band("grille", rounded_poly([(-0.93, 0.675), (0.93, 0.675), (0.95, 0.825), (-0.95, 0.825)], 0.03), 0.012, "front",
                       M["gloss_black"], closed=True, n=80, off=0.007)
     g2 = D.blob("grille", rounded_poly([(-0.6, 0.26), (0.6, 0.26), (0.66, 0.52), (-0.66, 0.52)], [0.04, 0.04, 0.05, 0.05]), "front",
@@ -1975,7 +2062,12 @@ def feat_wrangler(D):
     slots = []
     for i in range(-3, 4):
         y = i * 0.1
-        slots.append(D.blob("slot", rect(y - 0.032, 0.79, y + 0.032, 1.08, 0.03), "front", M["grille_mesh"], off=0.004, n=28))
+        # dark slot (underbody, stays black) inside a thin trim surround (the grille node: chrome or black trim)
+        D._holes = True
+        D.blob("slot", rect(y - 0.032, 0.79, y + 0.032, 1.08, 0.03), "front", M["grille_mesh"], off=0.004, n=28)
+        D._holes = False
+        slots.append(D.band("slot_rim", rect(y - 0.036, 0.786, y + 0.036, 1.084, 0.033), 0.008, "front", M["satin"],
+                            off=0.016, closed=True, n=36, skirt=0.012))
     D.parts["grille"] = join(slots, "grille")
     for sd in (1, -1):
         sfx = "l" if sd > 0 else "r"
@@ -2240,6 +2332,30 @@ def _shrink(src, dst):
     bpy.data.images.remove(im)
 
 
+def slim_for_web():
+    """Smaller .glb: no UV maps on untextured meshes, and lighter hidden geometry."""
+    for m in bpy.data.materials:
+        if m.name.startswith("grille_mesh") and m.use_nodes:
+            # the procedural mesh pattern does not export (glTF would fall back to white): plain matte black
+            b = m.node_tree.nodes.get("Principled BSDF")
+            for ln in list(b.inputs["Base Color"].links):
+                m.node_tree.links.remove(ln)
+            b.inputs["Base Color"].default_value = (0.004, 0.004, 0.005, 1)
+    for ob in bpy.context.scene.objects:
+        if ob.type != "MESH":
+            continue
+        textured = any(m and m.use_nodes and any(n.type == "TEX_IMAGE" for n in m.node_tree.nodes) for m in ob.data.materials)
+        if not textured:
+            while ob.data.uv_layers:
+                ob.data.uv_layers.remove(ob.data.uv_layers[0])
+        ratio = 0.5 if ob.name.startswith("liner") else 0.45 if ob.name == "part_glass" else 0.62 if (
+            ob.name.startswith("part_") and ob.name not in ("part_underbody",)) else None
+        if ratio and ob.data.users == 1:
+            dec = ob.modifiers.new("dec", "DECIMATE")
+            dec.ratio = ratio
+            apply_mods(ob)
+
+
 def main():
     cmd = sys.argv[1] if len(sys.argv) > 1 else "test"
     out = sys.argv[2] if len(sys.argv) > 2 else "/tmp/car3d"
@@ -2261,6 +2377,7 @@ def main():
         elif cmd == "sprites":
             sprites(car, out, slug(name))
         elif cmd == "build":
+            slim_for_web()
             bpy.ops.export_scene.gltf(filepath=os.path.join(out, slug(name) + ".glb"), export_format="GLB",
                                       export_apply=True, export_draco_mesh_compression_enable=False)
 
