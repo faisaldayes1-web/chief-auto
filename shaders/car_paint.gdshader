@@ -1,6 +1,7 @@
 // Car paint with damage you can see: rust, scratches, dents and road grime, all driven per panel.
 shader_type spatial;
 render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_schlick_ggx;
+#include "res://shaders/env_reflect.gdshaderinc"
 
 uniform vec3 paint_color : source_color = vec3(0.6);
 uniform float metallic_v = 0.35;
@@ -11,6 +12,9 @@ uniform float dent = 0.0;
 uniform float dirt = 0.0;
 uniform vec4 highlight : source_color = vec4(0.0);
 uniform float seed = 0.0;
+// hand-rolled reflections for the web build (no sky radiance there); 0 where the renderer has real ones
+uniform sampler2D env_map : source_color, filter_linear_mipmap, repeat_enable, hint_default_black;
+uniform float env_strength = 0.0;
 
 varying vec3 lp;
 
@@ -85,6 +89,14 @@ void fragment() {
 
 	ALBEDO = mix(col, highlight.rgb, highlight.a * 0.35);
 	EMISSION = highlight.rgb * highlight.a * 0.35;
+	if (env_strength > 0.0) {
+		// clear coat mirror (white, strongest at grazing angles) over the metallic base (tinted, blurred by flake)
+		float cc = 0.85 * clean;
+		vec3 sharp = env_sample(env_map, NORMAL, VIEW, INV_VIEW_MATRIX, 0.04);
+		vec3 base = env_sample(env_map, NORMAL, VIEW, INV_VIEW_MATRIX, r);
+		float f = env_fresnel(NORMAL, VIEW, 0.04);
+		EMISSION += (sharp * f * cc + base * col * m * (1.0 - r)) * env_strength;
+	}
 	METALLIC = m;
 	ROUGHNESS = r;
 	// glossy clear coat over the paint: gone where it has rusted or been scratched through, dulled by grime
