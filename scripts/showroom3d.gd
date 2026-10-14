@@ -5,16 +5,25 @@ extends SubViewportContainer
 ## Fixed camera with three presets: overview, customer and close-up vehicle inspection.
 ## Game logic stays in main.gd: this node only shows the lobby and reports clicks.
 ##
-## Web build (gl_compatibility): no SDFGI/SSR/SSAO. Light is one soft-shadowed sun through the glass plus
-## unshadowed ceiling lights, ACES tone mapping, and reflections from a panorama sky made of the hillside view.
+## Web build (gl_compatibility): no SDFGI/SSR/SSAO and no sky radiance. Light is one sun through the glass plus
+## unshadowed ceiling lights, ACES tone mapping, and hand-rolled reflections (shaders/env_*.gdshader) from an
+## equirect of the hall with the beach photo in the glass. Desktop (Forward+) lights and reflects from the HDRI.
+##
+## Art is CC0 from Poly Haven (assets/cc0, see CREDITS.md): Spiaggia di Mondello HDRI for the view through the
+## glass, Large Floor Tiles 02 stone, walnut veneer, stucco and concrete tile walls, and scanned furniture/plants.
 
 signal customer_clicked(c: Dictionary)
 signal car_clicked(car: Dictionary)
 signal empty_clicked
 
-const VIEW_TEX := "res://assets/world/view_hills.jpg"
-const REFLECT_TEX := "res://assets/world/showroom_reflect.png"   # equirect of the hall itself, for paint/floor reflections
-const FLOOR_TEX := "res://assets/world/showroom_floor_%s.png"     # 2.4 m square: 2 x 2 tiles of 1.2 m porcelain
+const VIEW_TEX := "res://assets/cc0/sky/showroom_view.jpg"     # beach photo, azimuth -70..+130 deg, elevation -15..+35
+const SKY_HDR := "res://assets/cc0/sky/beach_1k.hdr"            # same place as the view: desktop sky light + reflections
+const ENV_TEX := "res://assets/cc0/sky/showroom_env.jpg"        # equirect of the hall + view, for web reflections
+const TEX := "res://assets/cc0/textures/%s_%s.jpg"             # Poly Haven maps: <name>_Diffuse / _nor_gl / _Rough
+const PROPS := "res://assets/cc0/models/%s/%s.gltf"
+const SURFACE_SHADER := preload("res://shaders/env_surface.gdshader")
+const GLASS_SHADER := preload("res://shaders/env_glass.gdshader")
+const FLOOR_SHADER := preload("res://shaders/env_floor.gdshader")
 const PEOPLE := {"f": ["p00", "p03", "p07", "p10"], "m": ["p12", "p13", "p15", "p19"]}
 const SPOTS := [  # display car positions (x, z) and yaw in degrees, back row first
 	[-5.2, -3.6, 24.0], [1.4, -4.3, -8.0], [6.6, -2.9, -34.0], [-7.4, 1.8, 58.0]]
@@ -69,61 +78,115 @@ func _init() -> void:
 # ---------------------------------------------------------------- room
 
 func _build_env() -> void:
-	var view: Texture2D = load(REFLECT_TEX) if ResourceLoader.exists(REFLECT_TEX) else null
 	_env = Environment.new()
 	_env.background_mode = Environment.BG_COLOR
 	_env.background_color = Color(0.05, 0.05, 0.06)
-	var sky := Sky.new()
-	if view:
-		var pm := PanoramaSkyMaterial.new()
-		pm.panorama = view
-		sky.sky_material = pm
-	else:
-		sky.sky_material = ProceduralSkyMaterial.new()
-	_env.sky = sky
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	_env.ambient_light_color = Color(0.62, 0.6, 0.58)
-	_env.ambient_light_energy = 0.55
-	_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	_env.ambient_light_color = Color(0.66, 0.64, 0.6)
+	_env.ambient_light_energy = 0.6
 	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	_env.tonemap_exposure = 0.95
+	_env.tonemap_exposure = 1.0
 	_env.tonemap_white = 6.0
 	_env.glow_enabled = false
-	# web/compatibility: filtering the panorama sky's radiance map fails on WebGL (glBlitFramebuffer
-	# "missing color attachment") and the canvas stops presenting, freezing the game on this screen.
-	if not RenderQuality.is_forward_plus():
+	if RenderQuality.is_forward_plus() and ResourceLoader.exists(SKY_HDR):
+		# desktop: the beach HDRI (the same place as the view through the glass) lights and reflects in the hall
+		var sky := Sky.new()
+		var pm := PanoramaSkyMaterial.new()
+		pm.panorama = load(SKY_HDR)
+		sky.sky_material = pm
+		sky.radiance_size = Sky.RADIANCE_SIZE_256
+		_env.sky = sky
+		_env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
+		_env.ambient_light_sky_contribution = 0.55
+		_env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
+	else:
+		# web/compatibility: filtering a panorama sky's radiance map fails on WebGL (glBlitFramebuffer
+		# "missing color attachment") and the canvas stops presenting, freezing the game on this screen.
+		# Glossy surfaces use the hand-rolled env map instead (_env_tex).
 		_env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
 		_env.sky = null
 	var we := WorldEnvironment.new()
 	we.environment = _env
 	_vp.add_child(we)
-	# late-afternoon sun through the glass: the only shadow caster, soft
+	# afternoon sun from where it sits in the beach photo (back right, about 40 degrees up)
 	_sun = DirectionalLight3D.new()
-	_sun.rotation_degrees = Vector3(-34, 150, 0)
-	_sun.light_energy = 0.9
-	_sun.light_color = Color(1.0, 0.86, 0.7)
-	# no shadow map: on the web it gave acne stripes and a hard lit/unlit split across the floor.
+	_sun.rotation_degrees = Vector3(-40, 126, 0)
+	_sun.light_color = Color(1.0, 0.9, 0.78)
+	# no shadow map on the web: it gave acne stripes and a hard lit/unlit split across the floor.
 	# Cars and people sit on soft contact-shadow decals instead.
 	_sun.shadow_enabled = RenderQuality.is_forward_plus()
 	_sun.shadow_bias = 0.03
 	_sun.shadow_normal_bias = 1.0
-	_sun.light_energy = 0.6
+	_sun.light_energy = 0.75
 	_vp.add_child(_sun)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-60, -30, 0)
-	fill.light_energy = 0.35
+	fill.light_energy = 0.3
 	fill.light_color = Color(0.85, 0.9, 1.0)
 	_vp.add_child(fill)
-	# warm downlights over the display floor (no shadows: cheap on the web)
-	for p in [Vector3(-3.5, 4.2, -2.5), Vector3(4.0, 4.2, -2.5)]:
+	# warm downlights over the display floor and the lounge (no shadows: cheap on the web)
+	for p in [Vector3(-4.0, 4.2, -2.5), Vector3(2.0, 4.2, -3.0), Vector3(7.0, 4.2, -1.5), Vector3(7.5, 4.0, 4.5)]:
 		var l := OmniLight3D.new()
 		l.position = p
-		l.omni_range = 10.0
-		l.light_energy = 0.7
+		l.omni_range = 8.5
+		l.light_energy = 0.55
 		l.light_color = Color(1.0, 0.88, 0.72)
 		_vp.add_child(l)
-	# desktop Forward+ gets SSR/SSAO and a reflection probe; the web build keeps the panorama reflections
+	# desktop Forward+ gets SSR/SSAO and a box-projected reflection probe of the hall
 	RenderQuality.apply_environment(_env, _vp, _sun, Vector3(22, 5, 15))
+
+
+var _env_cache: Texture2D
+
+## The equirect the web build reflects (the hall, its ceiling lights and the beach through the glass).
+func _env_tex() -> Texture2D:
+	if _env_cache == null and ResourceLoader.exists(ENV_TEX):
+		_env_cache = load(ENV_TEX)
+	return _env_cache
+
+
+## How much hand-rolled reflection glossy surfaces add: all of it on the web, none where real reflections exist.
+func _env_strength() -> float:
+	return 0.0 if RenderQuality.is_forward_plus() else 1.0
+
+
+## A Poly Haven PBR material (albedo, OpenGL normal, roughness). `tile` is the texture's size in metres;
+## triplanar mapping in world space so boxes of any size get the right scale on every face.
+func _pbr(name: String, tile: float, rough_mul := 1.0, tint := Color(1, 1, 1), normal_scale := 1.0) -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.albedo_texture = load(TEX % [name, "Diffuse"])
+	m.albedo_color = tint
+	m.roughness_texture = load(TEX % [name, "Rough"])
+	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
+	m.roughness = rough_mul
+	m.normal_enabled = true
+	m.normal_texture = load(TEX % [name, "nor_gl"])
+	m.normal_scale = normal_scale
+	m.uv1_triplanar = true
+	m.uv1_world_triplanar = true
+	m.uv1_scale = Vector3.ONE / tile
+	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return m
+
+
+## A scanned Poly Haven model standing on the floor at `pos` (its lowest point at y = pos.y), or hung from `pos`
+## when `hang` (its top at pos.y). Scaled so its height is `height` metres when given.
+func _prop(name: String, pos: Vector3, yaw := 0.0, height := 0.0, hang := false) -> Node3D:
+	var path := PROPS % [name, name]
+	if not ResourceLoader.exists(path):
+		return null
+	var n: Node3D = (load(path) as PackedScene).instantiate()
+	var holder := Node3D.new()
+	holder.add_child(n)
+	var ab := _model_aabb(n)
+	var k := height / ab.size.y if height > 0.0 and ab.size.y > 0.001 else 1.0
+	n.scale = Vector3.ONE * k
+	var c := ab.get_center() * k
+	n.position = Vector3(-c.x, -(ab.end.y * k) if hang else -(ab.position.y * k), -c.z)
+	holder.position = pos
+	holder.rotation.y = deg_to_rad(yaw)
+	_vp.add_child(holder)
+	return holder
 
 
 func _mat(col: Color, rough := 0.6, metal := 0.0) -> StandardMaterial3D:
@@ -147,19 +210,20 @@ func _box(size: Vector3, pos: Vector3, m: Material, rot_y := 0.0, shadow := true
 	return mi
 
 
-func _floor_material() -> StandardMaterial3D:
-	# large-format polished porcelain: albedo, roughness and normal maps (subtle grout), sky-panorama reflections
-	var m := StandardMaterial3D.new()
-	m.albedo_texture = load(FLOOR_TEX % "albedo")
-	m.roughness_texture = load(FLOOR_TEX % "rough")
-	m.roughness_texture_channel = BaseMaterial3D.TEXTURE_CHANNEL_RED
-	m.roughness = 1.0
-	m.normal_enabled = true
-	m.normal_texture = load(FLOOR_TEX % "normal")
-	m.normal_scale = 0.6
-	m.metallic_specular = 0.6
-	m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-	m.uv1_scale = Vector3(24.0 / 2.4, 17.0 / 2.4, 1)
+func _floor_material() -> Material:
+	# one stone for the whole hall: large-format grey limestone tiles (about 1.2 m), honed to a soft polish.
+	# Its own shader so the web build still gets the hall's reflections in it.
+	var m := ShaderMaterial.new()
+	m.shader = FLOOR_SHADER
+	m.set_shader_parameter("albedo_tex", load(TEX % ["large_floor_tiles_02", "Diffuse"]))
+	m.set_shader_parameter("normal_tex", load(TEX % ["large_floor_tiles_02", "nor_gl"]))
+	m.set_shader_parameter("rough_tex", load(TEX % ["large_floor_tiles_02", "Rough"]))
+	m.set_shader_parameter("tint", Color(1.55, 1.5, 1.42))
+	m.set_shader_parameter("tile", 3.6)
+	m.set_shader_parameter("rough_mul", 0.3)
+	m.set_shader_parameter("normal_depth", 0.45)
+	m.set_shader_parameter("env_map", _env_tex())
+	m.set_shader_parameter("env_strength", _env_strength() * 0.8)
 	return m
 
 
@@ -181,10 +245,10 @@ func _contact_shadow(size: Vector2, alpha := 0.6) -> MeshInstance3D:
 
 
 func _build_room() -> void:
-	var dark := _mat(Color(0.07, 0.07, 0.075), 0.55)
-	var stone := _mat(Color(0.13, 0.125, 0.12), 0.7)
 	var frame := _mat(Color(0.04, 0.04, 0.045), 0.35, 0.6)
-	var wood := _mat(Color(0.23, 0.15, 0.09), 0.45)
+	var walnut := _pbr("smoked_walnut_veneer", 1.6, 0.6, Color(0.62, 0.5, 0.42))
+	var feature := _pbr("concrete_tile_facade", 2.0, 0.9, Color(0.75, 0.74, 0.72))
+	var stucco := _pbr("white_stucco", 2.5, 1.0, Color(0.93, 0.92, 0.9), 0.6)
 	# floor
 	var fl := MeshInstance3D.new()
 	var pm := PlaneMesh.new()
@@ -194,36 +258,50 @@ func _build_room() -> void:
 	fl.material_override = _floor_material()
 	fl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(fl)
-	# ceiling: dark slats with a warm wood soffit and recessed light discs
-	_box(Vector3(24, 0.2, 17), Vector3(0, 4.8, -0.5), dark, 0, false)
-	_box(Vector3(18, 0.06, 0.9), Vector3(1.5, 4.66, -6.6), wood, 0, false)
+	# ceiling: white plaster with a walnut soffit along the glass and recessed light discs
+	_box(Vector3(24, 0.2, 17), Vector3(0, 4.9, -0.5), stucco, 0, false)
+	_box(Vector3(18, 0.08, 1.1), Vector3(1.5, 4.76, -7.2), walnut, 0, false)
+	_box(Vector3(1.1, 0.08, 15.0), Vector3(11.0, 4.76, -0.4), walnut, 0, false)
 	var glow := StandardMaterial3D.new()
 	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	glow.albedo_color = Color(1.0, 0.92, 0.78)
+	glow.albedo_color = Color(1.0, 0.95, 0.84)
+	var rim_m := _mat(Color(0.75, 0.75, 0.76), 0.3, 0.8)
 	for x in range(-9, 10, 3):
 		for z in [-5.0, -1.5, 2.0, 5.0]:
-			var d := MeshInstance3D.new()
-			var cm := CylinderMesh.new()
-			cm.top_radius = 0.11
-			cm.bottom_radius = 0.11
-			cm.height = 0.02
-			cm.radial_segments = 12
-			d.mesh = cm
-			d.material_override = glow
-			d.position = Vector3(x, 4.69, z)
-			d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			_vp.add_child(d)
-	# back-left: dark stone feature wall with the dealer sign
-	_box(Vector3(7.0, 4.8, 0.4), Vector3(-7.7, 2.4, -7.9), stone)
-	_box(Vector3(0.4, 4.8, 15.6), Vector3(-11.4, 2.4, -0.4), stone)
+			for disc in [[0.15, 0.015, rim_m], [0.11, 0.02, glow]]:
+				var d := MeshInstance3D.new()
+				var cm := CylinderMesh.new()
+				cm.top_radius = disc[0]
+				cm.bottom_radius = disc[0]
+				cm.height = disc[1]
+				cm.radial_segments = 16
+				d.mesh = cm
+				d.material_override = disc[2]
+				d.position = Vector3(x, 4.795, z)
+				d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				_vp.add_child(d)
+	# back-left: grooved concrete feature wall with the dealer sign; the left wall is plaster
+	_box(Vector3(7.0, 4.8, 0.4), Vector3(-7.7, 2.4, -7.9), feature)
+	_box(Vector3(0.4, 4.8, 15.6), Vector3(-11.4, 2.4, -0.4), stucco)
+	# front wall behind the lounge: one-sided (faces into the hall) so the wide camera outside it sees through
+	var fw := MeshInstance3D.new()
+	var fq := QuadMesh.new()
+	fq.size = Vector2(23.1, 4.8)
+	fw.mesh = fq
+	fw.material_override = stucco
+	fw.position = Vector3(0.15, 2.4, 7.4)
+	fw.rotation.y = PI   # quad faces +z by default; turn it to face -z, into the room
+	fw.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_vp.add_child(fw)
+	_box(Vector3(7.0, 0.12, 0.42), Vector3(-7.7, 0.06, -7.68), frame, 0, false)
 	var sign := Label3D.new()
 	sign.text = "OC\nCHIEF AUTO"
 	sign.font = UI.head_font()
 	sign.font_size = 96
 	sign.pixel_size = 0.006
-	sign.modulate = Color(0.95, 0.93, 0.9)
+	sign.modulate = Color(0.97, 0.95, 0.92)
 	sign.outline_size = 0
-	sign.position = Vector3(-7.7, 2.9, -7.68)
+	sign.position = Vector3(-7.7, 2.65, -7.68)
 	sign.shaded = false
 	sign.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sign)
@@ -233,7 +311,7 @@ func _build_room() -> void:
 	sub.pixel_size = 0.005
 	sub.modulate = Color(0.85, 0.2, 0.18)
 	sub.outline_size = 0
-	sub.position = Vector3(-7.7, 1.85, -7.68)
+	sub.position = Vector3(-7.7, 1.62, -7.68)
 	sub.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sub)
 	# glass: the back wall right of the sign and the whole right wall. Faint green-grey tint, more reflective
@@ -249,7 +327,7 @@ void fragment() {
 	ROUGHNESS = 0.03;
 	METALLIC = 0.0;
 	SPECULAR = 0.9;
-	ALPHA = 0.06 + 0.4 * f;
+	ALPHA = 0.05 + 0.35 * f;
 }
 """
 	glass.shader = gsh
@@ -257,53 +335,49 @@ void fragment() {
 	gb.sorting_offset = -1.0
 	_box(Vector3(0.04, 4.6, 15.6), Vector3(11.7, 2.3, -0.4), glass, 0, false)
 	for x in range(-4, 12, 3):
-		_box(Vector3(0.1, 4.8, 0.16), Vector3(x, 2.4, -7.9), frame, 0, false)
+		_box(Vector3(0.08, 4.8, 0.14), Vector3(x, 2.4, -7.9), frame, 0, false)
 	for z in range(-7, 8, 3):
-		_box(Vector3(0.16, 4.8, 0.1), Vector3(11.7, 2.4, z), frame, 0, false)
+		_box(Vector3(0.14, 4.8, 0.08), Vector3(11.7, 2.4, z), frame, 0, false)
 	for y in [0.06, 4.55]:
 		_box(Vector3(15.8, 0.12, 0.16), Vector3(3.8, y, -7.9), frame, 0, false)
 		_box(Vector3(0.16, 0.12, 15.6), Vector3(11.7, y, -0.4), frame, 0, false)
-	# outside: one continuous curved backdrop of the hillside, far enough that parallax between panes is
-	# small, at the photo's own aspect, horizon a little above eye level; a paved apron runs out to it
+	# outside: one continuous curved backdrop of the beach photo (Spiaggia di Mondello HDRI, tone-mapped),
+	# far enough that parallax between panes is small, at the photo's own aspect (200 x 50 degrees) with its
+	# horizon at eye level; a stone terrace runs out to it
 	_view_mat = StandardMaterial3D.new()
 	_view_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_view_mat.albedo_texture = load(VIEW_TEX) if ResourceLoader.exists(VIEW_TEX) else null
 	_view_mat.albedo_color = Color(1, 1, 1)
 	_view_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_view_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_view_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
 	var bd := MeshInstance3D.new()
-	bd.mesh = _backdrop_mesh(40.0, deg_to_rad(-60.0), deg_to_rad(110.0), 2.5, 10.5, 0.45)
+	bd.mesh = _backdrop_mesh(42.0, deg_to_rad(-70.0), deg_to_rad(130.0), 4.0, 2.2, 0.7)
 	bd.material_override = _view_mat
 	bd.position = Vector3(1.0, 0, -1.0)
 	bd.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(bd)
-	var paving := _mat(Color(0.6, 0.57, 0.52), 0.85)
-	_box(Vector3(30, 0.1, 9), Vector3(2, -0.06, -12.5), paving, 0, false)
-	_box(Vector3(9, 0.1, 26), Vector3(16.3, -0.06, -1), paving, 0, false)
-	# reception counter at the feature wall, a lounge corner front right, planters
-	_box(Vector3(3.6, 1.05, 0.9), Vector3(-8.4, 0.525, -5.6), wood)
-	_box(Vector3(3.8, 0.06, 1.0), Vector3(-8.4, 1.08, -5.6), _mat(Color(0.9, 0.88, 0.84), 0.2))
-	var leather := _mat(Color(0.13, 0.1, 0.08), 0.5)
-	for s in [[Vector3(7.4, 0.24, 5.9), 0.0, 3.4], [Vector3(9.9, 0.24, 3.9), 90.0, 2.6]]:
-		_box(Vector3(s[2], 0.48, 0.95), s[0], leather, s[1])
-		var back: Vector3 = s[0] + (Vector3(0, 0.3, 0.42) if s[1] == 0.0 else Vector3(0.42, 0.3, 0))
-		_box(Vector3(s[2], 0.62, 0.22), back, leather, s[1])
-	_box(Vector3(1.6, 0.36, 0.9), Vector3(7.3, 0.18, 4.2), _mat(Color(0.03, 0.03, 0.035), 0.08, 0.3))
-	var pot := _mat(Color(0.86, 0.85, 0.82), 0.5)
-	var leaf_m := _mat(Color(0.16, 0.32, 0.12), 0.75)
-	for p in [Vector3(-10.4, 0, -6.9), Vector3(-1.0, 0, -7.2), Vector3(10.8, 0, -7.0), Vector3(10.8, 0, 6.2), Vector3(-10.4, 0, 5.5)]:
-		_box(Vector3(0.7, 0.8, 0.7), p + Vector3(0, 0.4, 0), pot)
-		for k in 5:
-			var s := MeshInstance3D.new()
-			var sm := SphereMesh.new()
-			sm.radius = 0.45 - k * 0.04
-			sm.height = sm.radius * 2.0
-			sm.radial_segments = 10
-			sm.rings = 6
-			s.mesh = sm
-			s.material_override = leaf_m
-			s.position = p + Vector3(sin(k * 2.3) * 0.25, 1.15 + k * 0.32, cos(k * 2.3) * 0.25)
-			_vp.add_child(s)
+	var terrace := _pbr("large_floor_tiles_02", 3.6, 1.0, Color(1.35, 1.32, 1.26), 0.7)
+	_box(Vector3(30, 0.1, 9), Vector3(2, -0.06, -12.5), terrace, 0, false)
+	_box(Vector3(9, 0.1, 26), Vector3(16.3, -0.06, -1), terrace, 0, false)
+	# reception counter (walnut with a stone top) at the feature wall, two bar stools and a pendant pair over it
+	_box(Vector3(3.6, 1.05, 0.9), Vector3(-8.4, 0.525, -5.6), walnut)
+	_box(Vector3(3.8, 0.06, 1.0), Vector3(-8.4, 1.08, -5.6), _pbr("marble_01", 2.0, 0.25, Color(1.1, 1.08, 1.05)) if ResourceLoader.exists(TEX % ["marble_01", "Diffuse"]) else _mat(Color(0.9, 0.88, 0.84), 0.2))
+	_prop("calathea_orbifolia_01", Vector3(-9.6, 1.11, -5.6), 30.0, 0.45)
+	for x in [-9.3, -7.6]:
+		_prop("bar_chair_round_01", Vector3(x, 0, -4.7), 10.0, 0.78)
+	for x in [-9.2, -7.6]:
+		_prop("modern_ceiling_lamp_01", Vector3(x, 4.8, -5.6), 0.0, 1.05, true)
+	# lounge front right: a scanned sofa, two lounge chairs and a coffee table on the same footprints the
+	# customers' navigation already walks around
+	_prop("sofa_02", Vector3(7.4, 0, 6.0), 180.0, 0.0)
+	for z in [3.3, 4.6]:
+		_prop("modern_arm_chair_01", Vector3(9.9, 0, z), -90.0, 0.0)
+	_prop("modern_coffee_table_01", Vector3(7.3, 0, 4.2), 90.0, 0.0)
+	# planting: a money tree in each corner, leafy pots along the glass
+	for p in [[Vector3(-10.4, 0, -6.9), 20.0], [Vector3(10.8, 0, -7.0), 140.0], [Vector3(10.8, 0, 6.2), 250.0]]:
+		_prop("pachira_aquatica_01", p[0], p[1], 2.3)
+	for p in [[Vector3(-1.0, 0, -7.2), 0.0], [Vector3(-10.4, 0, 5.5), 70.0], [Vector3(5.2, 0, -7.2), 200.0]]:
+		_prop("pachira_aquatica_01", p[0], p[1], 1.5)
 	_nav = NavigationRegion3D.new()
 	_vp.add_child(_nav)
 
@@ -346,7 +420,15 @@ func set_cars(shown: Array) -> void:
 		d.card.queue_free()
 		d.plinth.queue_free()
 	cars.clear()
-	var plinth_m := _mat(Color(0.32, 0.32, 0.34), 0.28, 0.35)
+	var plinth_m: Material = _mat(Color(0.2, 0.2, 0.21), 0.2, 0.35)
+	if _env_strength() > 0.0 and _env_tex():
+		plinth_m = ShaderMaterial.new()
+		plinth_m.shader = SURFACE_SHADER
+		plinth_m.set_shader_parameter("albedo", Color(0.26, 0.26, 0.27))
+		plinth_m.set_shader_parameter("metallic_v", 0.0)
+		plinth_m.set_shader_parameter("rough_v", 0.12)
+		plinth_m.set_shader_parameter("env_map", _env_tex())
+		plinth_m.set_shader_parameter("env_strength", 1.0)
 	for i in min(shown.size(), SPOTS.size()):
 		var car: Dictionary = shown[i]
 		var sp: Array = SPOTS[i]
@@ -364,7 +446,7 @@ func set_cars(shown: Array) -> void:
 		var cs := _contact_shadow(Vector2(aabb.size.x + 0.5, aabb.size.z + 0.4), 0.7)
 		cs.position = Vector3(aabb.get_center().x, 0.008, aabb.get_center().z)
 		holder.add_child(cs)
-		var plinth := MeshInstance3D.new()
+		var plinth := MeshInstance3D.new()   # dark polished stone disc
 		var cm := CylinderMesh.new()
 		cm.top_radius = max(aabb.size.x, aabb.size.z) * 0.5
 		cm.bottom_radius = cm.top_radius + 0.05
@@ -382,7 +464,10 @@ func set_cars(shown: Array) -> void:
 
 ## Showroom finish on a display car: deeper gloss and metal flake in the paint, darker tinted glass, chrome
 ## or alloy rims, matte rubber and lit lamps. Every material here belongs to this car's own copy.
+## On the web (no sky radiance) the paint, glass and bright metal also reflect the hall's env map.
 func _polish(n: Node) -> void:
+	var env_k := _env_strength()
+	var env := _env_tex()
 	var stack: Array = [n]
 	while not stack.is_empty():
 		var x: Node = stack.pop_back()
@@ -395,14 +480,26 @@ func _polish(n: Node) -> void:
 		if mo is ShaderMaterial:
 			mo.set_shader_parameter("rough_v", 0.16)
 			mo.set_shader_parameter("metallic_v", 0.55)
+			mo.set_shader_parameter("env_map", env)
+			mo.set_shader_parameter("env_strength", env_k * 0.9)
 		elif key == "glass" and mo is StandardMaterial3D:
-			var g: StandardMaterial3D = mo.duplicate()
-			g.albedo_color = Color(0.015, 0.02, 0.025, 0.8)
-			g.roughness = 0.02
-			g.metallic = 0.5
-			mi.material_override = g
+			if env_k > 0.0 and env:
+				var gs := ShaderMaterial.new()
+				gs.shader = GLASS_SHADER
+				gs.set_shader_parameter("tint", Color(0.015, 0.02, 0.025, 0.82))
+				gs.set_shader_parameter("env_map", env)
+				gs.set_shader_parameter("env_strength", env_k)
+				mi.material_override = gs
+			else:
+				var g: StandardMaterial3D = mo.duplicate()
+				g.albedo_color = Color(0.015, 0.02, 0.025, 0.8)
+				g.roughness = 0.02
+				g.metallic = 0.5
+				mi.material_override = g
 		elif (key.begins_with("headlight") or key.begins_with("taillight")) and mo is StandardMaterial3D:
 			mo.emission_energy_multiplier = 0.9
+		elif mo is StandardMaterial3D and (mo as StandardMaterial3D).metallic >= 0.8 and env_k > 0.0:
+			mi.material_override = _env_metal(mo, 0.12, env, env_k)   # chrome grille, handles, mirrors, trim
 		elif key.begins_with("wheel_"):
 			for i in mi.get_surface_override_material_count():
 				var m := mi.get_surface_override_material(i) as StandardMaterial3D
@@ -414,10 +511,26 @@ func _polish(n: Node) -> void:
 					m.metallic = 1.0
 					m.roughness = minf(m.roughness, 0.18)
 					m.metallic_specular = 0.8
+					if env_k > 0.0 and env:
+						mi.set_surface_override_material(i, _env_metal(m, m.roughness, env, env_k))
 				elif nm == "rubber":
 					m.albedo_color = Color(0.035, 0.035, 0.037)
 					m.roughness = 0.82
 					m.metallic = 0.0
+
+
+## A StandardMaterial3D's metal look rebuilt on the env-map shader (keeps its colour and texture).
+func _env_metal(m: StandardMaterial3D, rough: float, env: Texture2D, k: float) -> ShaderMaterial:
+	var sm := ShaderMaterial.new()
+	sm.shader = SURFACE_SHADER
+	sm.set_shader_parameter("albedo", m.albedo_color)
+	if m.albedo_texture:
+		sm.set_shader_parameter("albedo_tex", m.albedo_texture)
+	sm.set_shader_parameter("metallic_v", m.metallic)
+	sm.set_shader_parameter("rough_v", rough)
+	sm.set_shader_parameter("env_map", env)
+	sm.set_shader_parameter("env_strength", k)
+	return sm
 
 
 func _model_aabb(n: Node) -> AABB:

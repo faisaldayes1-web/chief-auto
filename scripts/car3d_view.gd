@@ -7,6 +7,8 @@ signal part_clicked(part: String)
 signal part_hovered(part: String)
 
 const PAINT_SHADER := preload("res://shaders/car_paint.gdshader")
+const GARAGE_HDR := "res://assets/cc0/sky/autoshop_1k.hdr"     # Poly Haven "Autoshop 01" (CC0): desktop sky light
+const GARAGE_ENV := "res://assets/cc0/sky/autoshop_env.jpg"    # same, tone-mapped: hand-rolled paint reflections on the web
 const PAINT_PARTS := ["front_bumper", "hood", "fender_fl", "fender_fr", "door_fl", "door_fr", "door_rl", "door_rr",
 	"quarter_rl", "quarter_rr", "roof", "trunk", "rear_bumper", "bed", "rocker_l", "rocker_r"]
 const TRIM_PARTS := ["beltline", "grille"]
@@ -58,6 +60,12 @@ func _init() -> void:
 	sm.ground_bottom_color = Color(0.12, 0.11, 0.1)
 	sm.ground_horizon_color = Color(0.32, 0.3, 0.28)
 	sky.sky_material = sm
+	if RenderQuality.is_forward_plus() and ResourceLoader.exists(GARAGE_HDR):
+		# desktop: a real workshop HDRI lights the car and shows in its paint, glass and chrome
+		var pm := PanoramaSkyMaterial.new()
+		pm.panorama = load(GARAGE_HDR)
+		sky.sky_material = pm
+		sky.radiance_size = Sky.RADIANCE_SIZE_256
 	env.sky = sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.reflected_light_source = Environment.REFLECTION_SOURCE_SKY
@@ -199,6 +207,9 @@ func refresh() -> void:
 			if sm == null:
 				sm = ShaderMaterial.new()
 				sm.shader = PAINT_SHADER
+				if not RenderQuality.is_forward_plus() and ResourceLoader.exists(GARAGE_ENV):
+					sm.set_shader_parameter("env_map", load(GARAGE_ENV))
+					sm.set_shader_parameter("env_strength", 0.45)
 				_paint_mats[key] = sm
 				mi.material_override = sm
 			var panel: String = key
