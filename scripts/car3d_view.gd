@@ -188,7 +188,8 @@ static func model_path(slug: String) -> String:
 		return hd
 	return "res://assets/cars3d/%s.glb" % slug
 
-node: Node) -> void:
+
+func _collect(node: Node) -> void:
 	for ch in node.get_children():
 		if ch is MeshInstance3D:
 			var nm := String(ch.name)
