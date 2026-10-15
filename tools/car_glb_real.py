@@ -61,7 +61,9 @@ CFG = {
     "chevro_tahoma": dict(budget=dict(core=9000), glass=r"^WorldGridMaterial\.024$", tyre=r"^tire$",
                           light=r"^(WorldGridMaterial\.0(21|27|28|39)|Material\.002)$"),
 }
-BUDGET = dict(paint=17000, core=13000, wheel=8000, glass=1500, light=2500)
+# DETAIL scales every triangle budget (the PC build's HD set uses DETAIL=3 TEX_MAX=1024, see assets/cars3d_hd)
+DETAIL = float(os.environ.get("DETAIL", 1.0))
+BUDGET = {k: int(v * DETAIL) for k, v in dict(paint=17000, core=13000, wheel=8000, glass=1500, light=2500).items()}
 TEX_MAX = int(os.environ.get("TEX_MAX", 256))
 MODEL_NAME = {cars_svg.slug(n): n for n in cars_svg.MODELS}
 
@@ -565,7 +567,7 @@ def build(slug, out, test=False):
         wsum[cat_of(n)] = wsum.get(cat_of(n), 0) + weight(n, ob)
     for n, ob in final.items():
         k = cat_of(n)
-        target = c3.get("budget", {}).get(k, BUDGET[k]) * weight(n, ob) / max(1e-9, wsum[k])
+        target = c3.get("budget", {}).get(k, BUDGET[k] / DETAIL) * DETAIL * weight(n, ob) / max(1e-9, wsum[k])
         floor = tris(ob) * c3.get("keep", 0.0) if k == "paint" else 0
         decimate(ob, max(target, floor, min(tris(ob), 150)))
         shade(ob, 50 if k == "paint" else 80, consistent=k in ("core", "wheel"))
@@ -600,7 +602,7 @@ def build(slug, out, test=False):
             drop_uvs(ob)
     for m in bpy.data.materials:
         slim_material(m)
-    shrink_images(c3.get("tex", TEX_MAX))
+    shrink_images(max(c3.get("tex", TEX_MAX), TEX_MAX // 2) if DETAIL > 1 else c3.get("tex", TEX_MAX))
     # ---- report and export
     objs = [o for o in bpy.data.objects if o.type == "MESH"]
     for o in objs:

@@ -141,7 +141,7 @@ func set_car(c: Dictionary) -> void:
 	_pickables.clear()
 	_pick_cache.clear()
 	_mat_cache.clear()
-	var path := "res://assets/cars3d/%s.glb" % CarArt.slug(car.get("model", ""))
+	var path := model_path(CarArt.slug(car.get("model", "")))
 	if not ResourceLoader.exists(path):
 		return
 	var scene: PackedScene = load(path)
@@ -180,7 +180,15 @@ static func build_model(c: Dictionary) -> Node3D:
 	return m
 
 
-func _collect(node: Node) -> void:
+## The PC build ships a high-detail set (about 3x the triangles, 1k textures) in assets/cars3d_hd, left out of the
+## web export to keep the download small; everything else uses assets/cars3d.
+static func model_path(slug: String) -> String:
+	var hd := "res://assets/cars3d_hd/%s.glb" % slug
+	if Settings.is_desktop() and ResourceLoader.exists(hd):
+		return hd
+	return "res://assets/cars3d/%s.glb" % slug
+
+node: Node) -> void:
 	for ch in node.get_children():
 		if ch is MeshInstance3D:
 			var nm := String(ch.name)
