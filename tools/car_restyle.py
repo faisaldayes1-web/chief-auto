@@ -190,6 +190,11 @@ def ellipse(cu, cv, ru, rv, n=28):
     return [(cu + ru * math.cos(2 * math.pi * i / n), cv + rv * math.sin(2 * math.pi * i / n)) for i in range(n)]
 
 
+def arch(cx, cz, r, step=15):
+    """Half circle over a wheel (side view path, x z): cladding along the wheel arch."""
+    return [(cx + r * math.cos(math.radians(a)), cz + r * math.sin(math.radians(a))) for a in range(0, 181, step)]
+
+
 def hexagon(cu, v0, v1, w_top, w_mid, w_bot, mid=0.5):
     vm = v0 + (v1 - v0) * mid
     return [(cu - w_bot / 2, v0), (cu + w_bot / 2, v0), (cu + w_mid / 2, vm), (cu + w_top / 2, v1),
@@ -1530,5 +1535,83 @@ RECIPES = {
                                                          0.004), mat="gold", offset=0.03, res=0.004),
         ],
         wheels=dict(inches=20, style="twin6", color=(0.78, 0.79, 0.81), rough=0.2),
+    ),
+    # ---------------------------------------------------------------- Toyoda Camri: Malibu -> our mid-size sedan
+    # bow-ties and lettering out; a wide trapezoid grille with slats and a chrome bar, a slim vertical-slat upper grille
+    # between the lamps, DRL brows, a tail light bar across the boot lid, a boot lip, split-five rims
+    "toyoda_camri": dict(
+        glass=r"^malibuglass$", glass_transmission=0.1,  # no headliner: keep the sky out of the side windows
+        tyre=r"^malibutyre$", lamps=r"^(tled|malibured|malibuorange|material)$",
+        scrub=[
+            [2.1, 2.6, -0.12, 0.14, 0.53, 0.65, "parts"],          # front bow-tie
+            [2.1, 2.6, -0.14, 0.16, 0.56, 0.63, "chrome"],         # its mount on the chrome bar
+            [-2.6, -2.15, -0.12, 0.12, 0.84, 0.97, "parts"],       # rear bow-tie
+            [-2.6, -2.15, 0.12, 0.6, 0.84, 0.97, "parts"],        # model lettering on the boot lid
+            [-2.6, -2.15, -0.55, -0.12, 0.84, 0.97, "parts"],      # trim badge on the boot lid
+            [0.4, 1.25, 0.75, 1.2, 0.52, 0.72, "parts", True],    # door lettering
+            [-0.36, -0.16, 0.6, 0.86, 0.95, 1.3, "gloss_black", True],  # chrome B-pillar trim -> gloss black
+        ],
+        swap={r"^malibuorange$": "lamp_clear", r"^malibu_blackmetal$": "black"},
+        shape=dict(nose=0.03, roof=0.02, width=0.015, rake=0.006),
+        grilles=[
+            dict(shape=("poly", [(-0.56, 0.555), (0.56, 0.555), (0.5, 0.36), (0.36, 0.245), (-0.36, 0.245),
+                                 (-0.5, 0.36)], 0.04),
+                 pattern="slats", scale=12, depth=0.45, frame=(0.022, "satin"),
+                 bars=[([(-0.52, 0.42), (0.52, 0.42)], 0.022, "chrome")]),
+            dict(shape=("rrect", -0.36, 0.625, 0.36, 0.735, 0.02), pattern="vslats", scale=12, depth=0.4,
+                 frame=(0.014, "gloss_black")),
+        ],
+        decals=[
+            dict(name="drl", view="front", path=[(0.38, 0.738), (0.84, 0.75)], width=0.014, mat="lamp_drl", sym=True,
+                 offset=0.01),
+            dict(name="bar", view="front", path=[(-0.22, 0.592), (0.22, 0.592)], width=0.03, mat="chrome", offset=0.008),
+            dict(name="tail_bar", view="rear", shape=("rrect", -0.36, 0.835, 0.36, 0.852, 0.006), mat="lamp_tail",
+                 offset=0.01, res=0.005),
+            dict(name="lip", view="top", shape=("rrect", -2.4, -0.58, -2.22, 0.58, 0.05), mat="paint", height=0.025,
+                 ramp=(-2.22, -2.4), skirt="paint", offset=0.002),
+            dict(name="emblem", view="front", shape=("poly", [(-0.065, 0.712), (0.0, 0.672), (0.065, 0.712),
+                                                               (0.065, 0.688), (0.0, 0.645), (-0.065, 0.688)], 0.003),
+                 mat="chrome", offset=0.03, res=0.004),
+            dict(name="emblem_r", view="rear", shape=("poly", [(-0.06, 0.93), (0.0, 0.895), (0.06, 0.93),
+                                                                (0.06, 0.908), (0.0, 0.87), (-0.06, 0.908)], 0.003),
+                 mat="chrome", offset=0.006, res=0.004),
+        ],
+        wheels=dict(inches=18, style="split5", color=(0.32, 0.33, 0.35), rough=0.3),
+    ),
+    # ---------------------------------------------------------------- Subaro Outbuck: V60 estate -> our raised wagon
+    # logos and lettering out; a hex grille with a chrome wing bar, the hammer lamps covered by smoked lenses with C-shaped
+    # DRLs, the tail lamps' vertical blades painted over and joined by a light bar, black arch and sill cladding, Y-spoke rims
+    "subaro_outbuck": dict(
+        glass=r"^glass_dark",
+        tyre=r"^tire$", lamps=r"^glass_(clear|lens|red|redB|red_illum|led|bumpA)$",
+        drop_obj=r"^(chrome_(logo_f|v60|volvo|t6|awd|wheel_logo)|plasticGlossy_(T6|logo_f)|plastic_(logo_f|wheel_logo))",
+        scrub=[
+            [-2.45, -1.85, 0.45, 1.05, 0.96, 1.4, "paint", True],   # vertical blades of the tail lamps -> body
+        ],
+        shape=dict(nose=0.02, roof=0.025, width=0.02),
+        grilles=[dict(shape=("hex", 0.0, 0.49, 0.79, 1.0, 1.07, 0.88, 0.4, 0.03), pattern="hex", scale=13, depth=0.45,
+                      frame=(0.025, "chrome"), bars=[([(-0.53, 0.645), (0.53, 0.645)], 0.03, "chrome")])],
+        decals=[
+            dict(name="lamp_cover", view="front", shape=("poly", [(0.5, 0.685), (0.55, 0.668), (0.9, 0.652), (0.9, 0.67),
+                                                                  (0.9, 0.8), (0.88, 0.808), (0.55, 0.748), (0.5, 0.722)], 0.02),
+                 mat="lamp_smoke", sym=True, offset=0.006, support=True, res=0.008, reach=0.12),
+            dict(name="drl", view="front", path=[(0.62, 0.762), (0.85, 0.782), (0.875, 0.73), (0.85, 0.682), (0.7, 0.68)],
+                 width=0.014, mat="lamp_drl", sym=True, offset=0.012),
+            dict(name="projector", view="front", shape=("ellipse", 0.76, 0.722, 0.045, 0.03), mat="lamp_clear",
+                 sym=True, offset=0.01, res=0.004),
+            dict(name="emblem", view="front", shape=("poly", [(-0.065, 0.675), (0.065, 0.675), (0.05, 0.63), (0.0, 0.608),
+                                                               (-0.05, 0.63)], 0.004), mat="chrome", offset=0.03, res=0.004),
+            dict(name="tail_bar", view="rear", shape=("rrect", -0.62, 0.872, 0.62, 0.892, 0.006), mat="lamp_tail",
+                 offset=0.01, res=0.005),
+            dict(name="emblem_r", view="rear", shape=("poly", [(-0.06, 1.02), (0.06, 1.02), (0.046, 0.98), (0.0, 0.96),
+                                                                (-0.046, 0.98)], 0.004), mat="chrome", offset=0.006, res=0.004),
+            dict(name="arch_f", view="side", path=arch(1.555, 0.345, 0.455), width=0.08, mat="satin_black", sym=True,
+                 offset=0.006),
+            dict(name="arch_r", view="side", path=arch(-1.367, 0.345, 0.455), width=0.08, mat="satin_black", sym=True,
+                 offset=0.006),
+            dict(name="sill", view="side", shape=("rrect", -0.95, 0.17, 0.95, 0.29, 0.02), mat="satin_black", sym=True,
+                 offset=0.005, res=0.015),
+        ],
+        wheels=dict(inches=18, style="y5", color=(0.42, 0.43, 0.45), rough=0.3),
     ),
 }

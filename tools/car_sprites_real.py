@@ -59,6 +59,9 @@ CARS = {
     "chevro_tahoma": dict(src="prado2025_sultan/prado_clean.glb", length=5.2,
                           paint=r"^WorldGridMaterial(\.001|\.007|\.019|\.020)?$",
                           badge=r"^decal_text$", drop_mat=r"^WorldGridMaterial\.030$", front=-1),
+    # scene_straight.gltf is the Sketchfab export with the root node's stray 27-degree yaw taken out (root matrix only)
+    "subaro_outbuck": dict(src="volvo_v60/scene_straight.gltf", length=4.87, paint=r"^carpaint$", front=-1),
+    "toyoda_camri": dict(src="malibu/scene.gltf", length=4.88, paint=r"^malibupaint$", front=-1),
 }
 
 

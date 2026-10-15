@@ -60,6 +60,8 @@ CFG = {
                              r"leather02_weave_18)$", tyre=r"^plastic5_16$"),
     "chevro_tahoma": dict(budget=dict(core=9000), glass=r"^WorldGridMaterial\.024$", tyre=r"^tire$",
                           light=r"^(WorldGridMaterial\.0(21|27|28|39)|Material\.002)$"),
+    "toyoda_camri": dict(glass=r"^malibuglass$", light=r"^(tled|malibured|malibuorange|material)$", tyre=r"^malibutyre$"),
+    "subaro_outbuck": dict(glass=r"^glass_dark", light=r"^glass_(clear|lens|red|redB|red_illum|led|bumpA)$", tyre=r"^tire$"),
 }
 # DETAIL scales every triangle budget (the PC build's HD set uses DETAIL=3 TEX_MAX=1024, see assets/cars3d_hd)
 DETAIL = float(os.environ.get("DETAIL", 1.0))

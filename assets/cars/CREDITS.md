@@ -7,10 +7,12 @@ re-textured, are the garage models in assets/cars3d (tools/car_glb_real.py).
 Changes: every car is restyled into our own parody design by tools/car_restyle.py before rendering. All maker logos,
 badges, lettering and badge textures are removed and number plates blanked; each car gets a new grille, new headlight
 and tail-light graphics (light bars, covers, new lamp shapes), its own simple-shape emblem, new procedurally built
-wheels and tyres (a different rim design per car), small proportion changes (nose, tail, width, roof and rake by a
-few per cent) and changed aero and trim (for example a wing on stands instead of the 911 whale tail, painted hood vents
-and stripes on the Mustank, a new wing on the Aventa, no spare wheel on the G-Wagon). The body is then repainted grey
-for in-game tinting, rescaled, re-lit and rendered to 2D sprites. The original models themselves are not shipped.
+wheels and tyres (a different rim design per car), small proportion changes (nose, tail, width, roof and rake by a few
+per cent) and changed aero and trim (for example a wing on stands instead of the 911 whale tail, painted hood vents
+and stripes on the Mustank, a new wing on the Aventa, no spare wheel on the G-Wagon, the Camri's bow-tie bar and
+lettering gone under two new grilles and a boot lip, black arch and sill cladding and painted-over tail-lamp blades on
+the Outbuck). The body is then repainted grey for in-game tinting, rescaled, re-lit and rendered to 2D sprites. The
+original models themselves are not shipped.
 
 | In game | Model | Author | Source |
 |---|---|---|---|
@@ -26,9 +28,11 @@ for in-game tinting, rescaled, re-lit and rendered to 2D sprites. The original m
 | Rang Rovah | Custom Range Rover Sport | BadKarma | https://sketchfab.com/3d-models/custom-range-rover-sport-1bd2ecc36e5148bb9e339b51d8638b37 |
 | Mercedez G-Wagon | Mercedes-Benz BRABUS G900 | DAS AUTO | https://sketchfab.com/3d-models/mercedes-benz-brabus-g900-aad90805a0a84381bbee50f569e45d50 |
 | Chevro Tahoma (stand-in: a boxy full-size SUV, rescaled to Tahoe length) | toyota prado 2025 | sultan | https://sketchfab.com/3d-models/toyota-prado-2025-d314ebc5f7b94f4fb1ee98a207b0ce34 |
+| Toyoda Camri (stand-in: a mid-size sedan, rescaled to Camry length) | Chevrolet Malibu Premier 2022 | Type_S | https://sketchfab.com/3d-models/chevrolet-malibu-premier-2022-55aa80115ee04aa79c802f3baf454326 |
+| Subaro Outbuck (stand-in: an estate, rescaled to Outback length) | VOLVO V60 FBX 2021 | jan vancik | https://sketchfab.com/3d-models/volvo-v60-fbx-2021-39f29176cf3b4f70832f32ba800f860b |
 
-The Toyoda Camri, Dodgy Charjer, Teslo Model 3, Subaro Outbuck and Jeap Wrangle sprites and garage models are built
-procedurally by tools/car3d.py (no third-party model).
+The Dodgy Charjer, Teslo Model 3 and Jeap Wrangle sprites and garage models are built procedurally by tools/car3d.py
+(no third-party model).
 
 Before a commercial release: confirm each Sketchfab page still shows CC-BY, and get trademark advice on real car
 shapes and any badge detail left in textures (grilles, wheel centres).
