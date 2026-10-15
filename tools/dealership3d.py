@@ -1697,7 +1697,7 @@ def lifeguard_tower(x, y, z=0.0):
 # north-north-east (headings 68..82 degrees), so the same light here is a sun 50 degrees up in the south-west, behind
 # the cameras: the storefronts and the dealership facing the camera are in direct sun, and shadows fall away from the
 # camera and to the right, as they do in the sprites.
-SUN_EL, SUN_AZ = 50.0, -124.0
+SUN_EL, SUN_AZ = 40.0, -124.0     # a lower, warmer afternoon sun
 
 
 def sun_vector():
@@ -1857,7 +1857,7 @@ def build_world():
     nt.nodes["Background"].inputs["Strength"].default_value = 0.19
     sun = bpy.data.lights.new("sun", "SUN")
     sun.energy = 6.2
-    sun.color = (1.0, 0.9, 0.76)
+    sun.color = (1.0, 0.84, 0.64)
     sun.angle = math.radians(1.5)
     so = bpy.data.objects.new("sun", sun)
     so.rotation_euler = (-sun_vector()).to_track_quat("-Z", "Y").to_euler()
@@ -2345,7 +2345,7 @@ def build_coast():
         r = rnd.random()
         dist = math.hypot(x + 15, y + 45)
         fine = dist < 140
-        if r < 0.62:
+        if r < 0.5:
             rr = rnd.uniform(0.8, 1.7) * (1.0 if fine else 1.3)
             hh = rr * rnd.uniform(0.8, 1.3)
             sphere_v = (x, y, z + hh * 0.4)
@@ -3592,6 +3592,10 @@ def render_view(cam, name, out):
     if name in SHOW_ROWS:
         export_showroom(name, cam, os.path.join(out, "%s.json" % name))
     bpy.ops.render.render(write_still=True)
+    # Faisal 2026-10-15: warmer, more colourful California light (the grade runs in the system python's Pillow)
+    import subprocess
+    subprocess.run(["python3", "-I", os.path.join(os.path.dirname(os.path.abspath(__file__)), "grade.py"),
+                    bpy.context.scene.render.filepath], check=True)
 
 
 def build():
