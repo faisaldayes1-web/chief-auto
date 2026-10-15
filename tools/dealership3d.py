@@ -746,11 +746,12 @@ def bark_mat(name, c1, c2, ring=0.12):
     wave.inputs["Detail"].default_value = 3.0
     nt.links.new(co, wave.inputs["Vector"])
     nz = _noise(nt, co, 6.0, 6.0)
-    col = _ramp(nt, _math(nt, "MULTIPLY_ADD", wave.outputs["Fac"], 0.6, _math(nt, "MULTIPLY", nz.outputs["Fac"], 0.4)),
-                ((0.35, c1), (0.75, c2)))
+    # the frond-base rings stay faint; most of the variation is rough fibrous bark
+    col = _ramp(nt, _math(nt, "MULTIPLY_ADD", wave.outputs["Fac"], 0.25, _math(nt, "MULTIPLY", nz.outputs["Fac"], 0.75)),
+                ((0.3, c1), (0.8, c2)))
     nt.links.new(col, b.inputs["Base Color"])
     b.inputs["Roughness"].default_value = 0.92
-    _bump(nt, b, wave.outputs["Fac"], 0.8, 0.03)
+    _bump(nt, b, _math(nt, "MULTIPLY_ADD", wave.outputs["Fac"], 0.35, nz.outputs["Fac"]), 0.6, 0.03)
     _mats[name] = m
     return m
 
@@ -898,7 +899,8 @@ def frond_image(kind="green"):
         W, H = img.size
         cy = H / 2
         if kind == "green":
-            pal = [(52, 92, 30), (66, 108, 36), (80, 120, 42), (44, 80, 26), (96, 128, 50)]
+            # muted olive greens, darker at the base and sunlit (lighter, a touch yellower) toward the tip
+            pal = [(58, 84, 40), (68, 94, 46), (76, 100, 50), (52, 76, 36), (84, 106, 56)]
         else:
             pal = [(150, 112, 62), (128, 92, 50), (170, 134, 80), (110, 80, 44)]
         n = 70
@@ -908,7 +910,11 @@ def frond_image(kind="green"):
                 ln = (0.47 * math.sin(math.pi * min(1.0, u * 1.05)) ** 0.55 + 0.03) * H
                 bx = u * W
                 tip = (bx + ln * rnd.uniform(0.7, 1.0) * 1.1, cy + side * ln * rnd.uniform(0.85, 1.0))
-                _leaf_poly(d, (bx, cy), tip, 2.6 * s + 3.5 * s * math.sin(math.pi * u), rnd.choice(pal) + (255,))
+                c = rnd.choice(pal)
+                if kind == "green":
+                    lit = max(0.0, u - 0.35) / 0.65 * rnd.uniform(0.5, 1.0)
+                    c = tuple(int(v * (0.82 + 0.35 * lit) + w * lit) for v, w in zip(c, (14, 12, 0)))
+                _leaf_poly(d, (bx, cy), tip, 2.6 * s + 3.5 * s * math.sin(math.pi * u), c + (255,))
         d.line([(0, cy), (W, cy)], fill=(120, 110, 60, 255) if kind == "green" else (120, 90, 50, 255), width=int(5 * s))
     return _pil_image("tex_frond_" + kind, draw, (1024, 256))
 
@@ -924,7 +930,7 @@ def fan_image(kind="green"):
         rnd = random.Random(11 if kind == "green" else 12)
         W, H = img.size
         cx, cy, R = W * FAN_C[0], H * (1 - FAN_C[1]), H * FAN_R
-        pal = [(60, 100, 40), (74, 116, 46), (88, 126, 52), (54, 92, 36)] if kind == "green" else \
+        pal = [(62, 88, 44), (72, 98, 50), (82, 106, 56), (56, 80, 40)] if kind == "green" else \
               [(160, 124, 72), (140, 104, 60), (176, 142, 90)]
         segs = 46
         for j in range(segs):
@@ -933,7 +939,10 @@ def fan_image(kind="green"):
             am = (a0 + a1) / 2
             r_split = R * rnd.uniform(0.55, 0.7)
             r_tip = R * rnd.uniform(0.92, 1.0)
-            col = rnd.choice(pal) + (255,)
+            col = rnd.choice(pal)
+            if kind == "green" and abs(a0) < math.radians(70):      # the upper, sunlit segments read lighter
+                col = tuple(min(255, int(v * 1.12 + 6)) for v in col)
+            col = col + (255,)
             p = lambda a, r: (cx + r * math.sin(a), cy - r * math.cos(a))  # noqa: E731
             d.polygon([p(am, R * 0.06), p(a0, r_split), p(am - 0.01, r_tip), p(am + 0.01, r_tip), p(a1, r_split)], fill=col)
             # the split tips hang as thin threads
@@ -1051,6 +1060,7 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
     rnd = random.Random(seed)
     loc = Vector(loc)
     kind = {"fan": "fan"}.get(kind, kind)
+    h *= rnd.uniform(0.85, 1.15)                      # no two palms the same height
     lean_dir = Vector((math.cos(rnd.uniform(0, math.tau)), math.sin(rnd.uniform(0, math.tau)), 0))
     lean = rnd.uniform(0.02, 0.07 if kind != "fan" else 0.05) * h
     r0 = {"date": 0.38, "queen": 0.2, "fan": 0.22}[kind]
@@ -1062,7 +1072,7 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
         flare = 1.0 + (0.7 if kind == "fan" else 0.5) * max(0.0, 1 - t * 8)
         radii.append(r0 * flare * (1 - 0.22 * t) * (1.3 if kind == "date" and t > 0.92 else 1.0))
     trunk = tube("palm_trunk", pts, radii, bark_mat("bark_" + kind, (0.27, 0.23, 0.19), (0.42, 0.37, 0.3),
-                                                    ring=0.08 if kind == "fan" else 0.16), sides=6 if lod else 12)
+                                                    ring=0.05 if kind == "fan" else 0.09), sides=6 if lod else 12)
     top = pts[-1]
     vs, fs, uvs = [], [], []
     dvs, dfs, duvs = [], [], []
@@ -1072,6 +1082,7 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
         hd = Vector((math.cos(az), math.sin(az), 0))
         sd = Vector((-hd.y, hd.x, 0))
         half = length * 0.17
+        curl = rnd.uniform(-0.12, 0.12) * length          # fronds bend sideways a little, not dead straight
         rows = []
         for i in range(segs + 1):
             s = i / segs
@@ -1080,8 +1091,8 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
             fold = math.radians(28 - 55 * s)              # leaflets V up near the base, hang at the tip
             wv = sd * math.cos(fold) * half
             up = Vector((0, 0, math.sin(fold) * half))
-            twist = Vector((0, 0, 0))
-            rows.append([(p - wv + up + twist, (s, 0.0)), (p, (s, 0.5)), (p + wv + up, (s, 1.0))])
+            twist = sd * curl * s * s
+            rows.append([(p - wv + up + twist, (s, 0.0)), (p + twist, (s, 0.5)), (p + wv + up + twist, (s, 1.0))])
         _ribbon(dvs if dead else vs, dfs if dead else fs, duvs if dead else uvs, rows)
 
     def fan_leaf(az, elev, dead=False):
@@ -1089,7 +1100,7 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
         sd = Vector((-hd.y, hd.x, 0))
         out = hd * math.cos(elev) + Vector((0, 0, math.sin(elev)))
         stem = top + out * 0.9
-        R = 1.25
+        R = 1.25 * rnd.uniform(0.8, 1.1)
         nrm = (out.cross(sd)).normalized()          # leaf plane: spanned by out and sd
         tvs, tfs, tuvs = (dvs, dfs, duvs) if dead else (vs, fs, uvs)
         base = len(tvs)
@@ -1113,15 +1124,16 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
         tfs.extend(tuple(b2 + q for q in f) for f in pf)
 
     if kind == "fan":
-        for i in range(10 if lod else 20):
-            fan_leaf(i / (10 if lod else 20) * math.tau + rnd.uniform(-0.2, 0.2), math.radians(rnd.uniform(-20, 60)))
+        nl = (10 if lod else rnd.randint(14, 22))
+        for i in range(nl):
+            fan_leaf(i / nl * math.tau + rnd.uniform(-0.25, 0.25), math.radians(rnd.uniform(-25, 60)))
         # the skirt of old fronds hanging down the trunk under the crown
         for i in range(0 if lod else 12):
             az = i / 12 * math.tau + rnd.uniform(-0.2, 0.2)
             hd = Vector((math.cos(az), math.sin(az), 0))
             frond(az, math.radians(-80), rnd.uniform(1.4, 2.2), 0.02, dead=True, segs=3)
     else:
-        n = (12 if lod else 24) if kind == "date" else (10 if lod else 18)
+        n = (12 if lod else rnd.randint(18, 26)) if kind == "date" else (10 if lod else rnd.randint(14, 20))
         for i in range(n):
             ring = i % 3
             if kind == "queen":
@@ -1130,8 +1142,8 @@ def palm(loc, h=9.0, seed=0, kind="date", lod=False):
                 droop = (0.13, 0.2, 0.26)[ring]
             else:
                 elev = math.radians((55, 22, -10)[ring] + rnd.uniform(-10, 10))
-                fl = rnd.uniform(3.6, 4.4) if h > 6 else h * 0.55
-                droop = (0.07, 0.12, 0.17)[ring]
+                fl = (rnd.uniform(3.2, 4.6) if h > 6 else h * 0.55) * (0.6 if rnd.random() < 0.12 else 1.0)
+                droop = (0.07, 0.12, 0.17)[ring] * rnd.uniform(0.8, 1.3)
             frond(i / n * math.tau + ring * 0.35 + rnd.uniform(-0.12, 0.12), elev, fl, droop)
         for i in range(0 if lod else 4):
             frond(rnd.uniform(0, math.tau), math.radians(-70), 2.2, 0.03, dead=True, segs=4)
@@ -2319,13 +2331,16 @@ def build_coast():
     walls = [window_mat("town_%d" % i, c, shade=(0.55, 0.52, 0.45) if i % 2 else None, bay=2.8) for i, c in enumerate(TOWN_COLOURS)]
     tiles = tile_mat()
     # sample the visible slope (x -140..160 behind the lot, y 30..200) densely, the rest sparsely
-    n_plants = 5200
+    n_plants = 3800
     PX = np.array([rnd.uniform(-170, 180) for _ in range(n_plants)])
     PY = np.array([HILL_FOOT_Y + 1 + 60 * rnd.random() ** 1.2 for _ in range(n_plants)])
     PSD = _road_dist(PX, PY, pts)
     PZ = terrain_height(PX, PY, PSD)
     for x, y, z, sd in zip(PX, PY, PZ, PSD):
         if sd < half + 7 or z < 0.2:
+            continue
+        # clearings: a low-frequency mask leaves open slope between planting groups
+        if math.sin(x * 0.08) + math.sin(y * 0.15 + x * 0.035) > 1.0:
             continue
         r = rnd.random()
         dist = math.hypot(x + 15, y + 45)
