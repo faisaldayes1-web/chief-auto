@@ -1,0 +1,37 @@
+[remap]
+
+importer="texture"
+type="CompressedTexture2D"
+uid="uid://bjur8pjxs4pks"
+path="res://.godot/imported/bmv_m4_Material_848_baseColor.jpg-5a7f0e9f2aa61ca2e59d16f4488c8744.ctex"
+metadata={
+"vram_texture": false
+}
+generator_parameters={
+"md5": "5fc56bd58381317decb4fb547303345f"
+}
+
+[deps]
+
+source_file="res://assets/cars3d_hd/bmv_m4_Material_848_baseColor.jpg"
+dest_files=["res://.godot/imported/bmv_m4_Material_848_baseColor.jpg-5a7f0e9f2aa61ca2e59d16f4488c8744.ctex"]
+
+[params]
+
+compress/mode=0
+compress/high_quality=false
+compress/lossy_quality=0.7
+compress/hdr_compression=1
+compress/normal_map=0
+compress/channel_pack=0
+mipmaps/generate=true
+mipmaps/limit=-1
+roughness/mode=0
+roughness/src_normal=""
+process/fix_alpha_border=true
+process/premult_alpha=false
+process/normal_map_invert_y=false
+process/hdr_as_srgb=false
+process/hdr_clamp_exposure=false
+process/size_limit=0
+detect_3d/compress_to=1
