@@ -10,19 +10,15 @@ State on 2026-10-16:
 - Don't push to either PR branch; another session may still be using #2.
 
 ## Open
-- [ ] **CA-1 Integrate the game onto one branch** (`claude-faisallaptop`):
-  - Make a new branch `claude-faisallaptop/ca-1-int` from `main`. Merge #2, then #1, with merge commits.
-  - Resolve overlaps, keeping the newer or better asset and listing every choice.
-  - Godot: a headless import with no script errors, then play the core loop (dealership, sell a car, the desk view) and take screenshots.
-  - Open one PR to `main` for Faisal. Archive anything replaced, never delete it.
 - [ ] **CA-2 Asset + visuals audit** (`chatgpt`, read-only, can start now from the PR branches):
   - List every asset category (cars 3D/2D, characters, furniture, HDRI/PBR, UI icons, fonts).
   - Flag problems: missing or broken textures, mismatched styles or resolutions across the 16 car sprites, placeholder art, missing credits or licences.
   - Write a ranked fix list in `docs/agents/Visual Audit.md` (PROPOSED). GitHub issue labeled `chatgpt-task`.
-- [ ] **CA-3 Asset + visuals fix pass** (`claude-faisallaptop`, after CA-1, using CA-2 and Faisal's own list):
+- [ ] **CA-3 Asset + visuals fix pass** (`claude-faisallaptop`; can start now; use CA-2 and Faisal's own list). First, play the game windowed on the laptop (showroom, a sale, desk view, home, garage) and screenshot each area. Include the shader-compiler error from CA-1.
   - Fix the top items in Godot, with before/after screenshots per item.
   - Credits only with Faisal's OK.
 - [ ] **CA-4 Faisal's visual notes** (Faisal): what looks wrong to you (screens, cars, characters, UI)? Screenshots are welcome.
 
 ## Done
+- CA-1 Integrate (claude-cloud, 2026-10-16): PR #2 already contained all of PR #1 (#1's head is #2's base), so #2 was merged onto `main` alone, with no conflicts. Godot 4.3 headless import: no script errors. `tests/smoke_test.gd`: **OK**. One shader-compiler error was logged on import (`custom_samplers ... tex_builtin`, shader_compiler.cpp:1283): a shader uses a built-in texture in a custom function. Added to CA-2/CA-3. **Not tested:** playing the game in a window (needs Claude 2 or Faisal).
 - CA-0 Locate the project: it is in PRs #1 and #2 (2026-10-16).
