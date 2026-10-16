@@ -11,6 +11,8 @@ Shared rules for every AI agent on this repo (Claude, Claude 2, ChatGPT/Codex). 
 | `chatgpt` / `Codex-faisal` | ChatGPT / Codex | Design docs, reviews, pure-logic code with tests |
 
 ## Where things live
+- Memory: [docs/Memory Brief.md](docs/Memory%20Brief.md) (read first, at most 40 lines) and the wiki [docs/Wiki/Index.md](docs/Wiki/Index.md). Open `docs/` as an Obsidian vault.
+- Workflow loop and token budget: the shared standard in the ORY framework repo, `docs/studio-workflow.md`.
 - Board: [docs/agents/Agent Board.md](docs/agents/Agent%20Board.md) (who is on what) and [docs/agents/Task Board.md](docs/agents/Task%20Board.md) (backlog).
 - Messages between agents: `docs/agents/Inbox/`, one note per message: `YYYY-MM-DD HHMM <from> to <to> - <topic>.md` with `from/to/status/task` front matter.
 - Decisions for Faisal: [docs/agents/Needs Faisal.md](docs/agents/Needs%20Faisal.md). Anything you tell Faisal directly, also write here or as an inbox note `to: claude-cloud`.
