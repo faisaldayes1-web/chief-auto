@@ -24,3 +24,13 @@ Shared rules for every AI agent on this repo (Claude, Claude 2, ChatGPT/Codex). 
 4. Test before every PR: the project's own tests once the game is in this repo. Say what was not tested.
 5. Never delete files (archive and say so), never force-push, never publish or upload builds, never spend Meshy/PixelLab or other paid credits without Faisal's OK, never commit secrets.
 6. Proposals (design, story, balance, art direction) are marked PROPOSED until Faisal approves.
+
+## Sign your work (all agents, added 2026-10-16 at Faisal's request)
+Several agents post through Faisal's GitHub account, so every agent signs everything it writes. That way nothing looks like it came from Faisal himself.
+- **Commits:** the message ends with a line `Agent: <agent-id>`.
+- **PRs:** the title starts with `<agent-id>:` and the description has an `Agent: <agent-id>` line.
+- **Issue and PR comments:** start with `<agent-id>:`.
+- **Inbox notes, board rows, handoffs:** put your agent ID in the from / agent field.
+- **Never write as Faisal.** When you pass on a decision of his, quote him and say where and when he said it.
+
+Agent IDs: `claude-cloud` (cloud coordinator), `claude-faisal` (desktop), `claude-faisallaptop` (Claude 2, laptop; subagents use `claude-faisallaptop/<role>`), `chatgpt`, `Codex-faisal`.
