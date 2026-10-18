@@ -64,6 +64,7 @@ var pause_menu: PauseMenu
 
 func _ready() -> void:
 	theme = UI.make_theme()
+	get_tree().node_added.connect(_on_node_added)
 	bg = TextureRect.new()
 	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
@@ -6085,9 +6086,23 @@ const TOAST_MARGIN := 10.0
 
 ## Once this frame's layout has settled (wrapped labels and new screens size themselves over a frame).
 func _place_toasts_soon() -> void:
+	if _toast_place_queued:
+		return
+	_toast_place_queued = true
 	_place_toasts.call_deferred()
-	if not get_tree().process_frame.is_connected(_place_toasts):
-		get_tree().process_frame.connect(_place_toasts, CONNECT_ONE_SHOT)
+	get_tree().process_frame.connect(func():
+		_toast_place_queued = false
+		_place_toasts(), CONNECT_ONE_SHOT)
+
+
+var _toast_place_queued := false
+
+
+## Controls that show up while toasts are on screen (a dialog, the coach, a listing opened a moment later)
+## move the stack too, not only a new toast or a screen change.
+func _on_node_added(n: Node) -> void:
+	if n is Control and not _toasts.is_empty() and not (_toast_box and _toast_box.is_ancestor_of(n)):
+		_place_toasts_soon()
 
 
 ## Toasts go to the first of a few spots inside the screen area (between the HUD and the nav bar) where they
@@ -6102,6 +6117,8 @@ func _place_toasts() -> void:
 	var blockers := []
 	_toast_blockers(content, blockers)
 	_toast_blockers(overlay, blockers)
+	if coach and is_instance_valid(coach) and coach.is_visible_in_tree():
+		blockers.append(coach.get_global_rect())   # the first-day coach and its buttons sit outside content
 	var best := Rect2(area.position, Vector2(TOAST_W, 0))
 	var best_cover := INF
 	for w in [TOAST_W, TOAST_W_NARROW]:
@@ -6142,10 +6159,9 @@ func _toast_stack_height(w: float) -> float:
 		var sb: StyleBox = t.get_theme_stylebox("panel")
 		var inner: float = w - sb.get_margin(SIDE_LEFT) - sb.get_margin(SIDE_RIGHT)
 		var fs := l.get_theme_font_size("font_size")
-		var text_h: float = l.get_theme_font("font").get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER,
-			inner, fs).y
-		var lines := maxi(1, l.get_theme_font("font").get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER,
-			inner, fs).y / l.get_theme_font("font").get_height(fs))
+		var font := l.get_theme_font("font")
+		var text_h: float = font.get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER, inner, fs).y
+		var lines := maxi(1, int(text_h / font.get_height(fs)))
 		h += text_h + l.get_theme_constant("line_spacing") * (lines - 1) + sb.get_margin(SIDE_TOP) + sb.get_margin(SIDE_BOTTOM)
 		n += 1
 	return h + 8.0 * maxi(0, n - 1)
@@ -6161,7 +6177,8 @@ func _toast_blockers(node: Node, out: Array, clip := Rect2(-1e6, -1e6, 2e6, 2e6)
 		if ch is Control:
 			var c: Control = ch
 			var r := c.get_global_rect().intersection(clip)
-			if c is BaseButton or c is LineEdit or c is TextEdit or c is Range 					or (c is Label and c.get_theme_font_size("font_size") >= 22):
+			if c is BaseButton or c is LineEdit or c is TextEdit or c is Range \
+					or (c is Label and c.get_theme_font_size("font_size") >= 22):
 				if c.is_visible_in_tree() and r.get_area() > 0.0:
 					out.append(r)
 			if c.clip_contents:
