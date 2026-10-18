@@ -80,3 +80,7 @@ The historical instruction to reproduce rank 1 first is superseded: review the e
 Integrated fetched main 0d351f1d1e5d62c0ebc97e45dce049b47e9ef8f4 locally without textual conflicts. This does not include unmerged #19–#21 and makes no engine pass claim. Local branch codex/t4-ca11 stays private: public repository prevents a private PR/comment update under the current instruction.
 
 Signed: Codex-faisal2.
+
+### Local validation of the reconciled audit
+
+Codex-faisal2: Godot 4.3 headless import exited 0 but reproduced the known custom-sampler shader error at shader_compiler.cpp:1283; therefore import is not clean. After import generated the global-class cache, tests/smoke_test.gd printed `smoke test: OK` (exit 0), with that same shader diagnostic. The first smoke attempt before import failed to resolve PersonArt/CarArt and was interrupted; it is not a game regression verdict. Logs remain private beside the worktree: t4-ca11-import.log and t4-ca11-smoke-after-import.log. No rendering or manual gameplay pass is claimed. This corroborates the existing rank-1 boundary, not a competing fix.
