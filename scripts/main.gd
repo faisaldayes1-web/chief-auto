@@ -1163,6 +1163,9 @@ const LANES := {
 }
 
 
+const BROWSER_W := 860.0   # the widest site (StaffHire, 854 px) plus a little
+
+
 func _screen_pc() -> void:
 	if Game.debug_desk:
 		Game.debug_furnish()
@@ -1176,8 +1179,13 @@ func _screen_pc() -> void:
 	stage.add_child(win)
 	var place := func():
 		stage._compute()
-		win.position = stage.monitor_rect.position
-		win.size = stage.monitor_rect.size
+		var mr: Rect2 = stage.monitor_rect
+		# Every site needs more width than the monitor art gives it (727-854 px against 554 at 720p), and the
+		# window used to grow to each page's own minimum, so it jumped between ~730 and ~850 px from tab to tab.
+		# One width for all tabs, centred on the monitor, keeps the frame still.
+		var w := maxf(maxf(mr.size.x, BROWSER_W), win.get_combined_minimum_size().x)
+		win.size = Vector2(w, mr.size.y)
+		win.position = Vector2(clampf(mr.get_center().x - w / 2.0, 8.0, maxf(8.0, stage.size.x - w - 8.0)), mr.position.y)
 	stage.resized.connect(place)
 	# wrapped labels report a tall minimum on their first pass and a Control never shrinks back on its own,
 	# so the window is re-fitted to the monitor whenever its minimum size settles
