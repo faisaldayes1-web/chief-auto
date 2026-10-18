@@ -342,6 +342,8 @@ func show_screen(name: String) -> void:
 	_refresh_clock()
 	if Game.seen_intro or name == "title":
 		_update_coach()
+	if not _toasts.is_empty():
+		_place_toasts_soon()   # the new screen has its own buttons to keep clear of
 
 
 func _stage(mode: String) -> SceneArt:
@@ -3783,6 +3785,7 @@ func _lobby_panels() -> void:
 	act.position = Vector2(14, 12)
 	act.custom_minimum_size = Vector2(300, 0)
 	lobby_ui.add_child(act)
+	lobby_3d.avoid = [act]
 	var av := UI.vbox(0)
 	act.add_child(av)
 	var head := MarginContainer.new()
@@ -6039,35 +6042,131 @@ func _dialogue_role(speaker: String, given: String) -> String:
 
 
 var _toasts: Array = []
+var _toast_box: VBoxContainer   # the stack: oldest on top, newest at the bottom, sized by the container
 
 
 func toast(text: String) -> void:
 	if closing:
 		return   # the closing report lists the day's news; toasts would only cover it
-	var p := UI.panel(Color(0.05, 0.08, 0.14, 0.95), UI.GOLD, 14)
-	p.anchor_left = 0.5
-	p.anchor_right = 0.5
-	p.offset_left = -340
-	p.offset_right = 340
-	# stack under toasts that are still showing instead of drawing on top of them
+	if _toast_box == null or not is_instance_valid(_toast_box):
+		_toast_box = VBoxContainer.new()
+		_toast_box.add_theme_constant_override("separation", 8)
+		_toast_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_toast_box.custom_minimum_size = Vector2(TOAST_W, 0)
+		add_child(_toast_box)
+		_toast_box.resized.connect(_place_toasts)
+	move_child(_toast_box, -1)   # above any popup opened since the last toast
 	_toasts = _toasts.filter(func(t): return is_instance_valid(t))
 	# at most three at a time: the oldest goes so they never pile over a report
 	while _toasts.size() >= 3:
-		_toasts.pop_front().queue_free()
-	for i in _toasts.size():
-		_toasts[i].offset_top = 86 + 58 * i
-		_toasts[i].offset_bottom = _toasts[i].offset_top
-	p.offset_top = 86 + 58 * _toasts.size()
+		var old: Control = _toasts.pop_front()
+		_toast_box.remove_child(old)
+		old.queue_free()
+	var p := UI.panel(Color(0.05, 0.08, 0.14, 0.95), UI.GOLD, 14)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := UI.para(text, 17)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.add_child(l)
-	add_child(p)
+	_toast_box.add_child(p)
 	_toasts.append(p)
-	var tw := create_tween()
+	_place_toasts_soon()
+	var tw := p.create_tween()   # bound to the toast: it dies with it if a newer toast pushes it out
 	tw.tween_interval(2.8)
 	tw.tween_property(p, "modulate:a", 0.0, 0.4)
-	tw.tween_callback(p.queue_free)
+	tw.tween_callback(func():
+		_toasts.erase(p)
+		p.queue_free())
+
+
+const TOAST_W := 520.0
+const TOAST_W_NARROW := 330.0   # fits the gutter beside the Office PC browser
+const TOAST_MARGIN := 10.0
+
+
+## Once this frame's layout has settled (wrapped labels and new screens size themselves over a frame).
+func _place_toasts_soon() -> void:
+	_place_toasts.call_deferred()
+	if not get_tree().process_frame.is_connected(_place_toasts):
+		get_tree().process_frame.connect(_place_toasts, CONNECT_ONE_SHOT)
+
+
+## Toasts go to the first of a few spots inside the screen area (between the HUD and the nav bar) where they
+## cover no button, field, slider or title: bottom centre, top centre, then the corners. Screens differ a lot
+## (the AutoBidz bid buttons, Move In, the garage panels, the staff cards), so the spot is picked from what is
+## on screen when a toast arrives or the screen changes, at any window size.
+func _place_toasts() -> void:
+	if _toast_box == null or not is_instance_valid(_toast_box):
+		return
+	var area := content.get_global_rect() if content.is_visible_in_tree() else get_global_rect()
+	area = area.grow(-TOAST_MARGIN)
+	var blockers := []
+	_toast_blockers(content, blockers)
+	_toast_blockers(overlay, blockers)
+	var best := Rect2(area.position, Vector2(TOAST_W, 0))
+	var best_cover := INF
+	for w in [TOAST_W, TOAST_W_NARROW]:
+		var sz := Vector2(w, _toast_stack_height(w))
+		var mid := area.position.x + (area.size.x - sz.x) / 2.0
+		var left := area.position.x
+		var right := area.end.x - sz.x
+		var top := area.position.y
+		var bottom := area.end.y - sz.y
+		var middle := area.position.y + (area.size.y - sz.y) / 2.0
+		for spot in [Vector2(mid, bottom), Vector2(mid, top), Vector2(left, bottom), Vector2(right, top),
+				Vector2(right, bottom), Vector2(left, top), Vector2(left, middle), Vector2(right, middle)]:
+			var r := Rect2(spot, sz)
+			var cover := 0.0
+			for b in blockers:
+				cover += r.intersection(b).get_area()
+			if cover < best_cover:
+				best_cover = cover
+				best = r
+			if cover == 0.0:
+				break
+		if best_cover == 0.0:
+			break
+	_toast_box.custom_minimum_size.x = best.size.x
+	_toast_box.size = Vector2(best.size.x, 0)
+	_toast_box.position = best.position
+
+
+## The stack's height at a given width, from the text itself: wrapped labels only know their real height a
+## frame after they get a width, too late to choose a spot.
+func _toast_stack_height(w: float) -> float:
+	var h := 0.0
+	var n := 0
+	for t in _toasts:
+		if not is_instance_valid(t) or t.get_child_count() == 0:
+			continue
+		var l: Label = t.get_child(0)
+		var sb: StyleBox = t.get_theme_stylebox("panel")
+		var inner: float = w - sb.get_margin(SIDE_LEFT) - sb.get_margin(SIDE_RIGHT)
+		var fs := l.get_theme_font_size("font_size")
+		var text_h: float = l.get_theme_font("font").get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER,
+			inner, fs).y
+		var lines := maxi(1, l.get_theme_font("font").get_multiline_string_size(l.text, HORIZONTAL_ALIGNMENT_CENTER,
+			inner, fs).y / l.get_theme_font("font").get_height(fs))
+		h += text_h + l.get_theme_constant("line_spacing") * (lines - 1) + sb.get_margin(SIDE_TOP) + sb.get_margin(SIDE_BOTTOM)
+		n += 1
+	return h + 8.0 * maxi(0, n - 1)
+
+
+## Screen rects a toast should not hide: anything clickable or typed into, and big title labels. Only the
+## part inside clipping parents counts (AutoBidz listings scrolled out of the browser window are not there).
+func _toast_blockers(node: Node, out: Array, clip := Rect2(-1e6, -1e6, 2e6, 2e6)) -> void:
+	for ch in node.get_children():
+		if ch is CanvasItem and not ch.visible:
+			continue
+		var inner := clip
+		if ch is Control:
+			var c: Control = ch
+			var r := c.get_global_rect().intersection(clip)
+			if c is BaseButton or c is LineEdit or c is TextEdit or c is Range 					or (c is Label and c.get_theme_font_size("font_size") >= 22):
+				if c.is_visible_in_tree() and r.get_area() > 0.0:
+					out.append(r)
+			if c.clip_contents:
+				inner = r
+		_toast_blockers(ch, out, inner)
 
 
 func _close_for_night() -> void:
