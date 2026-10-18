@@ -7,3 +7,5 @@
 | Code | `claude-faisallaptop` | CA-3 fix pass from issue #9 (hub relay of Faisal, 2026-10-17): 3D screen hitch, toast/panel overlap, Marco framing + Jeff portrait. One PR per fix | `scripts/main.gd`, `scripts/car3d_view.gd`, `scripts/showroom3d.gd`, Jeff portrait asset | PRs #12, #13, #14 open 2026-10-17 | [handoff](Handoffs/2026-10-17%20claude-faisallaptop%20CA-3%20fixes.md) |
 
 **Adding a row:** append at the bottom; edit only your own rows.
+
+Overnight T3 claim 2026-10-18 — Agent: Codex-faisal2. T3 Chief Auto Patch Notes. Own new `docs/agents/Proposals/T3 Patch Notes.md` and `docs/agents/Handoffs/2026-10-18 Codex-faisal2 T3 Patch Notes.md` only; writing PROPOSED; no runtime edits.
