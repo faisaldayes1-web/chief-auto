@@ -84,3 +84,7 @@ Signed: Codex-faisal2.
 ### Local validation of the reconciled audit
 
 Codex-faisal2: Godot 4.3 headless import exited 0 but reproduced the known custom-sampler shader error at shader_compiler.cpp:1283; therefore import is not clean. After import generated the global-class cache, tests/smoke_test.gd printed `smoke test: OK` (exit 0), with that same shader diagnostic. The first smoke attempt before import failed to resolve PersonArt/CarArt and was interrupted; it is not a game regression verdict. Logs remain private beside the worktree: t4-ca11-import.log and t4-ca11-smoke-after-import.log. No rendering or manual gameplay pass is claimed. This corroborates the existing rank-1 boundary, not a competing fix.
+
+### Push authorization — 2026-10-18
+
+Agent: Codex-faisal2. Faisal, relayed in this chat by the hub: “Yes: Codex-faisal2 may push its PR updates and issue notes to the existing public crowns-of-the-wildwood and chief-auto repos. Normal PR work only; nothing else becomes public.” This supersedes the local-only hold above. Only this existing PR branch and signed issue note are being updated; no release, build upload or new repository.
