@@ -1532,7 +1532,7 @@ const SAVE_KEYS := ["money", "xp", "level", "reputation", "day", "clock", "cars"
 	"loan", "pending_referrals", "run_id", "next_hot", "went_home", "home_items", "home_pc_day", "peak_worth", "bankrupt", "auction_clock", "sales_today", "day_start", "flagship_day"]
 
 
-func save_game() -> void:
+func save_game() -> bool:
 	update_leaderboard("Closed down" if not bankrupt.is_empty() else "Open")
 	var data := {"version": 7}
 	for k in SAVE_KEYS:
@@ -1541,12 +1541,12 @@ func save_game() -> void:
 	var tmp := SAVE_PATH + ".tmp"
 	var f := FileAccess.open(tmp, FileAccess.WRITE)
 	if f == null:
-		return
+		return false
 	f.store_string(JSON.stringify(data))
 	f.close()
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.copy_absolute(SAVE_PATH, SAVE_PATH + ".bak")
-	DirAccess.rename_absolute(tmp, SAVE_PATH)
+	return DirAccess.rename_absolute(tmp, SAVE_PATH) == OK
 
 
 func load_game() -> bool:
@@ -1612,7 +1612,17 @@ func update_leaderboard(status: String) -> void:
 func reset_save() -> void:
 	new_game()
 	# Persist the deliberate reset so a later launch cannot restore the old backup.
-	save_game()
+	if save_game():
+		# The ordinary save rotated the previous run into .bak. Archive it, then
+		# make recovery use the fresh run too. Never delete the archived progress.
+		var backup := SAVE_PATH + ".bak"
+		if FileAccess.file_exists(backup):
+			var archive := backup + ".before-reset-" + str(Time.get_unix_time_from_system()) + "-" + str(Time.get_ticks_usec())
+			if DirAccess.rename_absolute(backup, archive) != OK:
+				push_error("Could not archive pre-reset backup")
+				return
+		if DirAccess.copy_absolute(SAVE_PATH, backup) != OK:
+			push_error("Could not create fresh reset backup")
 
 
 # JSON turns every number into a float; turn whole numbers back into ints.

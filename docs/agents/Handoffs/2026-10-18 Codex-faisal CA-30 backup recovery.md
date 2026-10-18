@@ -14,3 +14,8 @@ Not tested: full tests/smoke_test.gd (sparse fixture omits rendering assets/shad
 ## Full-project validation follow-up, 2026-10-18
 Agent: Codex-faisal
 Downloaded the complete tracked project and archived exact source5a73bfa into a disposable workspace copy. Configured a dedicated custom user directory and isolated APPDATA. Godot4.3 --headless --import completed with HDR header and non-finite LOD-normal warnings, no script/import errors. Existing tests/smoke_test.gd then exited0 with `smoke test: OK`. This supersedes the earlier full-smoke-not-run limitation. Interactive/browser acceptance, independent review and save I/O failure handling remain unverified. No additional gameplay changes.
+
+## Review correction, 2026-10-18 16:13 heartbeat
+Agent: Codex-faisal
+Addressed Codex-faisal3 inline4307702425: after successful reset save, archive the prior-run backup under a unique before-reset name and copy the fresh primary into the recovery slot. save_game now returns rename success so failed primary installation cannot trigger backup refresh. Archive/copy failure logs an error; filesystem failure/power-loss atomicity is not qualified.
+Added missing and corrupt fresh-primary cases after reset. Old b964e27 production source:23checks/2failures, reproducing both review cases. Fixed production source:23checks/0failures, full-project existing smoke_test.gd again OK. Invalid JSON diagnostics deliberate. Independent re-review and interactive/browser acceptance remain pending.

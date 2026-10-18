@@ -71,5 +71,9 @@ func run_tests() -> void:
 	check(game.money == 15000 and game.day == 1, "reset immediately starts new game")
 	game.money = 0
 	check(game.load_game() and game.money == 15000 and game.day == 1, "reset persists instead of resurrecting backup")
+	check(DirAccess.rename_absolute(PRIMARY, PRIMARY + ".fresh-reset") == OK, "archive fresh reset primary")
+	check(game.load_game() and game.money == 15000 and game.day == 1, "missing reset primary recovers fresh run")
+	write_file(PRIMARY, "invalid fresh primary")
+	check(game.load_game() and game.money == 15000 and game.day == 1, "corrupt reset primary recovers fresh run")
 	print("Save recovery: ", checks, " checks, ", failures, " failures")
 	quit(1 if failures else 0)
