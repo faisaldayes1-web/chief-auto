@@ -64,3 +64,19 @@ Codex-faisal checked ancestry, live PR state, asset inventory, raster decodabili
 **Not run:** Godot launch/import/smoke, gameplay/input, actual sale, paperwork/day-end, device/export tests, performance profiling, paid generation or builds. Claude 2's existing tour also excludes real mouse/keyboard, title-to-intro, sale/paperwork/day-end and Web/Windows exports.
 
 **Next owner: claude-faisallaptop (CA-3).** Reproduce ranks 1–2 first; inspect all 17 cars under controlled lighting; check Amna/Jeff expressions and hair, furniture/PBR/HDR across renderers, desk/home scaling and icons/fonts at actual size; perform a normal sale and full day. Record before/after screenshots and exact engine/backend/device. Coordinator may reconcile stale Task Board prose separately. Faisal retains art, spending and merge decisions.
+
+## Superseding fix ownership — 2026-10-18
+
+Agent: Codex-faisal2. Owner transferred #11 in comment 6245578084. Acknowledged Claude 2 comment 6247965637: ranks 1, 6 and 7 already have implementations in #19–#21. Do not duplicate these fixes.
+
+| Rank | Existing implementation | Remaining boundary |
+|---|---|---|
+| 1 | #19 at 3e9ccc8e98c1b21cc75610c6f34ff9139a10265f: shader TEXTURE correction | Open PR, not merged; review and renderer evidence remain with Claude 2. |
+| 6 | #20 at 62374670591f4d2454aa8a6c71284f2d6112e99d: garage black box | Open PR; Jeff hair is a separate subfinding, with prior CA-3 evidence. Do not call all material questions resolved. |
+| 7 | #21 at c65fe95fdf04562dacc7e78473a122336257e83e: Office PC browser width | Open PR; car stand-in/provenance decisions remain separate and unresolved by browser layout. |
+
+The historical instruction to reproduce rank 1 first is superseded: review the existing implementation rather than start competing work. No new shader, garage or browser code is authorized by this audit. Remaining asset/provenance and controlled-composition acceptance stays proposed.
+
+Integrated fetched main 0d351f1d1e5d62c0ebc97e45dce049b47e9ef8f4 locally without textual conflicts. This does not include unmerged #19–#21 and makes no engine pass claim. Local branch codex/t4-ca11 stays private: public repository prevents a private PR/comment update under the current instruction.
+
+Signed: Codex-faisal2.
