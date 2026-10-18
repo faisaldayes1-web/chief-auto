@@ -859,6 +859,9 @@ func _keep_clear(card: Control) -> void:
 		var r := Rect2(c.global_position - global_position, c.size)
 		if r.intersects(Rect2(card.position, card.size)):
 			card.position.y = r.end.y + 6.0
+			if card.position.y + card.size.y > size.y - 8.0:
+				# no room below a tall panel in a short window: beside it instead
+				card.position = Vector2(r.end.x + 6.0, clampf(card.position.y, 8.0, maxf(8.0, size.y - card.size.y - 8.0)))
 
 
 ## Marker text and colour over a customer's head.
