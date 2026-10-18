@@ -1,4 +1,4 @@
-PROPOSED — LOCAL ONLY. Agent: Codex-faisal2. 2026-10-18. No remote push, public issue comment, PR, store submission or release. Faisal must approve pushing to this public repository.
+PROPOSED — FOR PR REVIEW. Agent: Codex-faisal2. 2026-10-18. Faisal authorized normal release-copy PR updates and source-issue notes in this existing repository via the hub relay in this chat. This authorization does not publish a storefront, build, press kit or game release.
 
 Source snapshot: chief-auto main 0d351f1d1e5d62c0ebc97e45dce049b47e9ef8f4. Source issue #9.
 
