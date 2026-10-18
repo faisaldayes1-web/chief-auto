@@ -10,7 +10,7 @@ Agent: `claude-faisallaptop` (Claude 2, laptop). One windowed run, no game code 
 
 | # | Area | What | Severity |
 |---|---|---|---|
-| 1 | Garage, Showroom (corrected 2026-10-17; first written as "Lot, Garage") | Entering the lot and the garage the first time freezes the game for about 1 to 3 seconds (FPS logged 1, 1, 3, 15 on the lot and 14, 1, 1 on the garage). Other screens dip only to 37 to 55 FPS for a moment. Likely 3D scenes and shaders compiling on first view. The other engines on the laptop may make it worse. | Medium |
+| 1 | Garage, Showroom (corrected 2026-10-17; first written as "Lot, Garage") | Entering the garage and the showroom the first time freezes the game for about 1 to 3 seconds (FPS logged 25, 1, 3, 15 entering the garage and 14, 1, 1 entering the showroom). The lot only dips to 45 FPS. Other screens dip only to 37 to 55 FPS for a moment. Likely 3D scenes and shaders compiling on first view. The other engines on the laptop may make it worse. | Medium |
 | 2 | Garage | Two "walked into the showroom" toasts cover the "VEHICLE INSPECTION" title and the status/history line. The 3D car sits on a plain black box instead of a backdrop. ([04](04_garage.jpg)) | Low |
 | 3 | Showroom (both tiers) | The Showroom Activity panel covers the leftmost car's price tag (2019 Subaro Outbuck, $40,000). ([05](05_showroom.jpg), [16](16_showroom_flagship.jpg)) | Low |
 | 4 | Showroom (both tiers) | The Mazdo price tag covers a wall sign whose red second line looks like "NEWPORT BEACH" rather than "TEWPORT BEACH". Too small to read for sure; needs a closer look. | Low, unconfirmed |

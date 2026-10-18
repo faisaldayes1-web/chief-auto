@@ -4,7 +4,7 @@ Asked by the hub, relaying Faisal ("Continue work on roblox, but also work on al
 
 | PR | Branch | Fix | Files |
 |---|---|---|---|
-| #12 | `claude-faisallaptop/ca-3-3d-hitch` | Garage/Showroom 3D hitch: views parked instead of freed, prewarmed behind the title. First visit ~1.1-2.7 s -> ~0.2 s; repeats -> ~0.05 s | `scripts/main.gd` |
+| #12 | `claude-faisallaptop/ca-3-3d-hitch` | Garage/Showroom 3D hitch: views parked instead of freed, prewarmed behind the title. Author-measured on a warm run: first visit ~1.1-2.7 s -> ~0.2 s, repeats -> ~0.05 s. **Unverified:** the reviewer could not reproduce the first-visit stall on main (0.144 s worst frame with a warm shader cache); repeat visits did improve (~0.14 s -> ~0.04 s). On hold for Faisal over the ~1.4 GB VRAM cost. | `scripts/main.gd` |
 | #13 | `claude-faisallaptop/ca-3-toast-overlap` | Toasts stack up from bottom centre (were over titles, and over Marco's head); showroom price cards kept clear of the activity panel | `scripts/main.gd`, `scripts/showroom3d.gd` |
 | #14 | `claude-faisallaptop/ca-3-portraits` | Dark band in Jeff's hair painted over in 5 PNGs, using new `tools/retouch_hair_gap.py` | `assets/people/jeff_*.png`, `tools/` |
 
