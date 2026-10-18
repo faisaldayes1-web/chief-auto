@@ -1550,14 +1550,14 @@ func save_game() -> void:
 
 
 func load_game() -> bool:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return false
-	var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if f == null:
-		return false
-	var data = JSON.parse_string(f.get_as_text())
+	var data = null
+	if FileAccess.file_exists(SAVE_PATH):
+		var f := FileAccess.open(SAVE_PATH, FileAccess.READ)
+		if f != null:
+			data = JSON.parse_string(f.get_as_text())
+			f.close()
 	if typeof(data) != TYPE_DICTIONARY and FileAccess.file_exists(SAVE_PATH + ".bak"):
-		data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH + ".bak"))   # damaged save: use the previous night's
+		data = JSON.parse_string(FileAccess.get_file_as_string(SAVE_PATH + ".bak"))   # missing/unreadable/damaged save: use the previous night's
 	if typeof(data) != TYPE_DICTIONARY or int(data.get("version", 1)) < 5:   # the economy changed in 5; older saves start over
 		return false
 	new_game()
@@ -1610,9 +1610,9 @@ func update_leaderboard(status: String) -> void:
 
 
 func reset_save() -> void:
-	if FileAccess.file_exists(SAVE_PATH):
-		DirAccess.remove_absolute(SAVE_PATH)
 	new_game()
+	# Persist the deliberate reset so a later launch cannot restore the old backup.
+	save_game()
 
 
 # JSON turns every number into a float; turn whole numbers back into ints.
