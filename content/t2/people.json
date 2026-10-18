@@ -1,0 +1,396 @@
+{
+  "schema_version": 1,
+  "agent": "Codex-faisal/T2",
+  "status": "PROPOSED",
+  "source_proposal": "chief-auto#15@b887f772e31ce72f1767df8f99c30818662d8d4d",
+  "buyers": [
+    {
+      "id": "bargain",
+      "title": "Bargain Hunter",
+      "budget": 0.95,
+      "tolerance": 0.7,
+      "likes": [
+        "discount"
+      ],
+      "dialogue": {
+        "arrival": "I brought three competing quotes. One is even real.",
+        "concern": "Put the full price on one line.",
+        "accept": "That discount works. Keep the mystery fees.",
+        "walk": "I'll let your spreadsheet think about it."
+      }
+    },
+    {
+      "id": "local",
+      "title": "Tewport Local",
+      "budget": 1.2,
+      "tolerance": 1.3,
+      "likes": [
+        "features"
+      ],
+      "dialogue": {
+        "arrival": "Will the valet remember this one?",
+        "concern": "Show me the cabin, not the keychain.",
+        "accept": "That's the one. Please remove the giant bow.",
+        "walk": "Nice car. Wrong entrance."
+      }
+    },
+    {
+      "id": "first",
+      "title": "First-Time Buyer",
+      "budget": 1.0,
+      "tolerance": 1.0,
+      "likes": [
+        "history",
+        "extras"
+      ],
+      "dialogue": {
+        "arrival": "I have a checklist. My dad has a longer checklist.",
+        "concern": "Can you explain that repair in normal words?",
+        "accept": "I understand the total. Let's do it.",
+        "walk": "I need time to read the report."
+      }
+    },
+    {
+      "id": "nerd",
+      "title": "Car Nerd",
+      "budget": 1.05,
+      "tolerance": 0.9,
+      "likes": [
+        "test_drive"
+      ],
+      "dialogue": {
+        "arrival": "Cold start first. Small talk second.",
+        "concern": "Those readings don't match the description.",
+        "accept": "The numbers check out. You kept the receipts.",
+        "walk": "I like the car more than your explanation."
+      }
+    },
+    {
+      "id": "parent",
+      "title": "Safety Parent",
+      "budget": 1.0,
+      "tolerance": 1.0,
+      "likes": [
+        "history",
+        "test_drive"
+      ],
+      "dialogue": {
+        "arrival": "Three kids. One dog. Nothing sticky, please.",
+        "concern": "Show me the inspection and the back seat.",
+        "accept": "Everything fits, including the budget.",
+        "walk": "We'll keep looking. The dog has concerns."
+      }
+    },
+    {
+      "id": "influencer",
+      "title": "Influencer",
+      "budget": 1.15,
+      "tolerance": 0.8,
+      "likes": [
+        "features",
+        "extras"
+      ],
+      "dialogue": {
+        "arrival": "Can we move that cone? It's ruining my reveal.",
+        "concern": "Is that mark visible in daylight?",
+        "accept": "Deal. You may wave in the background.",
+        "walk": "The car needs a better angle. So does the price."
+      }
+    },
+    {
+      "id": "lowballer",
+      "title": "Lowballer",
+      "budget": 0.85,
+      "tolerance": 0.55,
+      "likes": [
+        "discount"
+      ],
+      "dialogue": {
+        "arrival": "Half price, cash today. I rehearsed that.",
+        "concern": "What's the lowest honest total?",
+        "accept": "You held your line. I respect that.",
+        "walk": "I'll be back with the same offer and sunglasses."
+      }
+    },
+    {
+      "id": "whale",
+      "title": "Cash Whale",
+      "budget": 1.25,
+      "tolerance": 1.5,
+      "likes": [
+        "features",
+        "test_drive"
+      ],
+      "dialogue": {
+        "arrival": "Something quick. My accountant is parked outside.",
+        "concern": "I still want the service history.",
+        "accept": "Wrap up the paperwork before my accountant comes in.",
+        "walk": "Expensive isn't the same as interesting."
+      }
+    },
+    {
+      "id": "commuter",
+      "title": "Daily Commuter",
+      "budget": 1.02,
+      "tolerance": 1.15,
+      "likes": [
+        "history",
+        "test_drive"
+      ],
+      "dialogue": {
+        "arrival": "Forty miles each way. Make tomorrow boring.",
+        "concern": "What needs repairing before Monday?",
+        "accept": "Reliable and within budget. That's exciting enough.",
+        "walk": "I need transport, not a weekend project."
+      }
+    },
+    {
+      "id": "contractor",
+      "title": "Working Contractor",
+      "budget": 1.08,
+      "tolerance": 1.05,
+      "likes": [
+        "history",
+        "features"
+      ],
+      "dialogue": {
+        "arrival": "The truck works before I do.",
+        "concern": "Show me the wear, then show me the bill.",
+        "accept": "Room for the tools. Room in the budget. Sold.",
+        "walk": "I can't send an invoice from the garage."
+      }
+    }
+  ],
+  "marco": [
+    {
+      "id": "marco_first_visit",
+      "trigger": "First visit",
+      "line": "Welcome to Chief Auto. The sign is big. Our cash reserve is not.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_before_first_bid",
+      "trigger": "Before first bid",
+      "line": "Your maximum bid includes the repair bill you haven't met yet.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_first_inspection",
+      "trigger": "First inspection",
+      "line": "A report costs money. A surprise costs more.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_cheap_mechanic_selected",
+      "trigger": "Cheap mechanic selected",
+      "line": "Ray is family. That is a relationship, not a warranty.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_first_botch",
+      "trigger": "First botch",
+      "line": "Put it back on the inspection list. Optimism is not a repair.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_first_honest_sale",
+      "trigger": "First honest sale",
+      "line": "A fair deal. Terrible gossip, excellent business.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_first_walkout",
+      "trigger": "First walkout",
+      "line": "They kept their money. You kept your car. We can survive this.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_all_slots_full",
+      "trigger": "All slots full",
+      "line": "Parking spaces are inventory limits with painted lines.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_hot_class",
+      "trigger": "Hot class",
+      "line": "Today's hot class is on the board. Tomorrow it may just be yesterday's stock.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_bidding_beyond_planned_margin",
+      "trigger": "Bidding beyond planned margin",
+      "line": "Winning the auction and making money are separate hobbies.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_history_disclosed",
+      "trigger": "History disclosed",
+      "line": "Tell them before the signature. Surprises belong at birthdays.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_first_paperwork_error_caught",
+      "trigger": "First paperwork error caught",
+      "line": "That zero was ambitious. Fix it.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_day_three_check_in",
+      "trigger": "Day-three check-in",
+      "line": "Count what you paid, what you repaired, and what you actually received.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_level_three_perk",
+      "trigger": "Level-three perk",
+      "line": "More sourcing options. Still the same bank account.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_low_available_cash",
+      "trigger": "Low available cash",
+      "line": "Leave enough for repairs and bills. The desk can stay ugly another week.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_first_review_complaint",
+      "trigger": "First review complaint",
+      "line": "Read the complaint twice. Write the reply once.",
+      "cooldown": "once_per_save"
+    },
+    {
+      "id": "marco_staff_hired",
+      "trigger": "Staff hired",
+      "line": "Delegate the sale. Keep responsibility for the promise.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_before_monthly_bill",
+      "trigger": "Before monthly bill",
+      "line": "Rent does not care how impressive the showroom looks.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_no_sale_day",
+      "trigger": "No-sale day",
+      "line": "No sale today. Let's find out whether it was the car, the price, or the pitch.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_upgrade_eligible",
+      "trigger": "Upgrade eligible",
+      "line": "You qualify for the building. Check that you can also afford the morning after.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_day_thirty_close",
+      "trigger": "Day-thirty close",
+      "line": "One month down. Count the cash, the stock, and the obligations. Then celebrate.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_loan_drawn",
+      "trigger": "Loan drawn",
+      "line": "Borrowed cash is not profit. Put that on the whiteboard.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_repaired_car_returned",
+      "trigger": "Repaired car returned",
+      "line": "The job is finished. Verify the result before pricing the car.",
+      "cooldown": "once_per_day"
+    },
+    {
+      "id": "marco_sale_below_cost",
+      "trigger": "Sale below cost",
+      "line": "We recovered cash. We did not invent a profit.",
+      "cooldown": "once_per_day"
+    }
+  ],
+  "rivals": [
+    {
+      "id": "tustin_tony",
+      "name": "Tustin Tony",
+      "existing": true,
+      "preferred_classes": [
+        "economy",
+        "truck"
+      ],
+      "dialogue": {
+        "opening": "I know a buyer for that.",
+        "outbid": "Make it one more increment.",
+        "stop": "My buyer suddenly got less enthusiastic."
+      }
+    },
+    {
+      "id": "irvine_imports",
+      "name": "Irvine Imports",
+      "existing": true,
+      "preferred_classes": [
+        "sport",
+        "exotic"
+      ],
+      "dialogue": {
+        "opening": "Service records first.",
+        "outbid": "We can carry that inventory.",
+        "stop": "That margin doesn't survive transport."
+      }
+    },
+    {
+      "id": "costa_mesa_motors",
+      "name": "Costa Mesa Motors",
+      "existing": true,
+      "preferred_classes": [
+        "economy",
+        "suv"
+      ],
+      "dialogue": {
+        "opening": "Something sensible for once.",
+        "outbid": "Still within our number.",
+        "stop": "Enjoy the paperwork."
+      }
+    },
+    {
+      "id": "huntington_hank",
+      "name": "Huntington Hank",
+      "existing": true,
+      "preferred_classes": [
+        "truck",
+        "suv"
+      ],
+      "dialogue": {
+        "opening": "Could fit a board in that.",
+        "outbid": "One more. Then lunch.",
+        "stop": "Lunch wins."
+      }
+    },
+    {
+      "id": "mesa_fleet_desk",
+      "name": "Mesa Fleet Desk",
+      "existing": false,
+      "preferred_classes": [
+        "economy",
+        "truck"
+      ],
+      "dialogue": {
+        "opening": "Utility, mileage, price.",
+        "outbid": "Within allocation.",
+        "stop": "Allocation exhausted."
+      }
+    },
+    {
+      "id": "pch_collector",
+      "name": "PCH Collector",
+      "existing": false,
+      "preferred_classes": [
+        "sport",
+        "exotic"
+      ],
+      "dialogue": {
+        "opening": "Interesting specification.",
+        "outbid": "There's still room in the collection.",
+        "stop": "Not at museum prices."
+      }
+    }
+  ]
+}
