@@ -3783,6 +3783,7 @@ func _lobby_panels() -> void:
 	act.position = Vector2(14, 12)
 	act.custom_minimum_size = Vector2(300, 0)
 	lobby_ui.add_child(act)
+	lobby_3d.avoid = [act]
 	var av := UI.vbox(0)
 	act.add_child(av)
 	var head := MarginContainer.new()
@@ -6044,30 +6045,48 @@ var _toasts: Array = []
 func toast(text: String) -> void:
 	if closing:
 		return   # the closing report lists the day's news; toasts would only cover it
+	# Bottom centre, just above the showroom camera buttons and the garage hints: the top of every screen holds
+	# its title or header row, which toasts used to cover. Narrow enough to clear the side panels.
 	var p := UI.panel(Color(0.05, 0.08, 0.14, 0.95), UI.GOLD, 14)
 	p.anchor_left = 0.5
 	p.anchor_right = 0.5
-	p.offset_left = -340
-	p.offset_right = 340
-	# stack under toasts that are still showing instead of drawing on top of them
+	p.anchor_top = 1.0
+	p.anchor_bottom = 1.0
+	p.offset_left = -TOAST_W / 2.0
+	p.offset_right = TOAST_W / 2.0
+	p.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	_toasts = _toasts.filter(func(t): return is_instance_valid(t))
 	# at most three at a time: the oldest goes so they never pile over a report
 	while _toasts.size() >= 3:
 		_toasts.pop_front().queue_free()
-	for i in _toasts.size():
-		_toasts[i].offset_top = 86 + 58 * i
-		_toasts[i].offset_bottom = _toasts[i].offset_top
-	p.offset_top = 86 + 58 * _toasts.size()
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := UI.para(text, 17)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	p.add_child(l)
 	add_child(p)
 	_toasts.append(p)
+	_stack_toasts()
+	_stack_toasts.call_deferred()   # again once wrapped labels know their height
 	var tw := create_tween()
 	tw.tween_interval(2.8)
 	tw.tween_property(p, "modulate:a", 0.0, 0.4)
 	tw.tween_callback(p.queue_free)
+
+
+const TOAST_W := 520.0
+const TOAST_BOTTOM := 116.0   # px above the window's bottom edge: clears the nav bar and the buttons above it
+
+
+## Newest toast at the bottom, older ones stacked above it instead of drawing on top of each other.
+func _stack_toasts() -> void:
+	var y := -TOAST_BOTTOM
+	for i in range(_toasts.size() - 1, -1, -1):
+		var t: Control = _toasts[i]
+		if not is_instance_valid(t):
+			continue
+		t.offset_bottom = y
+		t.offset_top = y
+		y -= maxf(t.size.y, t.get_combined_minimum_size().y) + 8.0
 
 
 func _close_for_night() -> void:

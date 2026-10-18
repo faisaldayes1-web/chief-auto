@@ -41,6 +41,7 @@ var focus_customer: Dictionary = {}
 var focus_car: Dictionary = {}
 var cars: Array = []            # [{car, node, card, pos, yaw, aabb}]
 var npcs := {}                  # customer id -> Customer3D
+var avoid: Array = []           # Controls over the hall (the activity panel): price cards keep clear of them
 var _vp: SubViewport
 var _cam: Camera3D
 var _cam_pos := Vector3(0.5, 2.7, 9.4)
@@ -836,6 +837,7 @@ func _place_overlays() -> void:
 		if card.visible:
 			card.reset_size()
 			card.position = _to_screen(top) - Vector2(card.size.x / 2.0, card.size.y)
+			_keep_clear(card)
 	for id in npcs:
 		var npc: Customer3D = npcs[id]
 		if npc.marker == null:
@@ -845,6 +847,18 @@ func _place_overlays() -> void:
 		if npc.marker.visible:
 			npc.marker.reset_size()
 			npc.marker.position = _to_screen(head) - Vector2(npc.marker.size.x / 2.0, npc.marker.size.y)
+
+
+## A car at the edge of the hall can put its price card under the activity panel or off screen: keep the card
+## on screen, and drop it below any panel it would sit under.
+func _keep_clear(card: Control) -> void:
+	card.position.x = clampf(card.position.x, 8.0, maxf(8.0, size.x - card.size.x - 8.0))
+	for c in avoid:
+		if not is_instance_valid(c) or not c.is_visible_in_tree():
+			continue
+		var r := Rect2(c.global_position - global_position, c.size)
+		if r.intersects(Rect2(card.position, card.size)):
+			card.position.y = r.end.y + 6.0
 
 
 ## Marker text and colour over a customer's head.
