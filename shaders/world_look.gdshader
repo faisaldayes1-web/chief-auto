@@ -19,23 +19,24 @@ void vertex() {
 	modulate_col = COLOR;
 }
 
-vec3 world_at(sampler2D day, vec2 uv) {
-	vec3 d = texture(day, uv).rgb * tint.rgb;
+// Takes the day colour already sampled in fragment(): passing the built-in TEXTURE into a function as a
+// sampler2D argument made Godot 4.3's shader compiler log "custom_samplers.has(...tex_builtin)" on import.
+vec3 world_at(vec3 day, vec2 uv) {
 	vec3 n = texture(night_tex, uv).rgb;
-	return mix(d, n, night);
+	return mix(day * tint.rgb, n, night);
 }
 
 void fragment() {
 	vec4 base = texture(TEXTURE, UV);
 	// the base image is sampled once at full resolution (no LOD bias); only the glow reads neighbours
-	vec3 c = world_at(TEXTURE, UV);
+	vec3 c = world_at(base.rgb, UV);
 	// bloom: thresholded highlights from a 12-tap ring at two radii
 	vec3 glow = vec3(0.0);
 	for (int i = 0; i < 6; i++) {
 		float a = float(i) * 1.0472;
 		vec2 o = vec2(cos(a), sin(a)) * texel;
-		glow += max(world_at(TEXTURE, UV + o * 5.0) - 0.8, 0.0);
-		glow += max(world_at(TEXTURE, UV + o * 12.0) - 0.8, 0.0) * 0.6;
+		glow += max(world_at(texture(TEXTURE, UV + o * 5.0).rgb, UV + o * 5.0) - 0.8, 0.0);
+		glow += max(world_at(texture(TEXTURE, UV + o * 12.0).rgb, UV + o * 12.0) - 0.8, 0.0) * 0.6;
 	}
 	c += glow / 9.6 * bloom * (1.0 + night * 1.5);
 	// grade: a touch of S-curve contrast, warm highlights, cool shadows, a little more saturation
