@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "agent": "Codex-faisal/T2",
+  "status": "PROPOSED",
+  "source_proposal": "chief-auto#15@b887f772e31ce72f1767df8f99c30818662d8d4d",
+  "cars": [
+    {
+      "id": "CA01",
+      "model": "Hondo Civix",
+      "cls": "economy",
+      "base": 26000,
+      "resale": 1.1,
+      "fault_profile": "E",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA02",
+      "model": "Toyoda Camri",
+      "cls": "economy",
+      "base": 29000,
+      "resale": 1.05,
+      "fault_profile": "E",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA03",
+      "model": "Mazdo Miota",
+      "cls": "sport",
+      "base": 30000,
+      "resale": 1.05,
+      "fault_profile": "S",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA04",
+      "model": "Subaro Outbuck",
+      "cls": "suv",
+      "base": 32000,
+      "resale": 1.0,
+      "fault_profile": "U",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA05",
+      "model": "Forde Rangler",
+      "cls": "truck",
+      "base": 34000,
+      "resale": 1.1,
+      "fault_profile": "T",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA06",
+      "model": "Jeap Wrangle",
+      "cls": "suv",
+      "base": 36000,
+      "resale": 1.15,
+      "fault_profile": "U",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA07",
+      "model": "Dodgy Charjer",
+      "cls": "sport",
+      "base": 38000,
+      "resale": 0.9,
+      "fault_profile": "S",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA08",
+      "model": "Teslo Model 3",
+      "cls": "economy",
+      "base": 42000,
+      "resale": 0.8,
+      "fault_profile": "V",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA09",
+      "model": "Forde Mustank",
+      "cls": "sport",
+      "base": 48000,
+      "resale": 0.95,
+      "fault_profile": "S",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA10",
+      "model": "Ramm 1500",
+      "cls": "truck",
+      "base": 48000,
+      "resale": 1.0,
+      "fault_profile": "T",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA11",
+      "model": "Chevro Tahoma",
+      "cls": "suv",
+      "base": 58000,
+      "resale": 1.0,
+      "fault_profile": "U",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA12",
+      "model": "BMV M4",
+      "cls": "sport",
+      "base": 80000,
+      "resale": 0.85,
+      "fault_profile": "S",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA13",
+      "model": "Rang Rovah",
+      "cls": "suv",
+      "base": 90000,
+      "resale": 0.75,
+      "fault_profile": "U",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA14",
+      "model": "Porsha 911",
+      "cls": "sport",
+      "base": 125000,
+      "resale": 1.1,
+      "fault_profile": "S",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA15",
+      "model": "Mercedez G-Wagon",
+      "cls": "suv",
+      "base": 150000,
+      "resale": 1.05,
+      "fault_profile": "U",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA16",
+      "model": "Ferrano 488",
+      "cls": "exotic",
+      "base": 300000,
+      "resale": 0.95,
+      "fault_profile": "X",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA17",
+      "model": "Lamborgo Aventa",
+      "cls": "exotic",
+      "base": 450000,
+      "resale": 0.95,
+      "fault_profile": "X",
+      "existing": true,
+      "art_ready": true
+    },
+    {
+      "id": "CA18",
+      "model": "Nissun Versa",
+      "cls": "economy",
+      "base": 19000,
+      "resale": 0.92,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA19",
+      "model": "Hyunda Accentor",
+      "cls": "economy",
+      "base": 22000,
+      "resale": 0.92,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA20",
+      "model": "Chevro Sparkle",
+      "cls": "economy",
+      "base": 18000,
+      "resale": 0.88,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA21",
+      "model": "Forde Focused",
+      "cls": "economy",
+      "base": 24000,
+      "resale": 0.95,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA22",
+      "model": "Volk Wagon Golfer",
+      "cls": "economy",
+      "base": 28000,
+      "resale": 1.0,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA23",
+      "model": "Toyoda Priosa",
+      "cls": "economy",
+      "base": 31000,
+      "resale": 1.06,
+      "fault_profile": "V",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA24",
+      "model": "Hondo Fitzy",
+      "cls": "economy",
+      "base": 23000,
+      "resale": 1.08,
+      "fault_profile": "E",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA25",
+      "model": "Nissun Leef",
+      "cls": "economy",
+      "base": 30000,
+      "resale": 0.72,
+      "fault_profile": "V",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA26",
+      "model": "Kiyo Soulful",
+      "cls": "suv",
+      "base": 27000,
+      "resale": 0.94,
+      "fault_profile": "U",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA27",
+      "model": "Hyunda Tuscan",
+      "cls": "suv",
+      "base": 33000,
+      "resale": 0.96,
+      "fault_profile": "U",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA28",
+      "model": "Hondo CR-Vee",
+      "cls": "suv",
+      "base": 35000,
+      "resale": 1.08,
+      "fault_profile": "U",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA29",
+      "model": "Toyoda Ravvy",
+      "cls": "suv",
+      "base": 37000,
+      "resale": 1.1,
+      "fault_profile": "U",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA30",
+      "model": "Volk Wagon Tigra",
+      "cls": "suv",
+      "base": 39000,
+      "resale": 0.94,
+      "fault_profile": "U",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA31",
+      "model": "Chevro Colorade",
+      "cls": "truck",
+      "base": 33000,
+      "resale": 1.02,
+      "fault_profile": "T",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA32",
+      "model": "Toyoda Tacomo",
+      "cls": "truck",
+      "base": 39000,
+      "resale": 1.16,
+      "fault_profile": "T",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA33",
+      "model": "Nissun Frontline",
+      "cls": "truck",
+      "base": 32000,
+      "resale": 1.0,
+      "fault_profile": "T",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA34",
+      "model": "Forde F-150ish",
+      "cls": "truck",
+      "base": 46000,
+      "resale": 1.03,
+      "fault_profile": "T",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA35",
+      "model": "Subaro BR-Zed",
+      "cls": "sport",
+      "base": 32000,
+      "resale": 1.03,
+      "fault_profile": "S",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA36",
+      "model": "Nissun Zed",
+      "cls": "sport",
+      "base": 45000,
+      "resale": 0.98,
+      "fault_profile": "S",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA37",
+      "model": "Chevro Camero",
+      "cls": "sport",
+      "base": 42000,
+      "resale": 0.94,
+      "fault_profile": "S",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA38",
+      "model": "Porsha Caymanu",
+      "cls": "sport",
+      "base": 75000,
+      "resale": 1.05,
+      "fault_profile": "S",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA39",
+      "model": "Aston Marten Vantageous",
+      "cls": "exotic",
+      "base": 180000,
+      "resale": 0.82,
+      "fault_profile": "X",
+      "existing": false,
+      "art_ready": false
+    },
+    {
+      "id": "CA40",
+      "model": "McLaron 720-ish",
+      "cls": "exotic",
+      "base": 310000,
+      "resale": 0.88,
+      "fault_profile": "X",
+      "existing": false,
+      "art_ready": false
+    }
+  ],
+  "fault_profiles": {
+    "E": {
+      "weights": {
+        "engine": 25,
+        "transmission": 20,
+        "body": 15,
+        "interior": 15,
+        "tires": 25
+      },
+      "clue": "Cold-start stumble; shift hesitation; uneven tire wear"
+    },
+    "S": {
+      "weights": {
+        "engine": 25,
+        "transmission": 30,
+        "body": 15,
+        "interior": 10,
+        "tires": 20
+      },
+      "clue": "Hot shift slip; patched quarter panel; brake vibration"
+    },
+    "U": {
+      "weights": {
+        "engine": 20,
+        "transmission": 20,
+        "body": 25,
+        "interior": 20,
+        "tires": 15
+      },
+      "clue": "Damp trim; tailgate seam; driveline noise"
+    },
+    "T": {
+      "weights": {
+        "engine": 20,
+        "transmission": 30,
+        "body": 20,
+        "interior": 10,
+        "tires": 20
+      },
+      "clue": "Tow-related shift heat; bed corrosion; loaded braking"
+    },
+    "V": {
+      "weights": {
+        "engine": 35,
+        "transmission": 10,
+        "body": 15,
+        "interior": 25,
+        "tires": 15
+      },
+      "clue": "Traction-system warning; charging fault; cabin electrics"
+    },
+    "X": {
+      "weights": {
+        "engine": 30,
+        "transmission": 25,
+        "body": 15,
+        "interior": 20,
+        "tires": 10
+      },
+      "clue": "Service warning; clutch judder; intermittent cabin controls"
+    }
+  },
+  "fault_rules": {
+    "draws": {
+      "autobidz": [
+        0,
+        2
+      ],
+      "salvage": [
+        1,
+        3
+      ],
+      "dealer": [
+        0,
+        1
+      ],
+      "exotic": [
+        0,
+        1
+      ]
+    },
+    "flood_extra_draws": 1,
+    "damage_per_draw": [
+      15,
+      35
+    ],
+    "day_one_draws": 0,
+    "repeat_draws": "accumulate",
+    "true_condition_floor": 0
+  }
+}

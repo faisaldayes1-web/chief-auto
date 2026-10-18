@@ -1064,9 +1064,13 @@ class Customer3D extends CharacterBody3D:
 			return
 		var far: bool = position.distance_to(goal) > 0.3
 		if far:
-			var nxt := agent.get_next_path_position()
-			if agent.is_navigation_finished() or nxt.distance_to(position) < 0.05:
-				nxt = goal   # map not ready yet or no path: walk straight
+			var nxt := goal   # map not ready yet or no path: walk straight
+			# a hall's navigation map syncs on the physics frame after it is created; asking for a path before
+			# that logs "NavigationServer navigation map query failed ... before first map synchronization"
+			if NavigationServer3D.map_get_iteration_id(agent.get_navigation_map()) > 0:
+				nxt = agent.get_next_path_position()
+				if agent.is_navigation_finished() or nxt.distance_to(position) < 0.05:
+					nxt = goal
 			if Vector2(nxt.x - position.x, nxt.z - position.z).length() < 0.05:
 				nxt = goal
 			var dir := nxt - position
