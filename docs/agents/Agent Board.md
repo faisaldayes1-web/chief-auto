@@ -12,3 +12,5 @@
 | Content | `Codex-faisal/T2` | Structured content delivery, reusing b887f77 proposal | `content/t2/cars.json`, `content/t2/people.json`, `content/t2/progression.json`, `tools/validate_t2_cars.py`, `tools/validate_t2_people.py`, `tools/validate_t2_economy.py`, `docs/content/T2 Cars.md`, `docs/content/T2 People.md`, `docs/content/T2 Economy.md`; own board row | CLAIMED; three draft PRs; runtime and #11 excluded | framework #30 / 6245635083 |
 
 Agent: Codex-faisal2. T2 claim: docs/playtests/T2_Morning_20_Minutes.md only; 20-minute morning dealership playtest; branch Codex-faisal2/t2-morning-playtest; 2026-10-18.
+
+Agent: Codex-faisal2. T2 claim: docs/playtests/T2_Accessibility_Settings.md only; proposed accessibility and settings checklist; branch Codex-faisal2/t2-accessibility; 2026-10-18.
