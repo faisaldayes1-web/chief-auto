@@ -326,6 +326,7 @@ func show_screen(name: String) -> void:
 	auction_view = {}
 	auction_detail = {}
 	lobby_stage = null
+	_park_3d_views()
 	UI.clear(content)
 	_margins(16)
 	hud.get_parent().visible = name != "title"
@@ -356,12 +357,54 @@ func _stage(mode: String) -> SceneArt:
 	return s
 
 
+## The garage's car view and the showroom hall each cost up to a second to build (a 3D world, its reflection
+## probe, the display cars). Leaving their screen takes them out of the tree instead of freeing them with the
+## rest of the screen, and the next visit re-attaches them.
+func _park_3d_views() -> void:
+	for v in [garage_view, lobby_3d]:
+		if v and is_instance_valid(v) and v.get_parent():
+			v.get_parent().remove_child(v)
+
+
+## First visits stalled too: building a view loads its models and textures, and the reflection probe renders
+## on its second frame. Do both once behind the title screen (under the background, at full size so the
+## buffers match), then park the views for the garage and showroom to pick up.
+func _prewarm_3d_views() -> void:
+	if current != "title":
+		return
+	if garage_view == null or not is_instance_valid(garage_view):
+		garage_view = Car3DView.new()
+	if lobby_3d == null or not is_instance_valid(lobby_3d):
+		_new_lobby_3d()
+	var warming := []
+	for v in [garage_view, lobby_3d]:
+		if v.get_parent() == null:
+			add_child(v)
+			move_child(v, 0)
+			v.position = Vector2.ZERO
+			v.size = get_viewport_rect().size
+			warming.append(v)
+	# probes render a step per frame (six faces, then filtering), one probe at a time: allow for both
+	for i in 40:
+		await get_tree().process_frame
+	for v in warming:
+		if is_instance_valid(v) and v.get_parent() == self:
+			remove_child(v)
+
+
+func _exit_tree() -> void:
+	for v in [garage_view, lobby_3d]:
+		if v and is_instance_valid(v) and not v.is_inside_tree():
+			v.free()
+
+
 # =====================================================================
 # Title
 # =====================================================================
 
 func _screen_title() -> void:
 	set_bg("lot", 0.5)
+	get_tree().create_timer(0.4).timeout.connect(_prewarm_3d_views)
 	var center := CenterContainer.new()
 	content.add_child(center)
 	var v := UI.vbox(14)
@@ -3154,10 +3197,20 @@ func _screen_garage() -> void:
 	var car := _find_car(selected_car_id)
 	Game.ensure_damage(car)
 	# the car fills the bay, centred; the inspection HUD sits around it (like a car-show inspection screen)
-	garage_view = Car3DView.new()
+	# The view is parked, not freed, when you leave (see _park_3d_views): a new one stalls for up to a second
+	# while its reflection probe renders, so coming back (or switching cars) re-attaches the same one.
+	if garage_view == null or not is_instance_valid(garage_view):
+		garage_view = Car3DView.new()
+	for sig in [garage_view.part_clicked, garage_view.part_hovered]:
+		for con in sig.get_connections():
+			sig.disconnect(con.callable)
 	stage.add_child(garage_view)
 	garage_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	garage_view.set_car(car)
+	garage_view.selected = ""   # garage_part starts empty below
+	if is_same(garage_view.car, car):
+		garage_view.refresh()
+	else:
+		garage_view.set_car(car)
 	garage_view.part_clicked.connect(func(p: String):
 		garage_part = p
 		if p != "":
@@ -3696,51 +3749,29 @@ const ACTIVITY := [["browsing", "people", "%d customer%s browsing"], ["assist", 
 
 
 func _build_lobby(stage: SceneArt) -> void:
-	# the 3D hall persists while the screen is open; later calls only re-sync the crowd and the panels
-	if lobby_3d == null or not is_instance_valid(lobby_3d) or lobby_3d.get_parent() != stage:
+	# the 3D hall persists while the screen is open, and is parked rather than freed when you leave
+	# (see _park_3d_views); later calls only re-sync the crowd and the panels
+	if lobby_3d == null or not is_instance_valid(lobby_3d):
+		_new_lobby_3d()
+	if lobby_3d.get_parent() != stage:
+		if lobby_3d.get_parent():
+			lobby_3d.get_parent().remove_child(lobby_3d)
 		for ch in stage.get_children():
 			ch.queue_free()
 		stage.mode = "lobby3d"
 		lobby_sel = {}
 		lobby_car_sel = {}
-		lobby_3d = Showroom3D.new()
 		lobby_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		stage.add_child(lobby_3d)
-		lobby_3d.customer_clicked.connect(func(c: Dictionary):
-			lobby_sel = c
-			lobby_car_sel = {}
-			lobby_3d.set_preset("customer", c)
-			_lobby_panels())
-		lobby_3d.car_clicked.connect(func(car: Dictionary):
-			lobby_car_sel = car
-			lobby_sel = {}
-			lobby_3d.set_preset("inspect", car)
-			_lobby_panels())
-		lobby_3d.empty_clicked.connect(func():
-			if lobby_sel.is_empty() and lobby_car_sel.is_empty():
-				return
-			lobby_sel = {}
-			lobby_car_sel = {}
-			lobby_3d.set_preset("wide")
-			_lobby_panels())
+		lobby_3d.set_preset("wide")
 		lobby_ui = Control.new()
 		lobby_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lobby_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		stage.add_child(lobby_ui)
-		lobby_3d.set_cars(Game.cars.slice(0, 4))
-		# time moves on the floor: re-sync when someone's state changes (waiting too long, back from a drive)
-		var tick := Timer.new()
-		tick.wait_time = 1.5
-		tick.autostart = true
-		lobby_3d.add_child(tick)
-		tick.timeout.connect(func():
-			var sig := ""
-			for c in lobby:
-				sig += "%d:%s," % [c.id, _cust_state(c)]
-			if sig != lobby_3d.get_meta("sig", ""):
-				_build_lobby(stage))
+		if lobby_3d.get_meta("cars_sig", 0) != _lobby_cars_sig():
+			_lobby_set_cars()   # first visit, or cars sold, repaired or repriced while you were away
 	elif lobby_3d.cars.size() != min(4, Game.cars.size()) or (not lobby_3d.cars.is_empty() and lobby_3d.cars.any(func(d): return not Game.cars.has(d.car))):
-		lobby_3d.set_cars(Game.cars.slice(0, 4))
+		_lobby_set_cars()
 	if not lobby_sel.is_empty() and not lobby.has(lobby_sel):
 		lobby_sel = {}
 		if lobby_3d.preset == "customer":
@@ -3762,6 +3793,50 @@ func _build_lobby(stage: SceneArt) -> void:
 		var col: Color = {"assist": UI.GOLD, "negotiating": UI.BLUE, "closing": UI.GOOD}.get(st, UI.MUTED)
 		lobby_3d.set_marker(c.id, txt, col)
 	_lobby_panels()
+
+
+## The showroom hall and its click and clock wiring. It starts out of the tree; _build_lobby attaches it.
+func _new_lobby_3d() -> void:
+	lobby_3d = Showroom3D.new()
+	lobby_3d.customer_clicked.connect(func(c: Dictionary):
+		lobby_sel = c
+		lobby_car_sel = {}
+		lobby_3d.set_preset("customer", c)
+		_lobby_panels())
+	lobby_3d.car_clicked.connect(func(car: Dictionary):
+		lobby_car_sel = car
+		lobby_sel = {}
+		lobby_3d.set_preset("inspect", car)
+		_lobby_panels())
+	lobby_3d.empty_clicked.connect(func():
+		if lobby_sel.is_empty() and lobby_car_sel.is_empty():
+			return
+		lobby_sel = {}
+		lobby_car_sel = {}
+		lobby_3d.set_preset("wide")
+		_lobby_panels())
+	# time moves on the floor: re-sync when someone's state changes (waiting too long, back from a drive)
+	var tick := Timer.new()
+	tick.wait_time = 1.5
+	tick.autostart = true
+	lobby_3d.add_child(tick)
+	tick.timeout.connect(func():
+		if lobby_stage == null:
+			return
+		var sig := ""
+		for c in lobby:
+			sig += "%d:%s," % [c.id, _cust_state(c)]
+		if sig != lobby_3d.get_meta("sig", ""):
+			_build_lobby(lobby_stage))
+
+
+func _lobby_cars_sig() -> int:
+	return str(Game.cars.slice(0, 4)).hash()
+
+
+func _lobby_set_cars() -> void:
+	lobby_3d.set_cars(Game.cars.slice(0, 4))
+	lobby_3d.set_meta("cars_sig", _lobby_cars_sig())
 
 
 ## The HUD over the 3D hall: activity panel, camera presets, the selected customer or car, and a nudge.
