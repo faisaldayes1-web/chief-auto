@@ -379,6 +379,7 @@ func _prewarm_3d_views() -> void:
 	var warming := []
 	for v in [garage_view, lobby_3d]:
 		if v.get_parent() == null:
+			v.prewarming = true
 			add_child(v)
 			move_child(v, 0)
 			v.position = Vector2.ZERO
@@ -388,8 +389,10 @@ func _prewarm_3d_views() -> void:
 	for i in 40:
 		await get_tree().process_frame
 	for v in warming:
-		if is_instance_valid(v) and v.get_parent() == self:
-			remove_child(v)
+		if is_instance_valid(v):
+			v.prewarming = false
+			if v.get_parent() == self:
+				remove_child(v)
 
 
 func _exit_tree() -> void:
@@ -3206,11 +3209,9 @@ func _screen_garage() -> void:
 			sig.disconnect(con.callable)
 	stage.add_child(garage_view)
 	garage_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	garage_view.selected = ""   # garage_part starts empty below
-	if is_same(garage_view.car, car):
-		garage_view.refresh()
-	else:
+	if not is_same(garage_view.car, car):
 		garage_view.set_car(car)
+	garage_view.reset_view()   # spin, camera, hover and quality as on a fresh view; garage_part starts empty below
 	garage_view.part_clicked.connect(func(p: String):
 		garage_part = p
 		if p != "":
@@ -3763,7 +3764,7 @@ func _build_lobby(stage: SceneArt) -> void:
 		lobby_car_sel = {}
 		lobby_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		stage.add_child(lobby_3d)
-		lobby_3d.set_preset("wide")
+		lobby_3d.reset_floor()
 		lobby_ui = Control.new()
 		lobby_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		lobby_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
