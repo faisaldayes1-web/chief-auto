@@ -10,3 +10,5 @@
 **Adding a row:** append at the bottom; edit only your own rows.
 
 | Content | `Codex-faisal/T2` | Structured content delivery, reusing b887f77 proposal | `content/t2/cars.json`, `content/t2/people.json`, `content/t2/progression.json`, `tools/validate_t2_cars.py`, `tools/validate_t2_people.py`, `tools/validate_t2_economy.py`, `docs/content/T2 Cars.md`, `docs/content/T2 People.md`, `docs/content/T2 Economy.md`; own board row | CLAIMED; three draft PRs; runtime and #11 excluded | framework #30 / 6245635083 |
+
+| Code | `Codex-faisal` | #30 backup-only save recovery, preserve intentional reset and migration | `scripts/game_state.gd`, `tests/save_recovery_test.gd`, own handoff and board row | CLAIMED 2026-10-18; branch Codex-faisal/30-backup-recovery | issue #30 |
