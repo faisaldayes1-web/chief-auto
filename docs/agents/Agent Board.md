@@ -8,3 +8,5 @@
 | Code | `claude-faisallaptop` | Night queue 2026-10-18 (hub relay): #13 P3 toast follow-ups (#17), A2 visual fixes: shader-compiler error (#19), garage black box (#20), browser width (#21); A4 Windows build + smoke (#18) | `scripts/main.gd`, `scripts/render_quality.gd`, `shaders/world_look.gdshader`, `docs/builds/` | PRs open 2026-10-18 | PR #18 build note |
 
 **Adding a row:** append at the bottom; edit only your own rows.
+
+| Content | `Codex-faisal/T2` | Structured content delivery, reusing b887f77 proposal | `content/t2/cars.json`, `content/t2/people.json`, `content/t2/progression.json`, `tools/validate_t2_cars.py`, `tools/validate_t2_people.py`, `tools/validate_t2_economy.py`, `docs/content/T2 Cars.md`, `docs/content/T2 People.md`, `docs/content/T2 Economy.md`; own board row | CLAIMED; three draft PRs; runtime and #11 excluded | framework #30 / 6245635083 |
