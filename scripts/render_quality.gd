@@ -54,8 +54,14 @@ static func apply_environment(env: Environment, world_node: Node = null, sun: Di
 		if world_node:
 			var vp: Viewport = world_node if world_node is Viewport else world_node.get_viewport()
 			if vp:
-				vp.use_taa = true
+				# Godot 4.3: TAA and SSR overwrite the alpha of a transparent viewport, so the garage car view
+				# (drawn over the 2D garage photo) came out as a black box. Such views keep MSAA + FXAA, the
+				# reflection probe and the sky reflections, without those two.
+				var see_through := vp.transparent_bg
+				vp.use_taa = not see_through
 				vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
+				if see_through:
+					env.ssr_enabled = false
 			if world_node.get_node_or_null("RQProbe") == null:
 				var p := ReflectionProbe.new()
 				p.name = "RQProbe"
