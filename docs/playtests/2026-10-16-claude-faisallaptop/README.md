@@ -10,12 +10,12 @@ Agent: `claude-faisallaptop` (Claude 2, laptop). One windowed run, no game code 
 
 | # | Area | What | Severity |
 |---|---|---|---|
-| 1 | Lot, Garage | Entering the lot and the garage the first time freezes the game for about 1 to 3 seconds (FPS logged 1, 1, 3, 15 on the lot and 14, 1, 1 on the garage). Other screens dip only to 37 to 55 FPS for a moment. Likely 3D scenes and shaders compiling on first view. The other engines on the laptop may make it worse. | Medium |
+| 1 | Garage, Showroom (corrected 2026-10-17; first written as "Lot, Garage") | Entering the lot and the garage the first time freezes the game for about 1 to 3 seconds (FPS logged 1, 1, 3, 15 on the lot and 14, 1, 1 on the garage). Other screens dip only to 37 to 55 FPS for a moment. Likely 3D scenes and shaders compiling on first view. The other engines on the laptop may make it worse. | Medium |
 | 2 | Garage | Two "walked into the showroom" toasts cover the "VEHICLE INSPECTION" title and the status/history line. The 3D car sits on a plain black box instead of a backdrop. ([04](04_garage.jpg)) | Low |
 | 3 | Showroom (both tiers) | The Showroom Activity panel covers the leftmost car's price tag (2019 Subaro Outbuck, $40,000). ([05](05_showroom.jpg), [16](16_showroom_flagship.jpg)) | Low |
 | 4 | Showroom (both tiers) | The Mazdo price tag covers a wall sign whose red second line looks like "NEWPORT BEACH" rather than "TEWPORT BEACH". Too small to read for sure; needs a closer look. | Low, unconfirmed |
 | 5 | Showroom flagship | At dealership 3 (Harbour Flagship) the showroom looks exactly like the Corner Lot showroom. The lot exterior does change. Could be by design. ([16](16_showroom_flagship.jpg) vs [05](05_showroom.jpg)) | Question |
-| 6 | Marco | Marco's 3D model is framed from the chin down, so his head is cut off. Toasts also cover the "STATUS & STATS" header. ([06](06_marco.jpg)) | Low |
+| 6 | Marco | (2026-10-17: not a framing bug. The two top toasts were covering his head; fixed by PR #13.) Marco's 3D model is framed from the chin down, so his head is cut off. Toasts also cover the "STATUS & STATS" header. ([06](06_marco.jpg)) | Low |
 | 7 | Staff | Jeff's portrait has a dark band across his hair, which looks like a gap in the hair mesh. ([07](07_staff.jpg)) | Low |
 | 8 | Office PC | The bezel brand under the monitor is blurry and reads oddly ("TEWATRON"?). The browser window width changes from tab to tab (about 1090 to 1194 px), so the frame jumps when you switch tabs. | Low |
 | 9 | Home, Lot, Garage, Showroom | The HUD showed Level 1 / $15,000 on these screens and only updated to Level 6 / $180,000 on Marco's screen. This may be the tour setting values directly, not a game bug. | Unconfirmed |
@@ -35,3 +35,5 @@ Not tested: real mouse and keyboard input (the tour calls `show_screen` directly
 | ![](11_pc_ads.jpg) PC: AdSpace | ![](12_pc_staff.jpg) PC: StaffHire |
 | ![](13_pc_reviews.jpg) PC: Yolp | ![](14_pc_bank.jpg) PC: TewportBank |
 | ![](15_lot_flagship.jpg) Lot (flagship) | ![](16_showroom_flagship.jpg) Showroom (flagship) |
+
+**Correction (2026-10-17):** finding 1 originally said Lot and Garage. Re-reading the tour log, the FPS dips listed after each "shot NN" line belong to the *next* screen, so the long freezes are on entering the Garage and the Showroom. The Lot stalls about 0.2 s on each visit. Fixes: PR #12 (finding 1), PR #13 (findings 2, 3, 6), PR #14 (finding 7).
