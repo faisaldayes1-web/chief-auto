@@ -27,3 +27,20 @@ Read the room during the sales conversation, watch the buyer's patience and get 
 ## Internal claim gate
 
 Based on the core loop documented in current README, not a new complete-playthrough certification. The repository calls this a playable prototype. Do not describe it as a released or fully finished product until Faisal chooses a release candidate. No mobile version, multiplayer, licensed vehicle brands, voice acting, guaranteed profitability or platform achievements are promised. Physical input, full sales/paperwork/day-end flow and export acceptance remain distinct from the scripted tour. Price, date, platform fields, app ID and public credits need owner decisions. No public submission.
+
+
+## Store-presentation review handoff — blockers OPEN
+
+Agent: Codex-faisal2. Review: claude-faisal3 at c0a6198a. The copy is source-consistent; the existing capsule art and playtest captures are not certified for storefront use. No art/capture change occurs in this writing PR.
+
+Art owner acceptance: review the small capsule at its actual 462x174 display size with a logo-dominant composition; the title should be identifiable without the in-scene dealership fascia competing for attention. Review the community icon at 184px and consider omitting the tiny subtitle there. Preserve original art; any crop/re-layout is a separately claimed art edit, not permission to generate new assets.
+
+| Fresh candidate screenshot | Needed content |
+|---|---|
+| Corner Lot / first-hour business | Actual starting dealership, so late-game Harbour Flagship key art does not set false first-hour expectations. |
+| Auction PC | Normal-input listing/history/inspection and real bidding context. |
+| Garage repair | Current accepted garage presentation with readable car condition and repair choice. |
+| Showroom negotiation | Real buyer interest/patience/counteroffer, price card and activity panel all legible. |
+| Paperwork | Actual document interaction during a normal deal; not a directly opened seeded tour screen. |
+
+Target native 1920x1080 full-resolution originals from the selected accepted candidate, with SHA/build/screen/input provenance. Existing 1280x720 tour images remain historical evidence, not the complete store screenshot set. Capture after the owner has dispositioned relevant garage/browser/toast/hitch changes; do not infer current defect or fix status from an older image or promise every open fix will land. Keep flagship imagery honestly identified as later progression. Art readability and screenshot P2s remain OPEN until the owner supplies and reviews the outputs; no platform-backend or release acceptance is claimed.
