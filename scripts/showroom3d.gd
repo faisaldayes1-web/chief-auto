@@ -141,6 +141,11 @@ func _build_env() -> void:
 		_vp.add_child(l)
 	# desktop Forward+ gets SSR/SSAO and a box-projected reflection probe of the hall
 	RenderQuality.apply_environment(_env, _vp, _sun, Vector3(22, 5, 15))
+	# Approved showroom target: readable materials without ceiling bloom or temporal smear.
+	_env.glow_enabled = false
+	_vp.use_taa = false
+	_env.ssao_intensity = 1.0
+	_env.ssr_enabled = false  # Avoid noisy screen-space reflections across car plinths.
 
 
 var _env_cache: Texture2D
@@ -222,15 +227,15 @@ func _floor_material() -> Material:
 	# Its own shader so the web build still gets the hall's reflections in it.
 	var m := ShaderMaterial.new()
 	m.shader = FLOOR_SHADER
-	m.set_shader_parameter("albedo_tex", load(TEX % ["large_floor_tiles_02", "Diffuse"]))
-	m.set_shader_parameter("normal_tex", load(TEX % ["large_floor_tiles_02", "nor_gl"]))
-	m.set_shader_parameter("rough_tex", load(TEX % ["large_floor_tiles_02", "Rough"]))
-	m.set_shader_parameter("tint", Color(1.55, 1.5, 1.42))
-	m.set_shader_parameter("tile", 3.6)
-	m.set_shader_parameter("rough_mul", 0.3)
-	m.set_shader_parameter("normal_depth", 0.45)
+	m.set_shader_parameter("albedo_tex", load("res://assets/world/showroom_floor_albedo.png"))
+	m.set_shader_parameter("normal_tex", load("res://assets/world/showroom_floor_normal.png"))
+	m.set_shader_parameter("rough_tex", load("res://assets/world/showroom_floor_rough.png"))
+	m.set_shader_parameter("tint", Color(0.72, 0.74, 0.76))
+	m.set_shader_parameter("tile", 2.8)
+	m.set_shader_parameter("rough_mul", 0.65)
+	m.set_shader_parameter("normal_depth", 0.22)
 	m.set_shader_parameter("env_map", _env_tex())
-	m.set_shader_parameter("env_strength", _env_strength() * 0.8)
+	m.set_shader_parameter("env_strength", _env_strength() * 0.4)
 	return m
 
 
@@ -246,7 +251,7 @@ func _apply_bake() -> void:
 	var lm: Texture2D = load(BAKE_LIGHTMAP)
 	for c in _vp.get_children():
 		var mi := c as MeshInstance3D
-		if mi == null or mi.mesh == null:
+		if mi == null or mi.mesh == null or mi.position.y > 4.7:
 			continue
 		var size := mi.mesh.get_aabb().size
 		for e in index:
@@ -292,7 +297,7 @@ func _contact_shadow(size: Vector2, alpha := 0.6) -> MeshInstance3D:
 func _build_room() -> void:
 	var frame := _mat(Color(0.04, 0.04, 0.045), 0.35, 0.6)
 	var walnut := _pbr("smoked_walnut_veneer", 1.6, 0.6, Color(0.62, 0.5, 0.42))
-	var feature := _pbr("concrete_tile_facade", 2.0, 0.9, Color(0.75, 0.74, 0.72))
+	var feature := _pbr("smoked_walnut_veneer", 2.0, 0.8, Color(0.85, 0.72, 0.6))
 	var stucco := _pbr("white_stucco", 2.5, 1.0, Color(0.93, 0.92, 0.9), 0.6)
 	# floor
 	var fl := MeshInstance3D.new()
@@ -311,20 +316,11 @@ func _build_room() -> void:
 	glow.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	glow.albedo_color = Color(1.0, 0.95, 0.84)
 	var rim_m := _mat(Color(0.75, 0.75, 0.76), 0.3, 0.8)
-	for x in range(-9, 10, 3):
-		for z in [-5.0, -1.5, 2.0, 5.0]:
-			for disc in [[0.15, 0.015, rim_m], [0.11, 0.02, glow]]:
-				var d := MeshInstance3D.new()
-				var cm := CylinderMesh.new()
-				cm.top_radius = disc[0]
-				cm.bottom_radius = disc[0]
-				cm.height = disc[1]
-				cm.radial_segments = 16
-				d.mesh = cm
-				d.material_override = disc[2]
-				d.position = Vector3(x, 4.795, z)
-				d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-				_vp.add_child(d)
+	# Recessed panels reuse existing lights; no additional light or reflection passes.
+	for x in [-8.0, -2.0, 4.0, 10.0]:
+		for z in [-5.0, 1.0, 5.0]:
+			_box(Vector3(0.85, 0.035, 0.55), Vector3(x, 4.78, z), rim_m, 0, false)
+			_box(Vector3(0.73, 0.04, 0.43), Vector3(x, 4.755, z), glow, 0, false)
 	# back-left: grooved concrete feature wall with the dealer sign; the left wall is plaster
 	_box(Vector3(7.0, 4.8, 0.4), Vector3(-7.7, 2.4, -7.9), feature)
 	_box(Vector3(0.4, 4.8, 15.6), Vector3(-11.4, 2.4, -0.4), stucco)
@@ -340,7 +336,7 @@ func _build_room() -> void:
 	_vp.add_child(fw)
 	_box(Vector3(7.0, 0.12, 0.42), Vector3(-7.7, 0.06, -7.68), frame, 0, false)
 	var sign := Label3D.new()
-	sign.text = "OC\nCHIEF AUTO"
+	sign.text = "CHIEF AUTO"
 	sign.font = UI.head_font()
 	sign.font_size = 96
 	sign.pixel_size = 0.006
@@ -351,12 +347,12 @@ func _build_room() -> void:
 	sign.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sign)
 	var sub := Label3D.new()
-	sub.text = "NEWPORT BEACH"
+	sub.text = "TEWPORT BEACH"
 	sub.font_size = 36
 	sub.pixel_size = 0.005
-	sub.modulate = Color(0.85, 0.2, 0.18)
+	sub.modulate = Color(0.9, 0.73, 0.38)
 	sub.outline_size = 0
-	sub.position = Vector3(-7.7, 1.62, -7.68)
+	sub.position = Vector3(-7.7, 2.08, -7.68)
 	sub.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sub)
 	# glass: the back wall right of the sign and the whole right wall. Faint green-grey tint, more reflective
@@ -419,10 +415,12 @@ void fragment() {
 		_prop("modern_arm_chair_01", Vector3(9.9, 0, z), -90.0, 0.0)
 	_prop("modern_coffee_table_01", Vector3(7.3, 0, 4.2), 90.0, 0.0)
 	# planting: a money tree in each corner, leafy pots along the glass
-	for p in [[Vector3(-10.4, 0, -6.9), 20.0], [Vector3(10.8, 0, -7.0), 140.0], [Vector3(10.8, 0, 6.2), 250.0]]:
-		_prop("pachira_aquatica_01", p[0], p[1], 2.3)
-	for p in [[Vector3(-1.0, 0, -7.2), 0.0], [Vector3(-10.4, 0, 5.5), 70.0], [Vector3(5.2, 0, -7.2), 200.0]]:
-		_prop("pachira_aquatica_01", p[0], p[1], 1.5)
+	for p in [[Vector3(-10.0, 0, -6.1), 20.0], [Vector3(10.0, 0, -6.1), 140.0], [Vector3(10.0, 0, 6.2), 250.0]]:
+		_box(Vector3(0.65, 0.65, 0.65), p[0] + Vector3(0, 0.325, 0), frame)
+		_prop("calathea_orbifolia_01", p[0] + Vector3(0, 0.45, 0), p[1], 1.3)
+	for p in [[Vector3(-1.0, 0, -6.4), 0.0], [Vector3(-10.4, 0, 5.5), 70.0], [Vector3(5.2, 0, -6.4), 200.0]]:
+		_box(Vector3(0.45, 0.5, 0.45), p[0] + Vector3(0, 0.25, 0), frame)
+		_prop("calathea_orbifolia_01", p[0] + Vector3(0, 0.35, 0), p[1], 0.85)
 	_nav = NavigationRegion3D.new()
 	_vp.add_child(_nav)
 
@@ -488,7 +486,7 @@ func set_cars(shown: Array) -> void:
 			holder.add_child(model)
 			aabb = _model_aabb(model)
 			_polish(model)
-		var cs := _contact_shadow(Vector2(aabb.size.x + 0.5, aabb.size.z + 0.4), 0.7)
+		var cs := _contact_shadow(Vector2(aabb.size.x + 0.5, aabb.size.z + 0.4), 0.42)
 		cs.position = Vector3(aabb.get_center().x, 0.008, aabb.get_center().z)
 		holder.add_child(cs)
 		var plinth := MeshInstance3D.new()   # dark polished stone disc
