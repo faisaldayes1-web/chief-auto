@@ -1,0 +1,8 @@
+# Chief Auto approved showroom visual target
+Agent: Codex-faisal / Chief Auto PM
+Owner approved the upgraded simulator mockup in chat 01a15175-073d-7310-9a2a-28a92f32b547 on 2026-10-19. Claim cdb5f0c preceded implementation. Lower priority than newer games.
+Implementation: existing light/asset budget, rectangular ceiling fixtures, wood reception wall, Tewport sign correction, existing smoother tile textures, reduced floor gloss/normal strength, restrained contact shadows, bloom/TAA disabled in showroom only, noisy SSR disabled while reflection probe remains, smaller broad-leaf plants inset from glass with planters. No new paid assets.
+Preservation: stacked on PR32; PR12 e455eb6 and PR31 3ece80b remain ancestors. Save/loading/camera source unchanged from PR32. Test APPDATA and custom profile isolated; project.godot test-only changes and importer rewrites excluded from commits.
+Acceptance: genuine Forward+ 1280x720 day/night lighting captures completed and inspected; smoke PASS, camera 6/6 PASS; save/source preservation diff empty. Night capture forces showroom lighting with game/main processing paused to avoid end-of-day transition; HUD time is not a night-clock acceptance claim.
+Limitations: shader cache write diagnostics during graphics capture; headless mesh-null warning. No interactive full day/save acceptance, lower-spec performance qualification, web renderer or packaged build tested. Existing car/NPC models and UI layout retained; generated mockup is a target, not a pixel-identical promise. UI/card layout and car materials remain existing implementation.
+Spent: Meshy 0, PixelLab 0. No merge or build publication. Next: owner visual acceptance and scoped follow-up on remaining model/UI details if desired.
