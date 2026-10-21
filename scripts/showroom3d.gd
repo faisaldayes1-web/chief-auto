@@ -58,6 +58,7 @@ var _frames_seen := 0
 var _slow_frames := 0
 var _yaw_off := 0.0
 var _quality := 0
+var prewarming := false   # rendered behind the title: those frames say nothing about the hall's own cost
 
 
 func _init() -> void:
@@ -639,6 +640,31 @@ func _bake_nav() -> void:
 
 # ---------------------------------------------------------------- customers
 
+## The hall is kept between visits (main.gd _park_3d_views), so each visit starts it like a new one: no crowd
+## (the next sync places everyone on their spot; customer ids restart at 1 on a new game or load), the wide
+## shot without a glide from the last camera, and full quality.
+func reset_floor() -> void:
+	for ch in _vp.get_children():
+		if ch is Customer3D:
+			if ch.marker:
+				ch.marker.queue_free()
+			ch.queue_free()
+	npcs.clear()
+	focus_customer = {}
+	focus_car = {}
+	_yaw_off = 0.0
+	set_preset("wide")
+	_cam_pos = _cam_goal_pos
+	_cam_tgt = _cam_goal_tgt
+	_apply_cam()
+	_quality = 0
+	_frames_seen = 0
+	_slow_frames = 0
+	_vp.msaa_3d = Viewport.MSAA_2X
+	stretch_shrink = 1
+	_sun.shadow_enabled = RenderQuality.is_forward_plus()
+
+
 ## Brings the 3D crowd in line with the lobby list: new arrivals walk in, people who left walk out.
 func sync(lobby: Array, states: Dictionary) -> void:
 	var keep := {}
@@ -803,7 +829,7 @@ func _process(delta: float) -> void:
 	_apply_cam()
 	# software GL / weak GPUs: step quality down while most frames are slow
 	# (1: no MSAA, 2: half-resolution 3D, 3: no sun shadows)
-	if _quality < 3:
+	if _quality < 3 and not prewarming:
 		_frames_seen += 1
 		if delta > 0.06:
 			_slow_frames += 1
