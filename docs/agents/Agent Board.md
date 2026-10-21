@@ -30,3 +30,5 @@ Agent: Codex-faisal. Owner-requested framework cutover, 2026-10-20. Claim: `AGEN
 Agent: Codex-faisal. Incoming branch records preserved below; no existing owner or current main claim reassigned.
 
 | Code | `Codex-faisal` | #30 backup-only save recovery, preserve intentional reset and migration | `scripts/game_state.gd`, `tests/save_recovery_test.gd`, own handoff and board row | CLAIMED 2026-10-18; branch Codex-faisal/30-backup-recovery | issue #30 |
+
+| Code | `Codex-faisal` (Chief Auto PM) | Showroom loading and camera follow-up; explicitly reassigned by Faisal in PM chat 01a15175-073d-7310-9a2a-28a92f32b547 on 2026-10-18. Supersedes prior ownership ONLY for this scope; preserve PR12 and PR31. Lower priority than newer games. | `scripts/main.gd` loading/view lifecycle only, `scripts/car3d_view.gd` camera only, `scripts/showroom3d.gd` loading only; task-specific tests and handoff | GRANTED by Faisal; CLAIMED before implementation; branch Codex-faisal/showroom-camera | PR12 scope reassignment comment; real saves excluded |

@@ -372,9 +372,14 @@ func _park_3d_views() -> void:
 ## First visits stalled too: building a view loads its models and textures, and the reflection probe renders
 ## on its second frame. Do both once behind the title screen (under the background, at full size so the
 ## buffers match), then park the views for the garage and showroom to pick up.
+var _warming_3d := false
+var _warmed_3d := false
+
+
 func _prewarm_3d_views() -> void:
-	if current != "title":
+	if current != "title" or _warming_3d or _warmed_3d:
 		return
+	_warming_3d = true
 	if garage_view == null or not is_instance_valid(garage_view):
 		garage_view = Car3DView.new()
 	if lobby_3d == null or not is_instance_valid(lobby_3d):
@@ -396,6 +401,9 @@ func _prewarm_3d_views() -> void:
 			v.prewarming = false
 			if v.get_parent() == self:
 				remove_child(v)
+
+	_warming_3d = false
+	_warmed_3d = true
 
 
 func _exit_tree() -> void:

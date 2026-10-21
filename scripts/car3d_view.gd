@@ -23,6 +23,10 @@ var hovered := ""
 var yaw := -0.75
 var pitch := 0.22
 var dist := 7.5
+var _target_dist := 7.5
+var _target_yaw := -0.75
+var _min_dist := 5.5
+var _max_dist := 9.0
 var _vp: SubViewport
 var _cam: Camera3D
 var _pivot: Node3D
@@ -167,7 +171,11 @@ func set_car(c: Dictionary) -> void:
 		aabb = a if first else aabb.merge(a)
 		first = false
 	(_floor.material_override as ShaderMaterial).set_shader_parameter("car_size", Vector2(aabb.size.x, aabb.size.z))
-	dist = max(7.0, aabb.size.x * 1.95)
+	_min_dist = maxf(5.5, aabb.size.length() * 1.1)
+	_max_dist = _min_dist * 1.55
+	dist = clampf(maxf(7.0, aabb.size.x * 1.95), _min_dist, _max_dist)
+	_target_dist = dist
+	_target_yaw = yaw
 	_base_dist = dist
 	_pivot.position.y = 0.0
 	refresh()
@@ -539,8 +547,11 @@ func _process(delta: float) -> void:
 			_frames_seen = 0
 			_slow_frames = 0
 	if _auto_spin and not _dragging and selected == "":
-		yaw += delta * 0.12
-		_place_camera()
+		_target_yaw += delta * 0.12
+	var blend := 1.0 - exp(-14.0 * delta)
+	yaw = lerp_angle(yaw, _target_yaw, blend)
+	dist = lerpf(dist, _target_dist, blend)
+	_place_camera()
 	# hover picking: at most one pick per frame and ~20 per second, however many motion events arrive
 	if _hover_dirty and not _dragging and Time.get_ticks_msec() >= _hover_next_ms:
 		_hover_dirty = false
@@ -579,25 +590,26 @@ func _gui_input(ev: InputEvent) -> void:
 					part_clicked.emit(p)
 			accept_event()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_UP and ev.pressed:
-			dist = max(3.5, dist * 0.92)
+			_target_dist = maxf(_min_dist, _target_dist * 0.92)
 			_place_camera()
 			accept_event()
 		elif ev.button_index == MOUSE_BUTTON_WHEEL_DOWN and ev.pressed:
-			dist = min(14.0, dist * 1.08)
+			_target_dist = minf(_max_dist, _target_dist * 1.08)
 			_place_camera()
 			accept_event()
 	elif ev is InputEventMouseMotion:
 		if _dragging:
 			_drag_moved += ev.relative.length()
 			_auto_spin = false
-			yaw -= ev.relative.x * 0.008
-			pitch = clamp(pitch + ev.relative.y * 0.006, 0.02, 1.2)
+			_target_yaw -= ev.relative.x * 0.008
+			# Keep the studio orbit on the vertical axis, with a stable viewing elevation.
 			_place_camera()
 		else:
 			_hover_pos = ev.position
 			_hover_dirty = true
 	elif ev is InputEventMagnifyGesture:
-		dist = clamp(dist / ev.factor, 3.5, 14.0)
+		if ev.factor > 0.0:
+			_target_dist = clampf(_target_dist / ev.factor, _min_dist, _max_dist)
 		_place_camera()
 
 
@@ -608,6 +620,8 @@ func reset_view() -> void:
 	yaw = -0.75
 	pitch = 0.22
 	dist = _base_dist
+	_target_dist = dist
+	_target_yaw = yaw
 	_auto_spin = true
 	_dragging = false
 	_drag_moved = 0.0
