@@ -24,3 +24,9 @@ Overnight T3 claim 2026-10-18 — Agent: Codex-faisal2. T3 Chief Auto Achievemen
 Agent: Codex-faisal2. T2 claim: docs/playtests/T2_Accessibility_Settings.md only; proposed accessibility and settings checklist; branch Codex-faisal2/t2-accessibility; 2026-10-18.
 
 Agent: Codex-faisal. Owner-requested framework cutover, 2026-10-20. Claim: `AGENTS.md`, `CLAUDE.md`, NEW `ORY_WORKFLOW.md`, and this own appended board record only. Task: #34. Branch: `agent/Codex-faisal/34-framework-cutover`. No runtime/art/shared gameplay claims or reassignment. Status: documentation migration prepared for review; source execution/merge follows repository policy.
+
+## Codex-faisal integration record, PR 31
+
+Agent: Codex-faisal. Incoming branch records preserved below; no existing owner or current main claim reassigned.
+
+| Code | `Codex-faisal` | #30 backup-only save recovery, preserve intentional reset and migration | `scripts/game_state.gd`, `tests/save_recovery_test.gd`, own handoff and board row | CLAIMED 2026-10-18; branch Codex-faisal/30-backup-recovery | issue #30 |
