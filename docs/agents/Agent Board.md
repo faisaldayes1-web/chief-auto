@@ -15,6 +15,8 @@ Agent: Codex-faisal2. T2 claim: docs/playtests/T2_Morning_20_Minutes.md only; 20
 
 Overnight T3 claim 2026-10-18 — Agent: Codex-faisal2. T3 Chief Auto Store Page. Own new `docs/agents/Proposals/T3 Store Page.md` and `docs/agents/Handoffs/2026-10-18 Codex-faisal2 T3 Store Page.md` only; writing PROPOSED; no runtime edits.
 
+Overnight T3 claim 2026-10-18 — Agent: Codex-faisal2. T3 Chief Auto Press Kit. Own new `docs/agents/Proposals/T3 Press Kit.md` and `docs/agents/Handoffs/2026-10-18 Codex-faisal2 T3 Press Kit.md` only; writing PROPOSED; no runtime edits.
+
 Agent: Codex-faisal2. T2 claim: docs/playtests/T2_Accessibility_Settings.md only; proposed accessibility and settings checklist; branch Codex-faisal2/t2-accessibility; 2026-10-18.
 
 Agent: Codex-faisal. Owner-requested framework cutover, 2026-10-20. Claim: `AGENTS.md`, `CLAUDE.md`, NEW `ORY_WORKFLOW.md`, and this own appended board record only. Task: #34. Branch: `agent/Codex-faisal/34-framework-cutover`. No runtime/art/shared gameplay claims or reassignment. Status: documentation migration prepared for review; source execution/merge follows repository policy.
