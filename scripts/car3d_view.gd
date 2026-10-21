@@ -44,6 +44,8 @@ var _floor: MeshInstance3D
 var _auto_spin := true
 var pickable := true   # false: skip reading triangles for picking (showroom display cars)
 var _env: Texture2D     # web only: the garage HDRI the hand-rolled reflections sample
+var _base_dist := 7.5   # the framing set_car picked for this car, before any zoom
+var prewarming := false   # rendered behind the title: those frames say nothing about this view's own cost
 
 
 func _init() -> void:
@@ -141,6 +143,9 @@ func set_car(c: Dictionary) -> void:
 	_pickables.clear()
 	_pick_cache.clear()
 	_mat_cache.clear()
+	if _smoke:
+		_smoke.queue_free()   # sized and placed for the last car's hood
+		_smoke = null
 	var path := model_path(CarArt.slug(car.get("model", "")))
 	if not ResourceLoader.exists(path):
 		return
@@ -163,6 +168,7 @@ func set_car(c: Dictionary) -> void:
 		first = false
 	(_floor.material_override as ShaderMaterial).set_shader_parameter("car_size", Vector2(aabb.size.x, aabb.size.z))
 	dist = max(7.0, aabb.size.x * 1.95)
+	_base_dist = dist
 	_pivot.position.y = 0.0
 	refresh()
 
@@ -523,7 +529,7 @@ func _style_wheel(mi: MeshInstance3D, key: String) -> void:
 
 func _process(delta: float) -> void:
 	# software GL / weak GPUs: 4x MSAA alone can double the frame time, so drop it if most frames are slow
-	if _vp.msaa_3d != Viewport.MSAA_DISABLED:
+	if _vp.msaa_3d != Viewport.MSAA_DISABLED and not prewarming:
 		_frames_seen += 1
 		if delta > 0.08:
 			_slow_frames += 1
@@ -593,6 +599,26 @@ func _gui_input(ev: InputEvent) -> void:
 	elif ev is InputEventMagnifyGesture:
 		dist = clamp(dist / ev.factor, 3.5, 14.0)
 		_place_camera()
+
+
+## Back to how a new view starts: spinning from the default angle and distance, nothing selected, hovered or
+## held, full quality. The garage keeps one view for the session (main.gd _park_3d_views) and calls this on
+## every visit.
+func reset_view() -> void:
+	yaw = -0.75
+	pitch = 0.22
+	dist = _base_dist
+	_auto_spin = true
+	_dragging = false
+	_drag_moved = 0.0
+	selected = ""
+	hovered = ""
+	_hover_dirty = false
+	_vp.msaa_3d = Viewport.MSAA_4X
+	_frames_seen = 0
+	_slow_frames = 0
+	_place_camera()
+	refresh()
 
 
 func select(p: String) -> void:
