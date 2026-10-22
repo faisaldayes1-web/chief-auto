@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://defrsa6smapij"
-path="res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.ctex"
+path.s3tc="res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.s3tc.ctex"
+path.etc2="res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "0c8e6f26f8c23a5accd45b666324364e"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg"
-dest_files=["res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.ctex"]
+dest_files=["res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.s3tc.ctex", "res://.godot/imported/hondo_civix_Trim2028plane0891Mtl_baseColor.jpg-ec08417ffa8e407d0b874158f69a9521.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

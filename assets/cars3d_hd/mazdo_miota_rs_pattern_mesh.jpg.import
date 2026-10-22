@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cbmhvej28swy2"
-path="res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.ctex"
+path.s3tc="res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.s3tc.ctex"
+path.etc2="res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "f4c19012fdc981af70abfd37f1d2d2e6"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/mazdo_miota_rs_pattern_mesh.jpg"
-dest_files=["res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.ctex"]
+dest_files=["res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.s3tc.ctex", "res://.godot/imported/mazdo_miota_rs_pattern_mesh.jpg-3f34adbdc33f7df994df23641b0b6980.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

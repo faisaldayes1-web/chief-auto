@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dhe6jkhohh722"
-path="res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.ctex"
+path.s3tc="res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.s3tc.ctex"
+path.etc2="res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c7ff171bef2fe8e77002c188243fd5b9"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/lamborgo_aventa_Moteur_baseColor.jpg"
-dest_files=["res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.ctex"]
+dest_files=["res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.s3tc.ctex", "res://.godot/imported/lamborgo_aventa_Moteur_baseColor.jpg-da22fad95adac5bdfc548b0f9799ca25.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

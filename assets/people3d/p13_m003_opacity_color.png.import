@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dfd7pqcsckxjo"
-path="res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.ctex"
+path.s3tc="res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.s3tc.ctex"
+path.etc2="res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "76243c84248c6f92a4da662bde3ef9b9"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/people3d/p13_m003_opacity_color.png"
-dest_files=["res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.ctex"]
+dest_files=["res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.s3tc.ctex", "res://.godot/imported/p13_m003_opacity_color.png-9bf034661267c027a245c7b6238894db.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

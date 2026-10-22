@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://3cnj0028r8va"
-path="res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.ctex"
+path.s3tc="res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.s3tc.ctex"
+path.etc2="res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/models/modern_arm_chair_01/textures/modern_arm_chair_01_pillow_arm_1k.jpg"
-dest_files=["res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.ctex"]
+dest_files=["res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.s3tc.ctex", "res://.godot/imported/modern_arm_chair_01_pillow_arm_1k.jpg-528d0e01d2b6dc5ed55f9147ac8ab0ec.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

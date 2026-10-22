@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dhpdrk8tjiaad"
-path="res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.ctex"
+path.s3tc="res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.s3tc.ctex"
+path.etc2="res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/models/bar_chair_round_01/textures/bar_chair_round_01_diff_1k.jpg"
-dest_files=["res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.ctex"]
+dest_files=["res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.s3tc.ctex", "res://.godot/imported/bar_chair_round_01_diff_1k.jpg-e12b0208b268c48a7aa036780c08d15b.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

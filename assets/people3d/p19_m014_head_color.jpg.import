@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://naucux13jwkl"
-path="res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.ctex"
+path.s3tc="res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.s3tc.ctex"
+path.etc2="res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "89a68b06d8d8e3138328566035b2a10f"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/people3d/p19_m014_head_color.jpg"
-dest_files=["res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.ctex"]
+dest_files=["res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.s3tc.ctex", "res://.godot/imported/p19_m014_head_color.jpg-2ce0e9a4488f8976bc6f6430e368afd4.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

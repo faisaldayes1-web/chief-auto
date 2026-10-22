@@ -3,23 +3,25 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cs1mwyh6o714q"
-path="res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.ctex"
+path.s3tc="res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.s3tc.ctex"
+path.etc2="res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/textures/smoked_walnut_veneer_nor_gl.jpg"
-dest_files=["res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.ctex"]
+dest_files=["res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.s3tc.ctex", "res://.godot/imported/smoked_walnut_veneer_nor_gl.jpg-426e7b1a11846dcb110125cfea18f7d5.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

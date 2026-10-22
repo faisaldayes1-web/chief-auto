@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://flbcvphjhlps"
-path="res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.ctex"
+path.s3tc="res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.s3tc.ctex"
+path.etc2="res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "fd86851c1121957e6392d4929fa1b6be"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/porsha_911_930_lights_baseColor.png"
-dest_files=["res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.ctex"]
+dest_files=["res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.s3tc.ctex", "res://.godot/imported/porsha_911_930_lights_baseColor.png-0c907297fbe19d8ce9567fbec2830ba5.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

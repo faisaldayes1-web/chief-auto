@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bi5vnfcfwcrfv"
-path="res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.ctex"
+path.s3tc="res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.s3tc.ctex"
+path.etc2="res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "df87d21dae95913d81f885ad751d9829"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/forde_rangler_rs_pattern_slats.jpg"
-dest_files=["res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.ctex"]
+dest_files=["res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.s3tc.ctex", "res://.godot/imported/forde_rangler_rs_pattern_slats.jpg-e8e66329feb3caa40ace291425035db1.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

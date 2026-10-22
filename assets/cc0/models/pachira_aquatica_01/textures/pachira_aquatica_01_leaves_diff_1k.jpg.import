@@ -3,19 +3,21 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0ixk7s3sk54w"
-path="res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.ctex"
+path.s3tc="res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.s3tc.ctex"
+path.etc2="res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/models/pachira_aquatica_01/textures/pachira_aquatica_01_leaves_diff_1k.jpg"
-dest_files=["res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.ctex"]
+dest_files=["res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.s3tc.ctex", "res://.godot/imported/pachira_aquatica_01_leaves_diff_1k.jpg-eedbc39099b502bdba508bbc9252a690.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

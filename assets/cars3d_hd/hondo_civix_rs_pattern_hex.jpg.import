@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c86jqeg6sg3nn"
-path="res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.ctex"
+path.s3tc="res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.s3tc.ctex"
+path.etc2="res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a699e91710098feb9508e205687f6c55"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/hondo_civix_rs_pattern_hex.jpg"
-dest_files=["res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.ctex"]
+dest_files=["res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.s3tc.ctex", "res://.godot/imported/hondo_civix_rs_pattern_hex.jpg-45fbbbc765c04c21cbd83fd560afcf67.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

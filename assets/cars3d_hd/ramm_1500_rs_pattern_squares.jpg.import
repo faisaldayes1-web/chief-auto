@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b2s6qgasgv2qh"
-path="res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.ctex"
+path.s3tc="res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.s3tc.ctex"
+path.etc2="res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c64c1ff7eeb3a908afe511ba310309d7"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/ramm_1500_rs_pattern_squares.jpg"
-dest_files=["res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.ctex"]
+dest_files=["res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.s3tc.ctex", "res://.godot/imported/ramm_1500_rs_pattern_squares.jpg-48e5f01f9c29a600bc864d964f64c5e9.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

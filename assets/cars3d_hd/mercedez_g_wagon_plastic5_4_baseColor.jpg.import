@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dht56y7h4h3oc"
-path="res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.ctex"
+path.s3tc="res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.s3tc.ctex"
+path.etc2="res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "3e5ad920416a610fbbbd90d9d734010a"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/mercedez_g_wagon_plastic5_4_baseColor.jpg"
-dest_files=["res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.ctex"]
+dest_files=["res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.s3tc.ctex", "res://.godot/imported/mercedez_g_wagon_plastic5_4_baseColor.jpg-cfef3aaa59ea31adbf403ab42d8abd14.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
