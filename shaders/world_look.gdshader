@@ -10,6 +10,12 @@ uniform float bloom = 0.14;        // additive glow on highlights only; the pict
 uniform float vignette = 0.32;
 uniform float grade = 1.0;
 uniform vec2 texel = vec2(0.000625, 0.0011);       // 1 / render size
+// Faisal's "crisp painted illustration" picks (lot, office, sales desk): a 4-sector Kuwahara filter flattens the
+// render into brush-like patches, a luminance contour inks the shapes, colours get a painted lift, and a fine
+// canvas grain sits on top. 0 = the plain render (garage, apartment).
+uniform float paint : hint_range(0.0, 1.0) = 0.0;
+uniform float paint_radius = 4.0;   // in texels of the background render
+uniform float ink = 0.7;            // contour strength
 
 // COLOR in fragment() already holds texture × modulate, so multiplying by it again squared the picture
 // (~35-45% darker): keep the plain vertex/modulate colour from vertex() instead.
@@ -26,10 +32,51 @@ vec3 world_at(vec3 day, vec2 uv) {
 	return mix(day * tint.rgb, n, night);
 }
 
+float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+
 void fragment() {
 	vec4 base = texture(TEXTURE, UV);
 	// the base image is sampled once at full resolution (no LOD bias); only the glow reads neighbours
-	vec3 c = world_at(base.rgb, UV);
+	vec3 day = base.rgb;
+	if (paint > 0.001) {
+		// Kuwahara: mean of the least-varied of four 3x3 quadrants (radius scaled), so flat areas become strokes
+		vec3 best = day;
+		float best_v = 1e9;
+		for (int q = 0; q < 4; q++) {
+			vec2 sg = vec2(q == 1 || q == 3 ? 1.0 : -1.0, q >= 2 ? 1.0 : -1.0);
+			vec3 sum = vec3(0.0);
+			vec3 sq = vec3(0.0);
+			for (int j = 0; j < 3; j++) {
+				for (int i = 0; i < 3; i++) {
+					vec3 t = texture(TEXTURE, UV + sg * vec2(float(i), float(j)) * texel * paint_radius * 0.5).rgb;
+					sum += t;
+					sq += t * t;
+				}
+			}
+			vec3 mu = sum / 9.0;
+			vec3 va = abs(sq / 9.0 - mu * mu);
+			float v = va.r + va.g + va.b;
+			if (v < best_v) { best_v = v; best = mu; }
+		}
+		// ink contour from the luminance gradient of the flattened neighbourhood
+		float lx = luma(texture(TEXTURE, UV + vec2(texel.x * 1.5, 0.0)).rgb) - luma(texture(TEXTURE, UV - vec2(texel.x * 1.5, 0.0)).rgb);
+		float ly = luma(texture(TEXTURE, UV + vec2(0.0, texel.y * 1.5)).rgb) - luma(texture(TEXTURE, UV - vec2(0.0, texel.y * 1.5)).rgb);
+		float edge = smoothstep(0.08, 0.32, length(vec2(lx, ly)));
+		vec3 p = best;
+		// painted lift: richer mid-tones, slightly lifted shadows, warm sunlit highlights
+		float pl = luma(p);
+		p = mix(vec3(pl), p, 1.22);
+		p = mix(p, p * vec3(1.05, 1.0, 0.92) + 0.03, smoothstep(0.55, 0.95, pl) * 0.6);
+		p = max(p, vec3(0.035, 0.04, 0.06) + p * 0.9);
+		p *= 1.0 - edge * ink * (0.35 + 0.65 * (1.0 - pl));
+		// canvas grain: a fine, stable tooth (screen-space so it never swims with the picture)
+		float g = hash(floor(FRAGCOORD.xy * 0.5)) - 0.5;
+		p += g * 0.025;
+		day = mix(day, clamp(p, 0.0, 1.0), paint);
+	}
+	vec3 c = world_at(day, UV);
 	// bloom: thresholded highlights from a 12-tap ring at two radii
 	vec3 glow = vec3(0.0);
 	for (int i = 0; i < 6; i++) {

@@ -275,14 +275,27 @@ func _build() -> void:
 	back.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	back.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	back.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	back.modulate = Color(0.75, 0.75, 0.78)
+	# Faisal's pick D (painted illustration): the sales floor stays visible and sunlit behind the panels,
+	# painted by the shared world shader, instead of a near-black wash.
+	back.material = WorldLook.new_material()
+	WorldLook.update(back.material, back.texture, "dealdesk" + Game.world_suffix())
 	add_child(back)
-	var shade := ColorRect.new()
-	shade.color = Color(0.015, 0.025, 0.05, 0.78)
+	var shade := TextureRect.new()
+	var grad := Gradient.new()
+	grad.set_color(0, Color(0.015, 0.025, 0.05, 0.12))
+	grad.set_color(1, Color(0.015, 0.025, 0.05, 0.5))
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill_from = Vector2(0, 0)
+	gt.fill_to = Vector2(0, 1)
+	shade.texture = gt
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(shade)
 	# ----- left: the customer, read -----
-	var left := UI.panel(UI.GLASS, UI.GLASS_RIM, 14)
+	var left := _panel(14)
 	add_child(left)
 	m._place(left, 18, 18, 300, H - 36)
 	var lv := UI.vbox(6)
@@ -311,14 +324,14 @@ func _build() -> void:
 	if not liked.is_empty():
 		lv.add_child(UI.label("RESPONDS TO: " + ", ".join(liked.map(func(x): return CARDS[x][0].to_lower())), 12, UI.GOOD, false, true))
 	# ----- right: the car -----
-	var right := UI.panel(UI.GLASS, UI.GLASS_RIM, 14)
+	var right := _panel(14)
 	add_child(right)
 	m._place(right, W - 318, 18, 300)
 	var rv := UI.vbox(4)
 	right.add_child(rv)
-	rv.add_child(UI.label(("%d %s" % [car.year, car.model]).to_upper(), 18, UI.TEXT, true))
+	rv.add_child(UI.label(("%d %s" % [car.year, car.model]).to_upper(), 22, UI.TEXT, true))
 	rv.add_child(UI.rule(UI.GOLD))
-	rv.add_child(m._car_art(car, Vector2(0, 120)))
+	rv.add_child(m._car_art(car, Vector2(0, 140)))
 	for row in [["Sticker", Game.money_str(car.get("sticker", 0))], ["You're in for", Game.money_str(_cost())],
 			["Condition", "%d / 100" % Game.condition(car)], ["History", car.history if car.history_known else "Not checked"]]:
 		var hr := UI.hbox()
@@ -337,14 +350,14 @@ func _build() -> void:
 			b.disabled = not free
 			rv.add_child(b)
 	# ----- centre -----
-	var mid := UI.panel(UI.GLASS, UI.GLASS_RIM, 16)
+	var mid := _panel(16)
 	add_child(mid)
 	var cw: float = W - 300 - 300 - 18 * 4
 	m._place(mid, 18 + 300 + 18, 0, cw)
 	center = UI.vbox(10)
 	mid.add_child(center)
 	var head := UI.hbox(8)
-	head.add_child(UI.label("THE SALE" if phase == "pitch" else "THE NUMBERS", 22, UI.GOLD, true))
+	head.add_child(UI.label("THE SALE" if phase == "pitch" else "THE NUMBERS", 30, UI.GOLD, true))
 	head.add_child(UI.spacer())
 	head.add_child(UI.label(("PITCH %d / %d" % [turn, TURNS]) if phase == "pitch" else ("SWING %d / %d" % [swings + 1, SWINGS]), 14, UI.MUTED, true))
 	var x := UI.button("✕", _step_away, 34, 30)
@@ -369,6 +382,16 @@ func _build() -> void:
 	dock.call_deferred()
 
 
+## Pick D panels: deep navy with a warm gold rim, solid enough to read over the sunlit painted backdrop.
+func _panel(pad: int) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := UI.box(Color(0.03, 0.055, 0.1, 0.93), Color(0.91, 0.71, 0.3, 0.75), 12, 2, pad)
+	sb.shadow_color = Color(0, 0, 0, 0.5)
+	sb.shadow_size = 14
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
+
 func _meter_row(parent: Control, name: String, v: float) -> void:
 	var row := UI.hbox(6)
 	var l := UI.label(name, 12, UI.MUTED)
@@ -387,7 +410,7 @@ func _build_pitch() -> void:
 	for id in hand:
 		var info: Array = CARDS[id]
 		var card := Button.new()
-		card.custom_minimum_size = Vector2(0, 150)
+		card.custom_minimum_size = Vector2(0, 168)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		card.add_theme_stylebox_override("normal", UI.box(Color(0.06, 0.08, 0.13, 0.92), UI.GOLD_DIM, 10, 2, 10))
 		card.add_theme_stylebox_override("hover", UI.box(Color(0.12, 0.13, 0.18, 0.95), UI.GOLD, 10, 2, 10))
@@ -404,11 +427,11 @@ func _build_pitch() -> void:
 		ic.texture = m.icon_tex(info[2])
 		ic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		ic.custom_minimum_size = Vector2(0, 34)
-		ic.modulate = UI.GOLD
+		ic.custom_minimum_size = Vector2(0, 58)
+		ic.modulate = UI.GOLD.lightened(0.1)
 		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cv.add_child(ic)
-		var t := UI.label(info[0].to_upper(), 14, UI.TEXT, true, true)
+		var t := UI.label(info[0].to_upper(), 16, UI.TEXT, true, true)
 		t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		t.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		cv.add_child(t)
@@ -421,7 +444,8 @@ func _build_pitch() -> void:
 	var btns := UI.hbox(8)
 	var go := UI.gold_button("Talk numbers  →", func():
 		_start_haggle()
-		_build(), 0, 44)
+		_build(), 0, 52)
+	go.add_theme_font_size_override("font_size", 24)
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	btns.add_child(go)
 	center.add_child(btns)

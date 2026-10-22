@@ -137,6 +137,150 @@ void fragment() {
 	_place_camera()
 
 
+var _workshop: Node3D
+var _ws_floor_mat: ShaderMaterial
+
+
+## Faisal's garage pick A ("clean modern dealership", 2026-10-22): the inspection car stands in a working bay:
+## sealed, lightly worn polished concrete with a drain channel, red roll cabinets, tyre stacks, fluid bottles
+## and two overhead LED work lights. The props ring sits outside the orbit radius so the camera never clips them.
+## Garage only; the showroom display cars keep the bare floor. Idempotent.
+func dress_workshop() -> void:
+	if _workshop != null:
+		return
+	_workshop = Node3D.new()
+	_vp.add_child(_workshop)
+	var fl := MeshInstance3D.new()
+	var pm := PlaneMesh.new()
+	pm.size = Vector2(26, 26)
+	pm.subdivide_width = 1
+	fl.mesh = pm
+	var fm := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode blend_mix, depth_draw_opaque, cull_back, ambient_light_disabled;
+uniform vec2 car_size = vec2(4.8, 1.9);
+varying vec3 wp;
+float h(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.55); }
+float vn(vec2 p) {
+	vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y);
+}
+void vertex() { wp = VERTEX; }
+void fragment() {
+	float n = vn(wp.xz * 1.3) * 0.5 + vn(wp.xz * 5.0) * 0.3 + vn(wp.xz * 21.0) * 0.2;
+	float slab = step(0.988, fract(wp.x / 4.0 + 0.5)) + step(0.988, fract(wp.z / 4.0 + 0.5));
+	vec3 col = mix(vec3(0.16, 0.16, 0.165), vec3(0.27, 0.265, 0.255), n);
+	// tyre scuffs where cars roll in, darker oil blush under the engine bay
+	col *= 1.0 - 0.12 * smoothstep(0.55, 0.9, vn(wp.xz * vec2(0.6, 3.0) + 7.0)) * step(abs(abs(wp.z) - 0.8), 0.25);
+	col *= 1.0 - 0.15 * (1.0 - smoothstep(0.0, 1.4, length(wp.xz - vec2(1.4, 0.0)))) * vn(wp.xz * 3.0);
+	col *= 1.0 - min(slab, 1.0) * 0.18;
+	// drain channel across the bay with a steel grate
+	float d = abs(wp.z - 2.45);
+	float grate = step(d, 0.12) * (0.55 + 0.45 * step(0.5, fract(wp.x * 9.0)));
+	col = mix(col, vec3(0.12, 0.12, 0.13), step(d, 0.12) * 0.85);
+	col = mix(col, vec3(0.42, 0.43, 0.45), grate * 0.4);
+	vec2 q = abs(wp.xz) / (car_size * 0.5 + vec2(0.35));
+	float contact = 1.0 - smoothstep(0.55, 1.15, length(pow(q, vec2(3.0))));
+	ALBEDO = col * (1.0 - contact * 0.55);
+	ROUGHNESS = mix(0.5, 0.8, n);
+	METALLIC = step(d, 0.12) * 0.6;
+	SPECULAR = 0.15;
+	ALPHA = 1.0 - smoothstep(8.0, 12.0, length(wp.xz));
+}
+"""
+	fm.shader = sh
+	_ws_floor_mat = fm
+	fl.material_override = fm
+	fl.position.y = -0.002
+	_workshop.add_child(fl)
+	if _floor:
+		_floor.visible = false
+	var red := StandardMaterial3D.new()
+	red.albedo_color = Color(0.62, 0.06, 0.05)
+	red.metallic = 0.35
+	red.roughness = 0.32
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.05, 0.05, 0.055)
+	dark.roughness = 0.6
+	var chrome := StandardMaterial3D.new()
+	chrome.albedo_color = Color(0.85, 0.86, 0.88)
+	chrome.metallic = 1.0
+	chrome.roughness = 0.18
+	var rubber := StandardMaterial3D.new()
+	rubber.albedo_color = Color(0.035, 0.035, 0.04)
+	rubber.roughness = 0.85
+	# roll cabinets: body, drawer seams and chrome pulls (ring at 9.5 m, behind and either side of the car)
+	for a in [0.0, 30.0, 90.0, 150.0, 180.0, 240.0, 300.0, 330.0]:
+		var at := Vector3(sin(deg_to_rad(a)), 0, -cos(deg_to_rad(a))) * 9.5
+		var cab := Node3D.new()
+		cab.position = at
+		cab.rotation.y = deg_to_rad(-a)
+		_workshop.add_child(cab)
+		_wbox(cab, Vector3(1.6, 1.05, 0.62), Vector3(0, 0.6, 0), red)
+		_wbox(cab, Vector3(1.66, 0.05, 0.66), Vector3(0, 1.15, 0), chrome)
+		_wbox(cab, Vector3(1.5, 0.1, 0.5), Vector3(0, 0.05, 0), dark)
+		for i in 6:
+			var y := 0.2 + i * 0.16
+			_wbox(cab, Vector3(1.5, 0.012, 0.01), Vector3(0, y, 0.315), dark)
+			_wbox(cab, Vector3(0.5, 0.02, 0.03), Vector3(0, y + 0.07, 0.33), chrome)
+		# fluid bottles and a tool tray on top
+		for j in 4:
+			var b := MeshInstance3D.new()
+			var cm := CylinderMesh.new()
+			cm.top_radius = 0.045
+			cm.bottom_radius = 0.055
+			cm.height = 0.26
+			b.mesh = cm
+			var bm := StandardMaterial3D.new()
+			bm.albedo_color = [Color(0.95, 0.75, 0.1), Color(0.1, 0.35, 0.8), Color(0.9, 0.9, 0.9), Color(0.15, 0.6, 0.25)][j]
+			bm.roughness = 0.35
+			b.material_override = bm
+			b.position = Vector3(-0.6 + j * 0.16, 1.31, 0.05)
+			cab.add_child(b)
+		_wbox(cab, Vector3(0.6, 0.06, 0.32), Vector3(0.45, 1.2, 0), dark)
+	# tyre stacks
+	for a in [60.0, 120.0, 210.0, 270.0]:
+		var at := Vector3(sin(deg_to_rad(a)), 0, -cos(deg_to_rad(a))) * 10.2
+		for k in 4:
+			var t := MeshInstance3D.new()
+			var tm := TorusMesh.new()
+			tm.inner_radius = 0.2
+			tm.outer_radius = 0.34
+			t.mesh = tm
+			t.scale = Vector3(1, 1.25, 1)
+			t.material_override = rubber
+			t.position = at + Vector3(0, 0.11 + k * 0.23, 0)
+			_workshop.add_child(t)
+	# overhead LED work lights: emissive bars on cables plus two cool-white lights that model the paint
+	var led := StandardMaterial3D.new()
+	led.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	led.albedo_color = Color(1.0, 0.98, 0.94)
+	for z in [-1.4, 1.4]:
+		var housing := _wbox(_workshop, Vector3(3.2, 0.08, 0.26), Vector3(0, 3.45, z), dark)
+		housing.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var bar := _wbox(_workshop, Vector3(3.0, 0.02, 0.18), Vector3(0, 3.40, z), led)
+		bar.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var l := OmniLight3D.new()
+		l.position = Vector3(0, 3.2, z)
+		l.omni_range = 7.0
+		l.light_energy = 0.9
+		l.light_color = Color(0.96, 0.97, 1.0)
+		_workshop.add_child(l)
+
+
+func _wbox(parent: Node, size: Vector3, pos: Vector3, m: Material) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = size
+	mi.mesh = bm
+	mi.material_override = m
+	mi.position = pos
+	parent.add_child(mi)
+	return mi
+
+
 func set_car(c: Dictionary) -> void:
 	car = c
 	Game.ensure_damage(car)
@@ -171,6 +315,8 @@ func set_car(c: Dictionary) -> void:
 		aabb = a if first else aabb.merge(a)
 		first = false
 	(_floor.material_override as ShaderMaterial).set_shader_parameter("car_size", Vector2(aabb.size.x, aabb.size.z))
+	if _ws_floor_mat:
+		_ws_floor_mat.set_shader_parameter("car_size", Vector2(aabb.size.x, aabb.size.z))
 	_min_dist = maxf(5.5, aabb.size.length() * 1.1)
 	_max_dist = _min_dist * 1.55
 	dist = clampf(maxf(7.0, aabb.size.x * 1.95), _min_dist, _max_dist)
