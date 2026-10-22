@@ -475,6 +475,12 @@ func _prefetch() -> void:
 	# the PC desk and the garage draw their render through SceneArt's own cache (first visits stalled ~45 ms each)
 	for view in ["desk", "garage", "showroom"]:
 		_prefetch_one("res://assets/world/bg_%s%s.jpg" % [view, sfx], "scene:" + view + sfx)
+	# their night renders too: _cover and the background shader look the night render up on every first draw,
+	# a ~30 ms synchronous decode on the first PC and garage frames
+	for view in ["lot", "office", "showroom", "dealdesk", "desk", "garage"]:
+		var nk: String = view + sfx
+		if not WorldLook._night.has(nk):
+			_prefetch_one("res://assets/world/bg_%s_night.jpg" % nk, "night:" + nk)
 	# and the desk's own renders: the furniture you own and the collectibles in their slots
 	for dv in ["shelfunit", "keyboard", "desk_" + str(Game.equipped.get("desk", "folding")),
 			"monitor_" + str(Game.equipped.get("monitor", "crt")), "chair_" + str(Game.equipped.get("chair", "plastic"))]:
@@ -529,6 +535,8 @@ func _poll_prefetch() -> void:
 			UI._tex_cache[path] = t
 		elif kind.begins_with("scene:"):
 			SceneArt._texs[kind.trim_prefix("scene:")] = t
+		elif kind.begins_with("night:"):
+			WorldLook._night[kind.trim_prefix("night:")] = t
 		elif kind == "hold":
 			_held.append(t)
 		elif kind.begins_with("dv:"):
@@ -560,6 +568,17 @@ func _prewarm_3d_views() -> void:
 			v.position = Vector2.ZERO
 			v.size = get_viewport_rect().size
 			warming.append(v)
+	# the garage's first visit spent ~50 ms building the car (model, paint, pick data): do it here, hidden
+	if not Game.cars.is_empty():
+		if _find_car(selected_car_id).is_empty():
+			selected_car_id = Game.cars[0].id
+		var gc := _find_car(selected_car_id)
+		Game.ensure_damage(gc)
+		if not is_same(garage_view.car, gc):
+			garage_view.set_car(gc)
+	# and the showroom's display cars (~50 ms of model building on the first showroom visit), now it is in the tree
+	if lobby_3d.is_inside_tree() and lobby_3d.get_meta("cars_sig", 0) != _lobby_cars_sig():
+		_lobby_set_cars()
 	# probes render a step per frame (six faces, then filtering), one probe at a time: allow for both
 	for i in 40:
 		await get_tree().process_frame
@@ -571,6 +590,24 @@ func _prewarm_3d_views() -> void:
 
 	_warming_3d = false
 	_warmed_3d = true
+	_title_warmup()
+
+
+## The rest of the first-visit stalls were one-off work on the main thread: the painted listing backdrop (a
+## per-pixel loop) and each car's art decode on the PC and lot. While the title is up, do it one item a frame.
+func _title_warmup() -> void:
+	_listing_backdrop()
+	var cars: Array = Game.cars.duplicate()
+	for l in Game.listings.slice(0, 12):
+		if l is Dictionary and l.has("car"):
+			cars.append(l.car)
+	var art := CarArt.new()
+	for c in cars:
+		if current != "title" or not is_inside_tree():
+			break
+		art.set_car(c)
+		await get_tree().process_frame
+	art.free()
 
 
 func _exit_tree() -> void:
