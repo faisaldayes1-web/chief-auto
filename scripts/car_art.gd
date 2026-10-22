@@ -65,26 +65,58 @@ static func slug(model: String) -> String:
 func set_car(c: Dictionary) -> void:
 	car = c
 	var sl := slug(c.get("model", ""))
-	var path := "res://assets/cars/%s.png" % sl
-	_tex = load(path) if ResourceLoader.exists(path) else null
-	# rendered side views: a grey paint layer we tint, plus glass, wheels and trim on top
-	var pp := "res://assets/cars/%s_paint.png" % sl
-	_paint = load(pp) if ResourceLoader.exists(pp) else null
-	var dp := "res://assets/cars/%s_detail.png" % sl
-	_detail = load(dp) if ResourceLoader.exists(dp) else null
-	var qp := "res://assets/cars/%s_q_paint.png" % sl
-	var qd := "res://assets/cars/%s_q_detail.png" % sl
-	_q_paint = load(qp) if ResourceLoader.exists(qp) else null
-	_q_detail = load(qd) if ResourceLoader.exists(qd) else null
+	_tex = null
+	_paint = null
+	_detail = null
+	_q_paint = null
+	_q_detail = null
 	_l_paint = null
 	_l_detail = null
+	# Only load the layers _draw will use, in its order: lot sprite, three-quarter view, side photo, side layers.
+	# (Loading all seven PNGs per car made the lot and the PC lists stall on every visit.)
 	if lot_key != "":
 		var lp := "res://assets/cars/lot/%s_%s_paint.png" % [lot_key, sl]
 		var ld := "res://assets/cars/lot/%s_%s_detail.png" % [lot_key, sl]
 		if ResourceLoader.exists(lp) and ResourceLoader.exists(ld):
-			_l_paint = load(lp)
-			_l_detail = load(ld)
+			_l_paint = _load(lp)
+			_l_detail = _load(ld)
+			queue_redraw()
+			return
+	if quarter:
+		var qp := "res://assets/cars/%s_q_paint.png" % sl
+		var qd := "res://assets/cars/%s_q_detail.png" % sl
+		if ResourceLoader.exists(qp) and ResourceLoader.exists(qd):
+			_q_paint = _load(qp)
+			_q_detail = _load(qd)
+			queue_redraw()
+			return
+	var path := "res://assets/cars/%s.png" % sl
+	_tex = _load(path) if ResourceLoader.exists(path) else null
+	if _tex == null:
+		# rendered side views: a grey paint layer we tint, plus glass, wheels and trim on top
+		var pp := "res://assets/cars/%s_paint.png" % sl
+		var dp := "res://assets/cars/%s_detail.png" % sl
+		_paint = _load(pp) if ResourceLoader.exists(pp) else null
+		_detail = _load(dp) if ResourceLoader.exists(dp) else null
 	queue_redraw()
+
+
+## Car sprites are reused on every screen; keep the recent ones decoded instead of reloading the PNGs each visit.
+static var _cache := {}
+static var _order: Array[String] = []
+const CACHE_MAX := 48
+
+static func _load(path: String) -> Texture2D:
+	if _cache.has(path):
+		_order.erase(path)
+		_order.append(path)
+		return _cache[path]
+	var t: Texture2D = load(path)
+	_cache[path] = t
+	_order.append(path)
+	while _order.size() > CACHE_MAX:
+		_cache.erase(_order.pop_front())
+	return t
 
 
 ## True when the lot sprite for lot_key was found (set lot_key before set_car).

@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dr52x3bfx285l"
-path="res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.ctex"
+path.s3tc="res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.s3tc.ctex"
+path.etc2="res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c64c1ff7eeb3a908afe511ba310309d7"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/forde_mustank_rs_pattern_squares.jpg"
-dest_files=["res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.ctex"]
+dest_files=["res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.s3tc.ctex", "res://.godot/imported/forde_mustank_rs_pattern_squares.jpg-62ed0d03636352e64425ba457d2ef93c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

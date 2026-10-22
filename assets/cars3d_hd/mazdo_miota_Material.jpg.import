@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://khg1gxt7otrm"
-path="res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.ctex"
+path.s3tc="res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.s3tc.ctex"
+path.etc2="res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "e65820979b8f253ef4cf95347fca42b5"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/mazdo_miota_Material.jpg"
-dest_files=["res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.ctex"]
+dest_files=["res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.s3tc.ctex", "res://.godot/imported/mazdo_miota_Material.jpg-8600cd9a3388574eb21149fb9f3a326b.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

@@ -31,6 +31,8 @@ pointing/emulate_touch_from_mouse=true
 
 [rendering]
 
+reflections/reflection_atlas/reflection_count=4
+
 renderer/rendering_method="forward_plus"
 renderer/rendering_method.web="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

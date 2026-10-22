@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dwpdclybge46k"
-path="res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.ctex"
+path.s3tc="res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.s3tc.ctex"
+path.etc2="res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "f4c19012fdc981af70abfd37f1d2d2e6"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/bmv_m4_rs_pattern_mesh.jpg"
-dest_files=["res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.ctex"]
+dest_files=["res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.s3tc.ctex", "res://.godot/imported/bmv_m4_rs_pattern_mesh.jpg-5b1cc1bb8dfcf3bc50a0d9e0ca7fc4de.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

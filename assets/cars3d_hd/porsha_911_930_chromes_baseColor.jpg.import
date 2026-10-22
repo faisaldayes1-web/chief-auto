@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://r6x88ny3374h"
-path="res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.ctex"
+path.s3tc="res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.s3tc.ctex"
+path.etc2="res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "d5725227db9ad9a4b64b06bd91ea7bcf"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/porsha_911_930_chromes_baseColor.jpg"
-dest_files=["res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.ctex"]
+dest_files=["res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.s3tc.ctex", "res://.godot/imported/porsha_911_930_chromes_baseColor.jpg-0d52c89843e8cbad3815dac1fe33a5d9.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

@@ -2,23 +2,22 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://chce2d3rxe0ic"
-path="res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.ctex"
+uid="uid://b67wpi44ltox2"
+path.s3tc="res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.s3tc.ctex"
+path.etc2="res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.etc2.ctex"
 metadata={
-"vram_texture": false
-}
-generator_parameters={
-"md5": "0ff776316fed23769bf4b62369e3b18d"
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cars3d_hd/mercedez_g_wagon_interiordfs_0_baseColor.jpg"
-dest_files=["res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.ctex"]
+dest_files=["res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.s3tc.ctex", "res://.godot/imported/mercedez_g_wagon_interiordfs_0_baseColor.jpg-63cfbec914b72eed7b2c525288320c9c.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

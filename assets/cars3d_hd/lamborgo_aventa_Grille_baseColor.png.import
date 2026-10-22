@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bvdf0fb55w7jg"
-path="res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.ctex"
+path.s3tc="res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.s3tc.ctex"
+path.etc2="res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "a2ac06b1dab0365bc7ad8cc2e5222f7d"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/lamborgo_aventa_Grille_baseColor.png"
-dest_files=["res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.ctex"]
+dest_files=["res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.s3tc.ctex", "res://.godot/imported/lamborgo_aventa_Grille_baseColor.png-84b5b615d231b2f7584119682933cdfc.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

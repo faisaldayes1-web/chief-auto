@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c5kulhy7x81ip"
-path="res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.ctex"
+path.s3tc="res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.s3tc.ctex"
+path.etc2="res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "3eed8692893f5937a3c2f607b657c49a"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/people3d/p00_f001_head_color.jpg"
-dest_files=["res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.ctex"]
+dest_files=["res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.s3tc.ctex", "res://.godot/imported/p00_f001_head_color.jpg-99abcb608376c6d95f2aa4c8c006c9dc.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

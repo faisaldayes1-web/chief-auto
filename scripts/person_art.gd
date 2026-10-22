@@ -55,8 +55,7 @@ static func pool_pid(n: int, name := "") -> String:
 static func portrait(pid: String) -> Texture2D:
 	if pid.begins_with("p") and pid.substr(1).is_valid_int() and int(pid.substr(1)) >= POOL:
 		pid = pool_pid(int(pid.substr(1)))
-	var path := "res://assets/people/%s_portrait.png" % pid
-	return load(path) if ResourceLoader.exists(path) else null
+	return UI.tex("res://assets/people/%s_portrait.png" % pid)
 
 
 func _load() -> void:
@@ -68,8 +67,7 @@ func _load() -> void:
 		if not full_body:
 			var m := "happy" if mood > 0.3 else ("angry" if mood < -0.3 else "neutral")
 			path = "res://assets/people/%s_face_%s.png" % [pid, m]
-		if ResourceLoader.exists(path):
-			_tex = load(path)
+		_tex = UI.tex(path)
 	queue_redraw()
 var highlight := false:
 	set(v):

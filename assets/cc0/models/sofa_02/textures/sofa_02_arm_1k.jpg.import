@@ -3,25 +3,27 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cnqmoblg4cib2"
-path="res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.ctex"
+path.s3tc="res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.s3tc.ctex"
+path.etc2="res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/models/sofa_02/textures/sofa_02_arm_1k.jpg"
-dest_files=["res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.ctex"]
+dest_files=["res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.s3tc.ctex", "res://.godot/imported/sofa_02_arm_1k.jpg-1e66c541825b0075a1127ce27c956b7a.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -103,6 +103,8 @@ func _overlay_open() -> bool:
 
 
 func _process(delta: float) -> void:
+	if not _prefetching.is_empty():
+		_poll_prefetch()
 	if current == "title":
 		return
 	_tick_auction(delta)
@@ -246,9 +248,25 @@ func _build_nav() -> Control:
 
 
 ## A background render of the dealership the player owns right now (apartments are the same at every tier).
+## The last few are kept decoded: a 2560x1440 render took 30-100 ms to reload on every screen change.
 static func world_tex(key: String) -> Texture2D:
 	var suffix := "" if key.begins_with("apartment") else Game.world_suffix()
-	return load("res://assets/world/bg_%s%s.jpg" % [key, suffix])
+	var path := "res://assets/world/bg_%s%s.jpg" % [key, suffix]
+	if _world_cache.has(path):
+		_world_order.erase(path)
+		_world_order.append(path)
+		return _world_cache[path]
+	var t: Texture2D = load(path)
+	_world_cache[path] = t
+	_world_order.append(path)
+	while _world_order.size() > WORLD_CACHE_MAX:
+		_world_cache.erase(_world_order.pop_front())
+	return t
+
+
+const WORLD_CACHE_MAX := 8
+static var _world_cache := {}
+static var _world_order: Array[String] = []
 
 
 var bg_key := ""
@@ -363,10 +381,40 @@ func _stage(mode: String) -> SceneArt:
 ## The garage's car view and the showroom hall each cost up to a second to build (a 3D world, its reflection
 ## probe, the display cars). Leaving their screen takes them out of the tree instead of freeing them with the
 ## rest of the screen, and the next visit re-attaches them.
+## They wait in a hidden holder rather than outside the tree: taking a view out of the tree while its reflection
+## probe was still rendering (leaving the title within a second, or a quick garage visit) logged
+## 'Parameter "scenario" is null' from the renderer. Hidden, the view doesn't render, and it doesn't process.
 func _park_3d_views() -> void:
 	for v in [garage_view, lobby_3d]:
-		if v and is_instance_valid(v) and v.get_parent():
-			v.get_parent().remove_child(v)
+		if v and is_instance_valid(v):
+			_park(v)
+
+
+var _parking: Control
+
+
+func _park(v: Control) -> void:
+	if _parking == null:
+		_parking = Control.new()
+		_parking.name = "Parked3D"
+		_parking.visible = false
+		_parking.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_parking)
+		move_child(_parking, 0)
+	if v.get_parent() == _parking:
+		return
+	if v.get_parent():
+		v.get_parent().remove_child(v)
+	v.process_mode = Node.PROCESS_MODE_DISABLED
+	_parking.add_child(v)
+
+
+## Moves a (possibly parked) 3D view onto a screen.
+func _unpark(v: Control, to: Node) -> void:
+	if v.get_parent():
+		v.get_parent().remove_child(v)
+	v.process_mode = Node.PROCESS_MODE_INHERIT
+	to.add_child(v)
 
 
 ## First visits stalled too: building a view loads its models and textures, and the reflection probe renders
@@ -374,6 +422,61 @@ func _park_3d_views() -> void:
 ## buffers match), then park the views for the garage and showroom to pick up.
 var _warming_3d := false
 var _warmed_3d := false
+
+
+## First visits stalled on decoding their art (60-110 ms a screen). While the title is up, the backgrounds, icons
+## and portraits load on worker threads into the caches (world_tex, UI.tex), so the first visit finds them ready.
+var _prefetching := {}   # path -> "world" | "ui"
+
+
+func _prefetch() -> void:
+	if not _prefetching.is_empty():
+		return
+	var sfx := Game.world_suffix()
+	for key in ["lot", "office", "showroom", "dealdesk"]:
+		_prefetch_one("res://assets/world/bg_%s%s.jpg" % [key, sfx], "world")
+	_prefetch_one("res://assets/world/bg_apartment%d.jpg" % Game.apartment, "world")
+	for dir in ["res://assets/icons", "res://assets/web"]:
+		for f in _res_files(dir, ".svg"):
+			_prefetch_one(dir + "/" + f, "ui")
+	for f in _res_files("res://assets/people", "_portrait.png"):
+		_prefetch_one("res://assets/people/" + f, "ui")
+
+
+func _prefetch_one(path: String, kind: String) -> void:
+	if not ResourceLoader.exists(path) or UI._tex_cache.has(path) or _world_cache.has(path):
+		return
+	if ResourceLoader.load_threaded_request(path, "", false) == OK:
+		_prefetching[path] = kind
+
+
+## Files in a res:// folder, including exported builds (which list "x.svg.import" instead of "x.svg").
+static func _res_files(dir: String, suffix: String) -> Array:
+	var out := []
+	for f in DirAccess.get_files_at(dir):
+		f = f.trim_suffix(".import").trim_suffix(".remap")
+		if f.ends_with(suffix) and not out.has(f):
+			out.append(f)
+	return out
+
+
+func _poll_prefetch() -> void:
+	for path in _prefetching.keys():
+		var st := ResourceLoader.load_threaded_get_status(path)
+		if st == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+			continue
+		var kind: String = _prefetching[path]
+		_prefetching.erase(path)
+		if st != ResourceLoader.THREAD_LOAD_LOADED:
+			continue
+		var t: Texture2D = ResourceLoader.load_threaded_get(path)
+		if kind == "ui":
+			UI._tex_cache[path] = t
+		elif not _world_cache.has(path):
+			_world_cache[path] = t
+			_world_order.push_front(path)   # oldest first: a prefetched background is the first to go
+			while _world_order.size() > WORLD_CACHE_MAX:
+				_world_cache.erase(_world_order.pop_front())
 
 
 func _prewarm_3d_views() -> void:
@@ -386,9 +489,9 @@ func _prewarm_3d_views() -> void:
 		_new_lobby_3d()
 	var warming := []
 	for v in [garage_view, lobby_3d]:
-		if v.get_parent() == null:
+		if v.get_parent() == null or v.get_parent() == _parking:
 			v.prewarming = true
-			add_child(v)
+			_unpark(v, self)
 			move_child(v, 0)
 			v.position = Vector2.ZERO
 			v.size = get_viewport_rect().size
@@ -400,7 +503,7 @@ func _prewarm_3d_views() -> void:
 		if is_instance_valid(v):
 			v.prewarming = false
 			if v.get_parent() == self:
-				remove_child(v)
+				_park(v)
 
 	_warming_3d = false
 	_warmed_3d = true
@@ -419,6 +522,7 @@ func _exit_tree() -> void:
 func _screen_title() -> void:
 	set_bg("lot", 0.5)
 	get_tree().create_timer(0.4).timeout.connect(_prewarm_3d_views)
+	_prefetch()
 	var center := CenterContainer.new()
 	content.add_child(center)
 	var v := UI.vbox(14)
@@ -1341,9 +1445,9 @@ func _web_box() -> PanelContainer:
 ## Brand art: logos, favicons and white line pictograms in assets/web (falls back to assets/icons).
 static func web_tex(name: String) -> Texture2D:
 	for dir in ["web", "icons"]:
-		var p := "res://assets/%s/%s.svg" % [dir, name]
-		if ResourceLoader.exists(p):
-			return load(p)
+		var t := UI.tex("res://assets/%s/%s.svg" % [dir, name])
+		if t:
+			return t
 	return null
 
 
@@ -1857,8 +1961,7 @@ func _glass_btn(text: String, cb: Callable, min_w := 0) -> Button:
 
 ## Prop render for a shop item, or null when it has not been rendered.
 func _prop_tex(id: String) -> Texture2D:
-	var p := "res://assets/props/%s.png" % id
-	return load(p) if ResourceLoader.exists(p) else null
+	return UI.tex("res://assets/props/%s.png" % id)
 
 
 ## "Look at desk": the browser goes away and the desk shows whole, with a hotspot on every collectible slot.
@@ -3254,7 +3357,7 @@ func _screen_garage() -> void:
 	for sig in [garage_view.part_clicked, garage_view.part_hovered]:
 		for con in sig.get_connections():
 			sig.disconnect(con.callable)
-	stage.add_child(garage_view)
+	_unpark(garage_view, stage)
 	garage_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if not is_same(garage_view.car, car):
 		garage_view.set_car(car)
@@ -3802,15 +3905,13 @@ func _build_lobby(stage: SceneArt) -> void:
 	if lobby_3d == null or not is_instance_valid(lobby_3d):
 		_new_lobby_3d()
 	if lobby_3d.get_parent() != stage:
-		if lobby_3d.get_parent():
-			lobby_3d.get_parent().remove_child(lobby_3d)
 		for ch in stage.get_children():
 			ch.queue_free()
 		stage.mode = "lobby3d"
 		lobby_sel = {}
 		lobby_car_sel = {}
 		lobby_3d.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		stage.add_child(lobby_3d)
+		_unpark(lobby_3d, stage)
 		lobby_3d.reset_floor()
 		lobby_ui = Control.new()
 		lobby_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -5548,8 +5649,7 @@ func _with_icon(b: Button, name: String, px := 24) -> void:
 
 ## White line icons in assets/icons, tinted by the node that shows them.
 static func icon_tex(name: String) -> Texture2D:
-	var p := "res://assets/icons/%s.svg" % name
-	return load(p) if ResourceLoader.exists(p) else null
+	return UI.tex("res://assets/icons/%s.svg" % name)
 
 
 func _icon(name: String, px := 24, tint := UI.GOLD) -> TextureRect:

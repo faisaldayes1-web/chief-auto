@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://b0xb741qui83i"
-path="res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.ctex"
+path.s3tc="res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.s3tc.ctex"
+path.etc2="res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "52bb0a83509f8e3a36d419a6a0145e69"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/toyoda_camri_rs_pattern_vslats.jpg"
-dest_files=["res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.ctex"]
+dest_files=["res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.s3tc.ctex", "res://.godot/imported/toyoda_camri_rs_pattern_vslats.jpg-b8e23d5a48f62008514cdc14f28d02f0.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

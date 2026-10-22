@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dihxc3irntuug"
-path="res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.ctex"
+path.s3tc="res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.s3tc.ctex"
+path.etc2="res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "df87d21dae95913d81f885ad751d9829"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/hondo_civix_rs_pattern_slats.jpg"
-dest_files=["res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.ctex"]
+dest_files=["res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.s3tc.ctex", "res://.godot/imported/hondo_civix_rs_pattern_slats.jpg-3120b4b327d8fe4477e840791317b44b.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

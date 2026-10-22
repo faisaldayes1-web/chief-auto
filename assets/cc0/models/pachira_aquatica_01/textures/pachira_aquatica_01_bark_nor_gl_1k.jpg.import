@@ -3,23 +3,25 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dqgyk3rigo3xj"
-path="res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.ctex"
+path.s3tc="res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.s3tc.ctex"
+path.etc2="res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 
 [deps]
 
 source_file="res://assets/cc0/models/pachira_aquatica_01/textures/pachira_aquatica_01_bark_nor_gl_1k.jpg"
-dest_files=["res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.ctex"]
+dest_files=["res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.s3tc.ctex", "res://.godot/imported/pachira_aquatica_01_bark_nor_gl_1k.jpg-ab5c73ebe9a12cd727c3f3b77591837a.etc2.ctex"]
 
 [params]
 
-compress/mode=1
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
-compress/normal_map=0
+compress/normal_map=1
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1

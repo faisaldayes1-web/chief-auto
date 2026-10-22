@@ -13,6 +13,18 @@ const DIALOG_NAVY := Color(0.04, 0.09, 0.2, 0.72)
 const DIALOG_HEAD := Color(0.32, 0.45, 0.62, 0.85)
 const DIALOG_RIM := Color(0.62, 0.8, 1.0, 0.75)
 
+
+## Small shared textures (icons, favicons, portraits, prop renders) stay loaded once used: every screen is rebuilt
+## on each visit, and re-decoding the same files is most of a screen change's cost. null when the file is missing.
+static var _tex_cache := {}
+
+static func tex(path: String) -> Texture2D:
+	if _tex_cache.has(path):
+		return _tex_cache[path]
+	var t: Texture2D = load(path) if ResourceLoader.exists(path) else null
+	_tex_cache[path] = t
+	return t
+
 static var _body_font: Font
 static var _head_font: Font
 

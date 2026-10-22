@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cr2f4oc2uvulg"
-path="res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.ctex"
+path.s3tc="res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.s3tc.ctex"
+path.etc2="res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "590e694cbc3a815e3fe7d0415bad9c1d"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/mercedez_g_wagon_exhausts_baseColor.jpg"
-dest_files=["res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.ctex"]
+dest_files=["res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.s3tc.ctex", "res://.godot/imported/mercedez_g_wagon_exhausts_baseColor.jpg-11d4398262a557ace3f7346fe6e90b27.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

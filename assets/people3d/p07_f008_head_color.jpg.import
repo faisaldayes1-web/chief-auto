@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://r77s21neguem"
-path="res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.ctex"
+path.s3tc="res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.s3tc.ctex"
+path.etc2="res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "0b38118072cfbe82612c43a5bbf7ae6c"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/people3d/p07_f008_head_color.jpg"
-dest_files=["res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.ctex"]
+dest_files=["res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.s3tc.ctex", "res://.godot/imported/p07_f008_head_color.jpg-39369ea31cc6cb77a8c2be094f738462.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

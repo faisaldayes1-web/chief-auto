@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://bw3bs6vv874dt"
-path="res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.ctex"
+path.s3tc="res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.s3tc.ctex"
+path.etc2="res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "fe748eae86d69864d97c005981cab803"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/mercedez_g_wagon_leather02_weave_19_baseColor.jpg"
-dest_files=["res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.ctex"]
+dest_files=["res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.s3tc.ctex", "res://.godot/imported/mercedez_g_wagon_leather02_weave_19_baseColor.jpg-7883a6d9cbea33378c8745d7c4ffa7ec.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

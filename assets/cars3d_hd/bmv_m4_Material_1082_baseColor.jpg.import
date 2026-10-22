@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c274bc0oqd20j"
-path="res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.ctex"
+path.s3tc="res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.s3tc.ctex"
+path.etc2="res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "00f04b81f163a8bbdaad13e0b898fe38"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/bmv_m4_Material_1082_baseColor.jpg"
-dest_files=["res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.ctex"]
+dest_files=["res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.s3tc.ctex", "res://.godot/imported/bmv_m4_Material_1082_baseColor.jpg-964af833b2be57fa9f7750c13ad9baff.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1

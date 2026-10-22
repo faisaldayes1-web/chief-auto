@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://do76x3apmtlds"
-path="res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.ctex"
+path.s3tc="res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.s3tc.ctex"
+path.etc2="res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "b6d81b360a5672d80c27430f39153e2c"
@@ -14,11 +16,11 @@ generator_parameters={
 [deps]
 
 source_file="res://assets/cars3d_hd/hondo_civix_Body01id9491Mtl_baseColor.jpg"
-dest_files=["res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.ctex"]
+dest_files=["res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.s3tc.ctex", "res://.godot/imported/hondo_civix_Body01id9491Mtl_baseColor.jpg-65f14d9efb68de50b82db9b899fe6ae8.etc2.ctex"]
 
 [params]
 
-compress/mode=0
+compress/mode=2
 compress/high_quality=false
 compress/lossy_quality=0.7
 compress/hdr_compression=1
