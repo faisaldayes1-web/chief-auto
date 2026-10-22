@@ -375,10 +375,11 @@ void fragment() {
 	var gb := _box(Vector3(15.8, 4.6, 0.04), Vector3(3.8, 2.3, -7.9), glass, 0, false)
 	gb.sorting_offset = -1.0
 	_box(Vector3(0.04, 4.6, 15.6), Vector3(11.7, 2.3, -0.4), glass, 0, false)
+	# the mullions cast the low sun's stripes across the floor (pick B's long light shafts)
 	for x in range(-4, 12, 3):
-		_box(Vector3(0.08, 4.8, 0.14), Vector3(x, 2.4, -7.9), frame, 0, false)
+		_box(Vector3(0.08, 4.8, 0.14), Vector3(x, 2.4, -7.9), frame, 0, true)
 	for z in range(-7, 8, 3):
-		_box(Vector3(0.14, 4.8, 0.08), Vector3(11.7, 2.4, z), frame, 0, false)
+		_box(Vector3(0.14, 4.8, 0.08), Vector3(11.7, 2.4, z), frame, 0, true)
 	for y in [0.06, 4.55]:
 		_box(Vector3(15.8, 0.12, 0.16), Vector3(3.8, y, -7.9), frame, 0, false)
 		_box(Vector3(0.16, 0.12, 15.6), Vector3(11.7, y, -0.4), frame, 0, false)
@@ -466,6 +467,17 @@ func _coastal_dressing() -> void:
 	for p in [[Vector3(1.9, 0, -6.95), 30.0], [Vector3(8.2, 0, -6.95), 160.0], [Vector3(10.95, 0, -2.4), 260.0], [Vector3(10.95, 0, 1.8), 80.0]]:
 		_box(Vector3(0.7, 0.55, 0.7), p[0] + Vector3(0, 0.275, 0), planter)
 		_prop("pachira_aquatica_01", p[0] + Vector3(0, 0.5, 0), p[1], 2.9)
+	# a palm-lined promenade outside the glass, between the hall and the beach photo (two draw calls in all)
+	# (far enough out that their crowns clear the window head from eye height)
+	var bases := []
+	for i in 9:
+		bases.append(Vector3(-8.0 + i * 3.6, 0, -17.0 - 2.2 * (i % 2)))
+	for i in 5:
+		bases.append(Vector3(22.0 + 2.0 * (i % 2), 0, -9.0 + i * 4.2))
+	var palms := PalmMesh.row(bases, 7, 6.0, 8.5)
+	for c in palms.get_children():
+		(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_vp.add_child(palms)
 	# warm washes: grazing light down the slat wall and over the desk (no shadows, so the cost stays flat)
 	for p in [Vector3(-9.2, 4.2, -6.6), Vector3(-6.2, 4.2, -6.6)]:
 		var w := SpotLight3D.new()
@@ -502,7 +514,8 @@ func _backdrop_mesh(r: float, a0: float, a1: float, aspect: float, eye_top: floa
 
 ## Day/night: the view card and light follow Game.night_amount().
 func set_time(night: float, sunset: float) -> void:
-	_view_mat.albedo_color = Color(1.14, 1.02, 0.8).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
+	# brighter than 1.0: the unshaded photo goes through ACES, which greyed it into haze next to pick B's sunny view
+	_view_mat.albedo_color = Color(1.42, 1.3, 1.08).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
 	_sun.light_energy = lerp(1.35, 0.0, night)
 	_sun.light_color = Color(1.0, 0.8, 0.58).lerp(Color(1.0, 0.64, 0.38), sunset)
 	_env.ambient_light_energy = lerp(0.55, 0.42, night)

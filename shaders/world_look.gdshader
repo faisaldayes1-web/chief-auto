@@ -15,7 +15,8 @@ uniform vec2 texel = vec2(0.000625, 0.0011);       // 1 / render size
 // canvas grain sits on top. 0 = the plain render (garage, apartment).
 uniform float paint : hint_range(0.0, 1.0) = 0.0;
 uniform float paint_radius = 4.0;   // in texels of the background render
-uniform float ink = 0.7;            // contour strength
+uniform float ink = 0.55;           // contour strength
+uniform float sun_exposure = 1.55;  // painted views only: exposure lift toward the bright picks
 
 // COLOR in fragment() already holds texture × modulate, so multiplying by it again squared the picture
 // (~35-45% darker): keep the plain vertex/modulate colour from vertex() instead.
@@ -63,14 +64,20 @@ void fragment() {
 		// ink contour from the luminance gradient of the flattened neighbourhood
 		float lx = luma(texture(TEXTURE, UV + vec2(texel.x * 1.5, 0.0)).rgb) - luma(texture(TEXTURE, UV - vec2(texel.x * 1.5, 0.0)).rgb);
 		float ly = luma(texture(TEXTURE, UV + vec2(0.0, texel.y * 1.5)).rgb) - luma(texture(TEXTURE, UV - vec2(0.0, texel.y * 1.5)).rgb);
-		float edge = smoothstep(0.08, 0.32, length(vec2(lx, ly)));
+		float edge = smoothstep(0.1, 0.36, length(vec2(lx, ly)));
 		vec3 p = best;
-		// painted lift: richer mid-tones, slightly lifted shadows, warm sunlit highlights
+		// painted sunlight (picks D are bright, saturated noon illustrations; the renders are a soft overcast):
+		// open the exposure with a highlight shoulder, push saturation hardest in the mid-tones (foliage, flowers,
+		// paint), sun-warm the lit side and keep shadows a clean cool blue instead of grey
 		float pl = luma(p);
-		p = mix(vec3(pl), p, 1.22);
-		p = mix(p, p * vec3(1.05, 1.0, 0.92) + 0.03, smoothstep(0.55, 0.95, pl) * 0.6);
+		p = p * sun_exposure / (1.0 + p * (sun_exposure - 1.0) * 0.55);
+		pl = luma(p);
+		float mid = 1.0 - abs(pl - 0.5) * 1.4;
+		p = mix(vec3(pl), p, 1.25 + 0.3 * clamp(mid, 0.0, 1.0));
+		p = mix(p, p * vec3(1.07, 1.01, 0.88) + vec3(0.03, 0.02, 0.0), smoothstep(0.45, 0.95, pl) * 0.7);
+		p = mix(p, p * vec3(0.9, 0.97, 1.12) + vec3(0.0, 0.01, 0.03), (1.0 - smoothstep(0.05, 0.35, pl)) * 0.6);
 		p = max(p, vec3(0.035, 0.04, 0.06) + p * 0.9);
-		p *= 1.0 - edge * ink * (0.35 + 0.65 * (1.0 - pl));
+		p *= 1.0 - edge * ink * (0.25 + 0.55 * (1.0 - pl));
 		// canvas grain: a fine, stable tooth (screen-space so it never swims with the picture)
 		float g = hash(floor(FRAGCOORD.xy * 0.5)) - 0.5;
 		p += g * 0.025;
