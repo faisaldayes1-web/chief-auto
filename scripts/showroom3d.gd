@@ -89,7 +89,7 @@ func _build_env() -> void:
 	_env.background_mode = Environment.BG_COLOR
 	_env.background_color = Color(0.05, 0.05, 0.06)
 	_env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	_env.ambient_light_color = Color(0.66, 0.64, 0.6)
+	_env.ambient_light_color = Color(0.72, 0.64, 0.54)
 	_env.ambient_light_energy = 0.6
 	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	_env.tonemap_exposure = 1.0
@@ -117,7 +117,7 @@ func _build_env() -> void:
 	_vp.add_child(we)
 	# afternoon sun from where it sits in the beach photo (back right, about 40 degrees up)
 	_sun = DirectionalLight3D.new()
-	_sun.rotation_degrees = Vector3(-40, 126, 0)
+	_sun.rotation_degrees = Vector3(-30, 128, 0)   # pick B: lower, longer warm streaks across the floor
 	_sun.light_color = Color(1.0, 0.9, 0.78)
 	# no shadow map on the web: it gave acne stripes and a hard lit/unlit split across the floor.
 	# Cars and people sit on soft contact-shadow decals instead.
@@ -136,8 +136,8 @@ func _build_env() -> void:
 		var l := OmniLight3D.new()
 		l.position = p
 		l.omni_range = 8.5
-		l.light_energy = 0.55
-		l.light_color = Color(1.0, 0.88, 0.72)
+		l.light_energy = 0.75
+		l.light_color = Color(1.0, 0.82, 0.6)
 		_vp.add_child(l)
 	# desktop Forward+ gets SSR/SSAO and a box-projected reflection probe of the hall
 	RenderQuality.apply_environment(_env, _vp, _sun, Vector3(22, 5, 15))
@@ -230,7 +230,7 @@ func _floor_material() -> Material:
 	m.set_shader_parameter("albedo_tex", load("res://assets/world/showroom_floor_albedo.png"))
 	m.set_shader_parameter("normal_tex", load("res://assets/world/showroom_floor_normal.png"))
 	m.set_shader_parameter("rough_tex", load("res://assets/world/showroom_floor_rough.png"))
-	m.set_shader_parameter("tint", Color(0.72, 0.74, 0.76))
+	m.set_shader_parameter("tint", Color(0.84, 0.76, 0.66))   # pick B: warm sand limestone
 	m.set_shader_parameter("tile", 2.8)
 	m.set_shader_parameter("rough_mul", 0.65)
 	m.set_shader_parameter("normal_depth", 0.22)
@@ -340,9 +340,9 @@ func _build_room() -> void:
 	sign.font = UI.head_font()
 	sign.font_size = 96
 	sign.pixel_size = 0.006
-	sign.modulate = Color(0.97, 0.95, 0.92)
+	sign.modulate = Color(1.0, 0.86, 0.55)   # pick B: a warm brass sign on the wood wall
 	sign.outline_size = 0
-	sign.position = Vector3(-7.7, 2.65, -7.68)
+	sign.position = Vector3(-7.7, 2.65, -7.58)
 	sign.shaded = false
 	sign.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sign)
@@ -352,7 +352,7 @@ func _build_room() -> void:
 	sub.pixel_size = 0.005
 	sub.modulate = Color(0.9, 0.73, 0.38)
 	sub.outline_size = 0
-	sub.position = Vector3(-7.7, 2.08, -7.68)
+	sub.position = Vector3(-7.7, 2.08, -7.58)
 	sub.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(sub)
 	# glass: the back wall right of the sign and the whole right wall. Faint green-grey tint, more reflective
@@ -421,8 +421,61 @@ void fragment() {
 	for p in [[Vector3(-1.0, 0, -6.4), 0.0], [Vector3(-10.4, 0, 5.5), 70.0], [Vector3(5.2, 0, -6.4), 200.0]]:
 		_box(Vector3(0.45, 0.5, 0.45), p[0] + Vector3(0, 0.25, 0), frame)
 		_prop("calathea_orbifolia_01", p[0] + Vector3(0, 0.35, 0), p[1], 0.85)
+	_coastal_dressing()
 	_nav = NavigationRegion3D.new()
 	_vp.add_child(_nav)
+
+
+## Faisal's showroom pick B ("warm coastal comedy", 2026-10-22): warm walnut slats behind the sign, a brass sign
+## plate, surfboards leaning by the reception desk, a planter row of palms along the glass and warm wall washes.
+## New geometry only (the baked boxes keep their exact positions and sizes, so the lightmap still matches them).
+func _coastal_dressing() -> void:
+	var slat := _pbr("smoked_walnut_veneer", 0.8, 0.55, Color(1.05, 0.72, 0.46))
+	for i in 27:
+		var x := -11.0 + 0.25 * i
+		_box(Vector3(0.12, 4.6, 0.06), Vector3(x, 2.4, -7.66), slat, 0, false)
+	var brass := _mat(Color(0.78, 0.56, 0.24), 0.32, 0.85)
+	_box(Vector3(3.9, 1.35, 0.05), Vector3(-7.7, 2.45, -7.61), _mat(Color(0.07, 0.06, 0.05), 0.5), 0, false)
+	_box(Vector3(4.0, 0.05, 0.07), Vector3(-7.7, 3.15, -7.6), brass, 0, false)
+	_box(Vector3(4.0, 0.05, 0.07), Vector3(-7.7, 1.76, -7.6), brass, 0, false)
+	# surfboards leaning on the left wall beside the reception desk
+	var boards := [[Vector3(-10.95, 1.15, -3.6), Color(0.16, 0.62, 0.66), Color(0.98, 0.95, 0.88)],
+		[Vector3(-10.95, 1.05, -2.85), Color(0.98, 0.93, 0.82), Color(0.93, 0.45, 0.22)],
+		[Vector3(-10.95, 1.1, -2.1), Color(0.95, 0.72, 0.28), Color(0.15, 0.32, 0.55)]]
+	for b in boards:
+		var mi := MeshInstance3D.new()
+		var cm := CapsuleMesh.new()
+		cm.radius = 0.27
+		cm.height = 2.3 if b[0].y > 1.1 else 2.1
+		mi.mesh = cm
+		mi.material_override = _mat(b[1], 0.28)
+		mi.scale = Vector3(1.0, 1.0, 0.13)
+		mi.rotation = Vector3(0, PI / 2, deg_to_rad(-10))
+		mi.position = b[0]
+		_vp.add_child(mi)
+		var stripe := MeshInstance3D.new()
+		var sm := BoxMesh.new()
+		sm.size = Vector3(0.1, cm.height * 0.8, 0.075)
+		stripe.mesh = sm
+		stripe.material_override = _mat(b[2], 0.3)
+		stripe.rotation = mi.rotation
+		stripe.position = b[0] + Vector3(0.02, 0, 0)
+		_vp.add_child(stripe)
+	# palms in walnut planters along the back glass and the right glass
+	var planter := _pbr("smoked_walnut_veneer", 1.0, 0.7, Color(0.7, 0.5, 0.36))
+	for p in [[Vector3(1.9, 0, -6.95), 30.0], [Vector3(8.2, 0, -6.95), 160.0], [Vector3(10.95, 0, -2.4), 260.0], [Vector3(10.95, 0, 1.8), 80.0]]:
+		_box(Vector3(0.7, 0.55, 0.7), p[0] + Vector3(0, 0.275, 0), planter)
+		_prop("pachira_aquatica_01", p[0] + Vector3(0, 0.5, 0), p[1], 2.9)
+	# warm washes: grazing light down the slat wall and over the desk (no shadows, so the cost stays flat)
+	for p in [Vector3(-9.2, 4.2, -6.6), Vector3(-6.2, 4.2, -6.6)]:
+		var w := SpotLight3D.new()
+		w.position = p
+		w.rotation_degrees = Vector3(-80, 0, 0)
+		w.spot_range = 6.0
+		w.spot_angle = 38.0
+		w.light_energy = 2.2
+		w.light_color = Color(1.0, 0.78, 0.5)
+		_vp.add_child(w)
 
 
 ## An open vertical cylinder segment (inside faces) carrying the view photo once, left to right.
@@ -449,9 +502,9 @@ func _backdrop_mesh(r: float, a0: float, a1: float, aspect: float, eye_top: floa
 
 ## Day/night: the view card and light follow Game.night_amount().
 func set_time(night: float, sunset: float) -> void:
-	_view_mat.albedo_color = Color(1, 1, 1).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
-	_sun.light_energy = lerp(0.9, 0.0, night)
-	_sun.light_color = Color(1.0, 0.86, 0.7).lerp(Color(1.0, 0.68, 0.42), sunset)
+	_view_mat.albedo_color = Color(1.14, 1.02, 0.8).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
+	_sun.light_energy = lerp(1.35, 0.0, night)
+	_sun.light_color = Color(1.0, 0.8, 0.58).lerp(Color(1.0, 0.64, 0.38), sunset)
 	_env.ambient_light_energy = lerp(0.55, 0.42, night)
 
 

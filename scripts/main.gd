@@ -148,16 +148,24 @@ func _build_hud() -> Control:
 	nv.add_child(sub)
 	hud.add_child(nv)
 	hud.add_child(UI.spacer())
-	hud_lobby = UI.label("", 16, UI.BLUE)
-	hud.add_child(hud_lobby)
-	var dv := UI.vbox(0)
-	hud_day = UI.label("", 15, UI.MUTED)
-	hud_clock = UI.label("", 17, UI.TEXT, true)
+	# Faisal's HUD pick C (2026-10-22): chunky rounded status blocks, each led by a bold icon
+	hud_lobby_chip = _hud_chip("staff", UI.BLUE)
+	hud_lobby = UI.label("", 17, UI.BLUE, true)
+	hud_lobby_chip.get_child(0).add_child(hud_lobby)
+	hud_lobby_chip.visible = false
+	hud.add_child(hud_lobby_chip)
+	var day_chip := _hud_chip("calendar", UI.TEXT)
+	var dv := UI.vbox(-2)
+	dv.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hud_day = UI.label("", 14, UI.MUTED)
+	hud_clock = UI.label("", 18, UI.TEXT, true)
 	dv.add_child(hud_day)
 	dv.add_child(hud_clock)
-	hud.add_child(dv)
+	day_chip.get_child(0).add_child(dv)
+	hud.add_child(day_chip)
 	# funds: big cash icon and balance, the number you watch all game
-	var cash := UI.panel(Color(0.02, 0.09, 0.05, 0.85), Color(0.37, 0.82, 0.48, 0.6), 4)
+	var cash := PanelContainer.new()
+	cash.add_theme_stylebox_override("panel", UI.box(Color(0.02, 0.09, 0.05, 0.9), Color(0.37, 0.82, 0.48, 0.75), 14, 2, 6))
 	var ch := UI.hbox(8)
 	cash.add_child(ch)
 	var icon := TextureRect.new()
@@ -190,6 +198,25 @@ func _build_hud() -> Control:
 	return p
 
 
+var hud_lobby_chip: PanelContainer
+
+
+## A rounded HUD status block: a bold icon and whatever the caller adds to its row (child 0).
+func _hud_chip(icon_name: String, tint: Color) -> PanelContainer:
+	var chip := PanelContainer.new()
+	var sb := UI.box(Color(0.06, 0.09, 0.16, 0.95), Color(tint, 0.45), 14, 2, 10)
+	sb.content_margin_top = 4
+	sb.content_margin_bottom = 4
+	chip.add_theme_stylebox_override("panel", sb)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var row := UI.hbox(8)
+	chip.add_child(row)
+	var ic := _icon(icon_name, 26, tint)
+	ic.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(ic)
+	return chip
+
+
 func _refresh_hud() -> void:
 	if hud_money == null:
 		return
@@ -219,6 +246,8 @@ func _refresh_clock() -> void:
 	hud_rent.add_theme_color_override("font_color", UI.BAD if dl <= 3 else UI.MUTED)
 	var waiting := lobby.filter(func(x): return not x.has("with_staff")).size()
 	hud_lobby.text = ("Showroom: %d waiting" % waiting) if waiting > 0 else ""
+	if hud_lobby_chip:
+		hud_lobby_chip.visible = waiting > 0
 	# the first-day coach moves on as soon as the step is done, not on the next screen change
 	if Game.tutorial_active() and Game.seen_intro and current != "title" and Game.check_tutorial():
 		_update_coach()
@@ -234,13 +263,19 @@ func _build_nav() -> Control:
 		b.set_meta("screen", item[1])
 		b.icon = icon_tex(item[1])
 		b.expand_icon = false
-		b.add_theme_constant_override("icon_max_width", 22)
-		b.add_theme_constant_override("h_separation", 6)
+		b.add_theme_constant_override("icon_max_width", 28)
+		b.add_theme_constant_override("h_separation", 10)
+		# pick C: chunky rounded keys with a bold condensed label
+		b.add_theme_stylebox_override("normal", UI.box(Color(0.08, 0.1, 0.16, 0.96), Color(1, 1, 1, 0.14), 12, 2, 14))
+		b.add_theme_stylebox_override("hover", UI.box(Color(0.13, 0.16, 0.24, 0.98), UI.GOLD, 12, 2, 14))
+		b.add_theme_stylebox_override("pressed", UI.box(Color(0.28, 0.21, 0.08, 0.98), UI.GOLD, 12, 2, 14))
+		b.add_theme_font_override("font", UI.head_font())
+		b.add_theme_font_size_override("font_size", 21)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nav.add_child(b)
 	var end := UI.gold_button("Close & sleep", _close_for_night, 160, 52)
 	end.icon = icon_tex("sleep")
-	end.add_theme_constant_override("icon_max_width", 22)
+	end.add_theme_constant_override("icon_max_width", 28)
 	end.add_theme_constant_override("h_separation", 6)
 	end.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	nav.add_child(end)
@@ -485,6 +520,7 @@ func _prewarm_3d_views() -> void:
 	_warming_3d = true
 	if garage_view == null or not is_instance_valid(garage_view):
 		garage_view = Car3DView.new()
+	garage_view.dress_workshop()
 	if lobby_3d == null or not is_instance_valid(lobby_3d):
 		_new_lobby_3d()
 	var warming := []
@@ -1796,7 +1832,14 @@ func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	tags.add_child(timer_pill)
 	live_ui.append([l, timer_pill, "pill"])
 	pv.add_child(tags)
-	pv.add_child(_car_art(car, Vector2(0, 44)))
+	# Faisal's office pick D: an illustrated listing photo, the car on a painted coastal lot instead of a tiny
+	# sprite on grey
+	var scene := PanelContainer.new()
+	var ssb := StyleBoxTexture.new()
+	ssb.texture = _listing_backdrop()
+	scene.add_theme_stylebox_override("panel", ssb)
+	scene.add_child(_car_art(car, Vector2(0, 60)))
+	pv.add_child(scene)
 	v.add_child(photo)
 	var m := MarginContainer.new()
 	for side in ["left", "right"]:
@@ -1806,10 +1849,10 @@ func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	v.add_child(m)
 	var tv := UI.vbox(2)
 	m.add_child(tv)
-	tv.add_child(UI.label("%d %s" % [car.year, car.model], 15, INK, true))
+	tv.add_child(UI.label("%d %s" % [car.year, car.model], 17, INK, true))
 	tv.add_child(UI.label("%s mi · Grade %s · %s" % [_num(car.miles), _grade(Game.condition(car)), _class_name(car.cls).trim_suffix("s")], 12, GREY))
 	var price := UI.hbox(6)
-	var pl := UI.label("", 18, INK, true)
+	var pl := UI.label("", 22, INK, true)
 	price.add_child(pl)
 	live_ui.append([l, pl, "price"])
 	var ll := UI.label("", 12, GREY)
@@ -1831,6 +1874,52 @@ func _listing_card(l: Dictionary, lane: Dictionary) -> Control:
 	tv.add_child(btns)
 	_refresh_live_one([l, timer_pill, "pill"])
 	return p
+
+
+static var _backdrop_tex: Texture2D
+
+
+## A small painted coastal lot (sky, sea, sand, palms, pavement) generated once for every listing photo.
+static func _listing_backdrop() -> Texture2D:
+	if _backdrop_tex:
+		return _backdrop_tex
+	var w := 240
+	var h := 90
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	for y in h:
+		var t := float(y) / h
+		for x in w:
+			var c: Color
+			if t < 0.42:
+				c = Color("8ec9ef").lerp(Color("d9eef8"), t / 0.42)
+			elif t < 0.52:
+				c = Color("2f8fbf").lerp(Color("5fb3d6"), (t - 0.42) / 0.1)
+			elif t < 0.6:
+				c = Color("e9d6a8")
+			else:
+				c = Color("b8b6b0").lerp(Color("9c9a95"), (t - 0.6) / 0.4)
+				if (x + y * 3) % 23 == 0:
+					c = c.darkened(0.06)
+			img.set_pixel(x, y, c)
+	# palms: brush-stroke trunks and fronds on the horizon
+	for px: int in [18, 52, 190, 222]:
+		var base := int(h * 0.6)
+		var top: int = int(h * 0.12) + (px % 7)
+		for y in range(top, base):
+			var lean := int((base - y) * 0.12)
+			for dx in 2:
+				img.set_pixel(clampi(px + lean + dx, 0, w - 1), y, Color("6b4a2f"))
+		var cx: int = px + int((base - top) * 0.12)
+		for k in 7:
+			var a := -PI + k * PI / 6.0
+			for r in 13:
+				var fx: int = cx + int(cos(a) * r)
+				var fy: int = top + int(sin(a) * r * 0.45) + int(r * r * 0.03)
+				for o in 2:
+					var q := Vector2i(clampi(fx, 0, w - 1), clampi(fy + o, 0, h - 1))
+					img.set_pixelv(q, Color("2f7a3c") if o == 0 else Color("23602e"))
+	_backdrop_tex = ImageTexture.create_from_image(img)
+	return _backdrop_tex
 
 
 func _watch_star(l: Dictionary) -> Button:
@@ -3358,6 +3447,7 @@ func _screen_garage() -> void:
 		for con in sig.get_connections():
 			sig.disconnect(con.callable)
 	_unpark(garage_view, stage)
+	garage_view.dress_workshop()
 	garage_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	if not is_same(garage_view.car, car):
 		garage_view.set_car(car)

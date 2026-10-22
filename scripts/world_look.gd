@@ -37,6 +37,16 @@ static func update(m: ShaderMaterial, day: Texture2D, full_key: String) -> void:
 		m.set_shader_parameter("tint", Color(1, 1, 1).lerp(Color(1.0, 0.84, 0.72), Game.sunset_amount()))
 	if day:
 		m.set_shader_parameter("texel", Vector2.ONE / day.get_size())
+	m.set_shader_parameter("paint", paint_for(full_key))
+
+
+## Faisal's visual picks (2026-10-22): the lot exterior, the office and the sales desk are "crisp painted
+## illustration" (option D); the garage stays the clean modern render (A); the apartment keeps the plain render.
+static func paint_for(full_key: String) -> float:
+	for k in ["lot", "office", "desk", "dealdesk"]:
+		if full_key == k or full_key.begins_with(k + "_"):
+			return 1.0
+	return 0.0
 
 
 static var _hour_done := false

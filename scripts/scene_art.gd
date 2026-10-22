@@ -113,6 +113,11 @@ func _fit_row(w: float) -> void:
 
 
 func _draw() -> void:
+	if material is ShaderMaterial and mode in ["desk", "garage", "lobby"]:
+		(material as ShaderMaterial).set_shader_parameter("paint", WorldLook.paint_for(mode))
+		var t := _tex(mode if mode != "lobby" else "showroom")
+		if t:
+			(material as ShaderMaterial).set_shader_parameter("texel", Vector2.ONE / t.get_size())
 	match mode:
 		"desk": _draw_desk()
 		"lobby": _draw_lobby()
