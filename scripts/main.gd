@@ -496,6 +496,8 @@ func _prefetch() -> void:
 	# visits spent 60-80 ms loading them). Held for the session so the loader cache keeps them.
 	for c in Game.cars:
 		_prefetch_one(Car3DView.model_path(CarArt.slug(c.get("model", ""))), "hold")
+	for path in Showroom3D.room_resources():
+		_prefetch_one(path, "hold")
 	for f in _res_files("res://assets/people3d", ".glb"):
 		_prefetch_one("res://assets/people3d/" + f, "hold")
 	for dir in ["res://assets/icons", "res://assets/web"]:
@@ -566,6 +568,15 @@ func _prewarm_3d_views() -> void:
 	garage_view.dress_workshop()
 	await _warm_step(0.25)
 	if lobby_3d == null or not is_instance_valid(lobby_3d):
+		# wait (up to 4 s) for the hall's textures and scanned props to finish loading on the worker threads,
+		# so building it is node work only
+		var waited := 0
+		while waited < 240 and Showroom3D.room_resources().any(func(p): return _prefetching.has(p)):
+			await get_tree().process_frame
+			waited += 1
+		if current != "title":
+			_warming_3d = false
+			return
 		_new_lobby_3d()
 	await _warm_step(0.35)
 	var warming := []

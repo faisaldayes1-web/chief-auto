@@ -52,6 +52,7 @@ var _nav: NavigationRegion3D
 var _overlay: Control
 var _env: Environment
 var _sun: DirectionalLight3D
+var _rays_mat: ShaderMaterial
 var _view_mat: StandardMaterial3D
 var _pending_nav := true
 var _frames_seen := 0
@@ -59,6 +60,22 @@ var _slow_frames := 0
 var _yaw_off := 0.0
 var _quality := 0
 var prewarming := false   # rendered behind the title: those frames say nothing about the hall's own cost
+
+
+## Everything _build_room loads from disk: the title prefetches it on worker threads (main._prefetch) and the
+## prewarm waits for it, so building the hall is just node work (it was a ~270 ms frame on the title).
+static func room_resources() -> Array:
+	var out := []
+	for t in ["large_floor_tiles_02", "marble_01", "smoked_walnut_veneer", "white_stucco"]:
+		for k in ["Diffuse", "Rough", "nor_gl"]:
+			out.append(TEX % [t, k])
+	for p in ["bar_chair_round_01", "calathea_orbifolia_01", "modern_arm_chair_01", "modern_ceiling_lamp_01",
+			"modern_coffee_table_01", "pachira_aquatica_01", "sofa_02"]:
+		out.append(PROPS % [p, p])
+	for f in ["showroom_floor_albedo.png", "showroom_floor_normal.png", "showroom_floor_rough.png"]:
+		out.append("res://assets/world/" + f)
+	out.append_array([VIEW_TEX, SKY_HDR, ENV_TEX, BAKE_LIGHTMAP])
+	return out
 
 
 func _init() -> void:
@@ -117,7 +134,9 @@ func _build_env() -> void:
 	_vp.add_child(we)
 	# afternoon sun from where it sits in the beach photo (back right, about 40 degrees up)
 	_sun = DirectionalLight3D.new()
-	_sun.rotation_degrees = Vector3(-30, 128, 0)   # pick B: lower, longer warm streaks across the floor
+	# pick B: a low sun behind the back glass, so the mullions throw long warm shafts across the floor toward
+	# the overview camera (the old yaw, 128, came in through the side glass)
+	_sun.rotation_degrees = Vector3(-18, 166, 0)
 	_sun.light_color = Color(1.0, 0.9, 0.78)
 	# no shadow map on the web: it gave acne stripes and a hard lit/unlit split across the floor.
 	# Cars and people sit on soft contact-shadow decals instead.
@@ -480,6 +499,7 @@ func _coastal_dressing() -> void:
 	for c in palms.get_children():
 		(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(palms)
+	_sun_rays()
 	# warm washes: grazing light down the slat wall and over the desk (no shadows, so the cost stays flat)
 	for p in [Vector3(-9.2, 4.2, -6.6), Vector3(-6.2, 4.2, -6.6)]:
 		var w := SpotLight3D.new()
@@ -490,6 +510,39 @@ func _coastal_dressing() -> void:
 		w.light_energy = 2.2
 		w.light_color = Color(1.0, 0.78, 0.5)
 		_vp.add_child(w)
+
+
+## Faint light shafts in the air, one per back-glass bay: additive unshaded cards along the sun direction that
+## fade along their length and at their edges (pick B's visible rays). Cheap: one material, five quads, no shadows.
+func _sun_rays() -> void:
+	var m := ShaderMaterial.new()
+	var sh := Shader.new()
+	sh.code = """
+shader_type spatial;
+render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabled;
+uniform float strength = 0.18;
+void fragment() {
+	float across = 1.0 - abs(UV.x - 0.5) * 2.0;
+	float along = smoothstep(0.0, 0.15, UV.y) * (1.0 - smoothstep(0.35, 1.0, UV.y));
+	ALBEDO = vec3(1.0, 0.82, 0.55) * strength * smoothstep(0.0, 0.7, across) * along;
+}
+"""
+	m.shader = sh
+	_rays_mat = m
+	var dir := -_sun.global_transform.basis.z if _sun.is_inside_tree() else -Basis.from_euler(_sun.rotation).z
+	for x in [-2.5, 0.5, 3.5, 6.5, 9.5]:
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(1.9, 9.5)
+		q.mesh = qm
+		q.material_override = m
+		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		# the card starts at the window head and runs down the sun direction, facing the camera side
+		var top := Vector3(x, 4.3, -7.85)
+		var centre := top + dir * 4.75
+		q.basis = Basis(Vector3.RIGHT, -dir, Vector3.RIGHT.cross(-dir)).orthonormalized()
+		q.position = centre
+		_vp.add_child(q)
 
 
 ## An open vertical cylinder segment (inside faces) carrying the view photo once, left to right.
@@ -518,7 +571,9 @@ func _backdrop_mesh(r: float, a0: float, a1: float, aspect: float, eye_top: floa
 func set_time(night: float, sunset: float) -> void:
 	# brighter than 1.0: the unshaded photo goes through ACES, which greyed it into haze next to pick B's sunny view
 	_view_mat.albedo_color = Color(1.42, 1.3, 1.08).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
-	_sun.light_energy = lerp(1.85, 0.0, night)   # strong enough that the mullion shafts read on the floor
+	_sun.light_energy = lerp(1.85, 0.0, night)
+	if _rays_mat:
+		_rays_mat.set_shader_parameter("strength", 0.18 * (1.0 - night))   # strong enough that the mullion shafts read on the floor
 	_sun.light_color = Color(1.0, 0.8, 0.58).lerp(Color(1.0, 0.64, 0.38), sunset)
 	_env.ambient_light_energy = lerp(0.46, 0.42, night)
 
