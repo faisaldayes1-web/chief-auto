@@ -232,10 +232,10 @@ func _floor_material() -> Material:
 	m.set_shader_parameter("rough_tex", load("res://assets/world/showroom_floor_rough.png"))
 	m.set_shader_parameter("tint", Color(0.84, 0.76, 0.66))   # pick B: warm sand limestone
 	m.set_shader_parameter("tile", 2.8)
-	m.set_shader_parameter("rough_mul", 0.65)
+	m.set_shader_parameter("rough_mul", 0.38)   # pick B's floor is polished: window and car reflections read in it
 	m.set_shader_parameter("normal_depth", 0.22)
 	m.set_shader_parameter("env_map", _env_tex())
-	m.set_shader_parameter("env_strength", _env_strength() * 0.4)
+	m.set_shader_parameter("env_strength", _env_strength() * 0.7)
 	return m
 
 
@@ -518,15 +518,17 @@ func _backdrop_mesh(r: float, a0: float, a1: float, aspect: float, eye_top: floa
 func set_time(night: float, sunset: float) -> void:
 	# brighter than 1.0: the unshaded photo goes through ACES, which greyed it into haze next to pick B's sunny view
 	_view_mat.albedo_color = Color(1.42, 1.3, 1.08).lerp(Color(0.12, 0.14, 0.24), night).lerp(Color(1.0, 0.82, 0.66), sunset * 0.5)
-	_sun.light_energy = lerp(1.35, 0.0, night)
+	_sun.light_energy = lerp(1.85, 0.0, night)   # strong enough that the mullion shafts read on the floor
 	_sun.light_color = Color(1.0, 0.8, 0.58).lerp(Color(1.0, 0.64, 0.38), sunset)
-	_env.ambient_light_energy = lerp(0.55, 0.42, night)
+	_env.ambient_light_energy = lerp(0.46, 0.42, night)
 
 
 # ---------------------------------------------------------------- display cars
 
 func set_cars(shown: Array) -> void:
 	for d in cars:
+		if d.node.has_meta("downlight"):
+			(d.node.get_meta("downlight") as Node).queue_free()
 		d.node.queue_free()
 		d.card.queue_free()
 		d.plinth.queue_free()
@@ -569,6 +571,17 @@ func set_cars(shown: Array) -> void:
 		_vp.add_child(plinth)
 		var card := _price_card(car)
 		_overlay.add_child(card)
+		# a warm display downlight per car (no shadow map, so it costs a light, not a pass): the paint gets a
+		# highlight along its shoulder line like a lit showroom car
+		var dl := SpotLight3D.new()
+		dl.position = pos + Vector3(0, 4.4, 0.6)
+		dl.rotation_degrees = Vector3(-82, 0, 0)
+		dl.spot_range = 6.0
+		dl.spot_angle = 30.0
+		dl.light_energy = 2.6
+		dl.light_color = Color(1.0, 0.9, 0.76)
+		holder.get_parent().add_child(dl)
+		holder.set_meta("downlight", dl)
 		cars.append({"car": car, "node": holder, "plinth": plinth, "card": card, "pos": pos, "yaw": deg_to_rad(sp[2]), "aabb": aabb})
 	_pending_nav = true
 
@@ -899,8 +912,10 @@ func _process(delta: float) -> void:
 		_frames_seen += 1
 		if delta > 0.06:
 			_slow_frames += 1
-		if _frames_seen >= 20:
-			if _slow_frames >= 14:
+		# judged over 90 frames (1.5 s at 60): the old 20-frame window also tripped on a screen-switch hitch
+		# plus a few loading frames, which halved the hall's resolution for the rest of the session
+		if _frames_seen >= 90:
+			if _slow_frames >= 72:
 				_quality += 1
 				match _quality:
 					1: _vp.msaa_3d = Viewport.MSAA_DISABLED

@@ -183,10 +183,13 @@ func _build_hud() -> Control:
 	ch.add_child(mv)
 	hud.add_child(cash)
 	var lv := UI.vbox(2)
-	hud_level = UI.label("", 15, UI.TEXT)
+	hud_level = UI.label("", 15, UI.TEXT, true)
 	lv.add_child(hud_level)
-	hud_xp = UI.bar(0, 100, UI.BLUE, 6)
-	hud_xp.custom_minimum_size = Vector2(110, 6)
+	# pick C: a chunky rounded XP track with a bright fill, readable even near empty
+	hud_xp = UI.bar(0, 100, UI.BLUE, 8)
+	hud_xp.custom_minimum_size = Vector2(110, 8)
+	hud_xp.add_theme_stylebox_override("background", UI.box(Color(1, 1, 1, 0.1), Color(1, 1, 1, 0.14), 4, 1, 0))
+	hud_xp.add_theme_stylebox_override("fill", UI.box(Color(0.35, 0.62, 1.0), Color.TRANSPARENT, 4, 0, 0))
 	lv.add_child(hud_xp)
 	hud.add_child(lv)
 	hud_rep = UI.label("", 18, UI.GOLD)
@@ -554,13 +557,21 @@ func _prewarm_3d_views() -> void:
 	if current != "title" or _warming_3d or _warmed_3d:
 		return
 	_warming_3d = true
+	_title_loading(0.05)
+	# One heavy step per frame (it used to be one ~790 ms frame): build the garage, its dressing and the hall,
+	# attach each to render hidden (first render compiles their pipelines), then build the cars.
 	if garage_view == null or not is_instance_valid(garage_view):
 		garage_view = Car3DView.new()
+	await _warm_step(0.15)
 	garage_view.dress_workshop()
+	await _warm_step(0.25)
 	if lobby_3d == null or not is_instance_valid(lobby_3d):
 		_new_lobby_3d()
+	await _warm_step(0.35)
 	var warming := []
 	for v in [garage_view, lobby_3d]:
+		if not is_instance_valid(v) or current != "title":
+			break
 		if v.get_parent() == null or v.get_parent() == _parking:
 			v.prewarming = true
 			_unpark(v, self)
@@ -568,20 +579,24 @@ func _prewarm_3d_views() -> void:
 			v.position = Vector2.ZERO
 			v.size = get_viewport_rect().size
 			warming.append(v)
+			await _warm_step(0.5 if v == garage_view else 0.65)
 	# the garage's first visit spent ~50 ms building the car (model, paint, pick data): do it here, hidden
-	if not Game.cars.is_empty():
+	if not Game.cars.is_empty() and is_instance_valid(garage_view):
 		if _find_car(selected_car_id).is_empty():
 			selected_car_id = Game.cars[0].id
 		var gc := _find_car(selected_car_id)
 		Game.ensure_damage(gc)
 		if not is_same(garage_view.car, gc):
 			garage_view.set_car(gc)
+		await _warm_step(0.75)
 	# and the showroom's display cars (~50 ms of model building on the first showroom visit), now it is in the tree
-	if lobby_3d.is_inside_tree() and lobby_3d.get_meta("cars_sig", 0) != _lobby_cars_sig():
+	if is_instance_valid(lobby_3d) and lobby_3d.is_inside_tree() and lobby_3d.get_meta("cars_sig", 0) != _lobby_cars_sig():
 		_lobby_set_cars()
+		await _warm_step(0.85)
 	# probes render a step per frame (six faces, then filtering), one probe at a time: allow for both
 	for i in 40:
 		await get_tree().process_frame
+		_title_loading(0.85 + 0.15 * i / 40.0)
 	for v in warming:
 		if is_instance_valid(v):
 			v.prewarming = false
@@ -590,7 +605,35 @@ func _prewarm_3d_views() -> void:
 
 	_warming_3d = false
 	_warmed_3d = true
+	_title_loading(1.0)
 	_title_warmup()
+
+
+var _warm_t := 0
+
+
+func _warm_step(p: float) -> void:
+	if OS.is_debug_build() and OS.get_environment("CHIEF_WARM_LOG") != "":
+		print("warm step %.2f %.1f ms" % [p, (Time.get_ticks_usec() - _warm_t) / 1000.0])
+	_title_loading(p)
+	await get_tree().process_frame
+	_warm_t = Time.get_ticks_usec()
+
+
+## A small "getting the dealership ready" bar under the title buttons while the 3D views warm up, so the few
+## heavier frames read as loading rather than a freeze. Hidden once done (or when the title is left).
+var _loading_bar: ProgressBar
+var _loading_box: Control
+
+
+func _title_loading(p: float) -> void:
+	if _loading_box == null or not is_instance_valid(_loading_box):
+		return
+	_loading_bar.value = p * 100.0
+	if p >= 1.0:
+		var tw := _loading_box.create_tween()
+		tw.tween_property(_loading_box, "modulate:a", 0.0, 0.4)
+		tw.tween_callback(_loading_box.queue_free)
 
 
 ## The rest of the first-visit stalls were one-off work on the main thread: the painted listing backdrop (a
@@ -647,6 +690,19 @@ func _screen_title() -> void:
 	var tag := UI.label("v%s · %s, Tewport Beach" % [Settings.VERSION, Game.dealer_name] if has_save else "v%s · Tewport Beach" % Settings.VERSION, 14, UI.MUTED)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(tag)
+	if not _warmed_3d:
+		_loading_box = UI.vbox(4)
+		var ll := UI.label("Getting the dealership ready…", 13, UI.MUTED)
+		ll.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_loading_box.add_child(ll)
+		_loading_bar = ProgressBar.new()
+		_loading_bar.show_percentage = false
+		_loading_bar.custom_minimum_size = Vector2(240, 6)
+		_loading_bar.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		_loading_bar.add_theme_stylebox_override("background", UI.box(Color(1, 1, 1, 0.12), Color.TRANSPARENT, 3, 0, 0))
+		_loading_bar.add_theme_stylebox_override("fill", UI.box(UI.GOLD, Color.TRANSPARENT, 3, 0, 0))
+		_loading_box.add_child(_loading_bar)
+		v.add_child(_loading_box)
 	# settings and quit sit in the corner, so the main column (and START) keep their place
 	var layer := Control.new()
 	layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4158,7 +4214,7 @@ func _lobby_panels() -> void:
 		if not first.has(st):
 			first[st] = c
 	# Showroom Activity (top left)
-	var act := UI.panel(UI.GLASS, UI.GLASS_RIM, 0)
+	var act := UI.panel(UI.GLASS, UI.GLASS_RIM, 10)   # pick C: rounded like the HUD chips
 	act.position = Vector2(14, 12)
 	act.custom_minimum_size = Vector2(300, 0)
 	lobby_ui.add_child(act)
@@ -4178,8 +4234,8 @@ func _lobby_panels() -> void:
 		b.focus_mode = Control.FOCUS_NONE
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.text = "     " + txt
-		b.add_theme_font_size_override("font_size", 14)
-		b.add_theme_color_override("font_color", UI.TEXT if n > 0 else UI.MUTED)
+		b.add_theme_font_size_override("font_size", 15)
+		b.add_theme_color_override("font_color", UI.TEXT if n > 0 else UI.MUTED.lightened(0.15))
 		b.add_theme_color_override("font_hover_color", UI.GOLD)
 		b.custom_minimum_size = Vector2(300, 34)
 		var hot := UI.box(Color(1, 1, 1, 0.06), Color.TRANSPARENT, 0, 0, 8)
@@ -4187,10 +4243,11 @@ func _lobby_panels() -> void:
 		b.add_theme_stylebox_override("hover", hot)
 		b.add_theme_stylebox_override("pressed", hot)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		var dot := ColorRect.new()
-		dot.color = {"assist": UI.GOLD, "negotiating": UI.BLUE, "closing": UI.GOOD, "test": UI.CYAN}.get(row[0], UI.MUTED) if n > 0 else Color(1, 1, 1, 0.18)
+		var dot := Panel.new()   # a rounded status pip; "browsing" lights blue like the HUD's waiting chip
+		var dcol: Color = {"browsing": UI.BLUE, "assist": UI.GOLD, "negotiating": UI.BLUE, "closing": UI.GOOD, "test": UI.CYAN}.get(row[0], UI.BLUE) if n > 0 else Color(1, 1, 1, 0.18)
+		dot.add_theme_stylebox_override("panel", UI.box(dcol, Color.TRANSPARENT, 3, 0, 0))
 		dot.position = Vector2(10, 13)
-		dot.size = Vector2(8, 8)
+		dot.size = Vector2(9, 9)
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(dot)
 		var chev := UI.label("›", 18, UI.MUTED)
