@@ -274,10 +274,64 @@ void fragment() {
 		l.light_color = Color(0.96, 0.97, 1.0)
 		_workshop.add_child(l)
 	_lift(red, dark, chrome)
+	_roll_up_door(dark, chrome)
 	if _pivot:
 		_pivot.position.y = LIFT_TOP
 	# one mesh per material: the dressing above was ~180 draw calls on its own
 	MeshMerge.merge(_workshop)
+
+
+## Pick A's open roll-up door: a block wall segment on the far side of the default camera angle, with a 5 m door
+## opening onto a sunny palm-lined beach road (the showroom's beach photo on an unshaded card behind it), the rolled door on its drum
+## and a warm spill of daylight onto the bay floor. Sits outside the camera orbit like the cabinets.
+const DOOR_ANGLE := 43.0     # opposite the default camera yaw (-0.75 rad), so the first view looks out of the door
+const DOOR_RING := 11.4
+const DOOR_VIEW := "res://assets/cc0/sky/showroom_view.jpg"   # the sunny palm-and-sand beach photo, 4:1
+
+
+func _roll_up_door(dark: Material, chrome: Material) -> void:
+	var a := deg_to_rad(DOOR_ANGLE)
+	var wall := Node3D.new()
+	wall.position = Vector3(sin(a), 0, -cos(a)) * DOOR_RING
+	wall.rotation.y = -a        # local +z faces the bay
+	_workshop.add_child(wall)
+	var block := StandardMaterial3D.new()
+	block.albedo_color = Color(0.6, 0.6, 0.58)
+	block.roughness = 0.85
+	var trim := StandardMaterial3D.new()
+	trim.albedo_color = Color(0.62, 0.07, 0.06)
+	trim.roughness = 0.4
+	for side in [-1.0, 1.0]:
+		_wbox(wall, Vector3(4.0, 4.8, 0.3), Vector3(side * 4.5, 2.4, 0), block)
+		_wbox(wall, Vector3(0.16, 3.7, 0.36), Vector3(side * 2.58, 1.85, 0), trim)   # red door jambs
+	_wbox(wall, Vector3(5.0, 1.1, 0.3), Vector3(0, 4.25, 0), block)                    # header
+	# the door itself, rolled up on its drum under the header, a few slats still showing
+	var drum := _wbox(wall, Vector3(5.0, 0.5, 0.5), Vector3(0, 3.45, -0.1), chrome)
+	drum.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for i in 3:
+		_wbox(wall, Vector3(4.9, 0.1, 0.05), Vector3(0, 3.12 - i * 0.12, 0.02), dark if i % 2 == 0 else chrome)
+	# outside: the sunny street (the lot render, relit to noon), far enough out for a little parallax
+	var view := MeshInstance3D.new()
+	var q := QuadMesh.new()
+	q.size = Vector2(22.0, 5.5)
+	view.mesh = q
+	var vm := StandardMaterial3D.new()
+	vm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	vm.albedo_texture = load(DOOR_VIEW) if ResourceLoader.exists(DOOR_VIEW) else null
+	vm.albedo_color = Color(1.12, 1.08, 1.0)   # a touch over 1 through ACES: bright noon outside
+	view.material_override = vm
+	view.position = Vector3(0, 2.2, -4.0)
+	view.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	wall.add_child(view)
+	# daylight spilling in through the opening
+	var spill := SpotLight3D.new()
+	spill.position = Vector3(0, 3.2, -0.6)
+	spill.rotation_degrees = Vector3(-35, 180, 0)   # down and into the bay
+	spill.spot_range = 9.0
+	spill.spot_angle = 40.0
+	spill.light_energy = 2.4
+	spill.light_color = Color(1.0, 0.88, 0.7)
+	wall.add_child(spill)
 
 
 ## Pick A's red lift, as a low-rise drive-on scissor lift: two red runways under the wheels with ramps and

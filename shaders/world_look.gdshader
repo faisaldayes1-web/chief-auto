@@ -16,7 +16,7 @@ uniform vec2 texel = vec2(0.000625, 0.0011);       // 1 / render size
 uniform float paint : hint_range(0.0, 1.0) = 0.0;
 uniform float paint_radius = 4.0;   // in texels of the background render
 uniform float ink = 0.55;           // contour strength
-uniform float sun_exposure = 1.55;  // painted views only: exposure lift toward the bright picks
+uniform float sun_exposure = 1.12;  // painted views only; the backgrounds are relit to noon offline (tools/sunny_relight.py)
 
 // COLOR in fragment() already holds texture × modulate, so multiplying by it again squared the picture
 // (~35-45% darker): keep the plain vertex/modulate colour from vertex() instead.

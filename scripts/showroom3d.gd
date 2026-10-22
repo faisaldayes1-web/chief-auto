@@ -474,7 +474,9 @@ func _coastal_dressing() -> void:
 		bases.append(Vector3(-8.0 + i * 3.6, 0, -17.0 - 2.2 * (i % 2)))
 	for i in 5:
 		bases.append(Vector3(22.0 + 2.0 * (i % 2), 0, -9.0 + i * 4.2))
-	var palms := PalmMesh.row(bases, 7, 6.0, 8.5)
+	# heights chosen so the crowns land inside the glass from the overview camera (eye 2.7 m, sightline over the
+	# 4.6 m window head reaches ~5.6 m at the promenade): young palms, 4.2-5.4 m
+	var palms := PalmMesh.row(bases, 7, 4.2, 5.4)
 	for c in palms.get_children():
 		(c as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_vp.add_child(palms)
@@ -837,7 +839,7 @@ func set_preset(p: String, target = null) -> void:
 		"wide":
 			focus_car = {}
 			_cam_goal_pos = Vector3(0.5, 2.7, 9.4)
-			_cam_goal_tgt = Vector3(0.3, 1.1, -2.2)
+			_cam_goal_tgt = Vector3(0.3, 1.45, -2.2)   # a little more of the glass and the palms beyond it
 		"customer":
 			if target is Dictionary and not target.is_empty():
 				focus_customer = target
