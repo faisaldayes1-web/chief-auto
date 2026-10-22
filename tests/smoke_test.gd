@@ -167,5 +167,21 @@ func _initialize() -> void:
 	check(SG.lock(ch, 27000, 1) == "storm", "past the walkout line storms out")
 	check(SG.lock(ch, 25000, 1) == "counter", "amber zone counters")
 	check(SG.lock(ch, 23000, SG.SWINGS) == "deal", "green zone on the last swing closes")
+	# Marco's flip check: never above the fixed-up resale, rough cars cost more to fix, and the
+	# Buy It Now price (around retail) is above the profit line on a typical listing
+	G.new_game()
+	var fl: Dictionary = G.make_listing("autobidz")
+	var fe: Dictionary = G.flip_estimate(fl.car)
+	check(fe.max_bid >= 0 and fe.max_bid < fe.fixed and fe.repairs >= 0, "flip estimate is sane (%s)" % str(fe))
+	var rough: Dictionary = fl.car.duplicate(true)
+	for p in G.PARTS:
+		rough.parts[p] = 20
+	check(G.flip_estimate(rough).repairs > fe.repairs, "a rougher car needs a bigger repair bill")
+	var bn_over := 0
+	for i in 50:
+		var bl: Dictionary = G.make_listing("autobidz")
+		if bl.buy_now > G.flip_estimate(bl.car).max_bid:
+			bn_over += 1
+	check(bn_over > 35, "Buy It Now is usually above the flip line (%d/50)" % bn_over)
 	print("smoke test: %s" % ("OK" if fails == 0 else "%d failures" % fails))
 	quit(1 if fails > 0 else 0)

@@ -2038,6 +2038,8 @@ func _listing_detail(inner: Control, l: Dictionary) -> void:
 	facts.add_child(UI.label("Est. retail %s" % Game.money_str(Game.value(car)), 15, INK, true))
 	top_row.add_child(facts)
 	lv.add_child(top_row)
+	if not l.sold:
+		lv.add_child(_flip_box(l))
 	lv.add_child(UI.label("CONDITION REPORT", 12, GREY, true))
 	for part in Game.PARTS:
 		var row := UI.hbox(8)
@@ -2088,6 +2090,29 @@ func _listing_detail(inner: Control, l: Dictionary) -> void:
 	rv.add_child(feed)
 	auction_view = {"listing": l, "cur": cur, "lead": lead, "time": time_l, "bid": bid_btn, "feed": feed, "bin": bin_btn, "offer": offer}
 	_refresh_auction_view()
+
+
+## Marco's flip check: what the car sells for fixed up, the repair bill, and the most to pay for it.
+## New dealers kept paying Buy It Now (priced near retail) and losing money on the first flip.
+func _flip_box(l: Dictionary) -> Control:
+	var f := Game.flip_estimate(l.car)
+	var box := _flat(Color(0.99, 0.97, 0.88), 6, 8, Color(0.85, 0.72, 0.3), 1)
+	var v := UI.vbox(2)
+	box.add_child(v)
+	v.add_child(UI.label("MARCO'S FLIP CHECK", 11, Color(0.55, 0.42, 0.1), true))
+	v.add_child(UI.label("Fixed up it sells for about %s. Repairs with %s: about %s." % [Game.money_str(f.fixed), f.mech, Game.money_str(f.repairs)], 13, INK))
+	var bn := int(l.get("buy_now", 0))
+	var tip := "Pay under %s to make money on it." % Game.money_str(f.max_bid)
+	var col := INK
+	if f.max_bid <= 0:
+		tip = "Not worth flipping at any price."
+		col = WEB_BAD
+	elif Game.buy_now_open(l) and bn > f.max_bid:
+		tip += " Buy It Now (%s) is too rich: bid instead." % Game.money_str(bn)
+		col = WEB_BAD
+	v.add_child(UI.label(tip, 14, col, true))
+	box.tooltip_text = "An estimate from the condition report. Hidden faults, the history report, the hot class and how you haggle all move the real number."
+	return box
 
 
 func _fill_history(hist: VBoxContainer, car: Dictionary) -> void:
