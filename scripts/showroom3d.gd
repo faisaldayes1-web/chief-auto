@@ -144,6 +144,7 @@ func _build_env() -> void:
 	_sun.shadow_bias = 0.03
 	_sun.shadow_normal_bias = 1.0
 	_sun.light_energy = 0.75
+	_sun.light_specular = 0.35   # overview glare; set_preset eases it per camera view (GLARE)
 	_vp.add_child(_sun)
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-60, -30, 0)
@@ -246,6 +247,7 @@ func _floor_material() -> Material:
 	# Its own shader so the web build still gets the hall's reflections in it.
 	var m := ShaderMaterial.new()
 	m.shader = FLOOR_SHADER
+	_floor_mat = m
 	m.set_shader_parameter("albedo_tex", load("res://assets/world/showroom_floor_albedo.png"))
 	m.set_shader_parameter("normal_tex", load("res://assets/world/showroom_floor_normal.png"))
 	m.set_shader_parameter("rough_tex", load("res://assets/world/showroom_floor_rough.png"))
@@ -901,8 +903,18 @@ func _marker() -> Label:
 
 # ---------------------------------------------------------------- camera
 
+## Sun glare on the polished floor per camera view: the overview looks straight down the sun's reflection, so
+## its specular is held back there (pick B's streak, not a white blob at the bottom of the frame); the close
+## customer and car views look across it and keep the full highlight on paint and floor. Eased in _process.
+const GLARE := {"wide": 0.35, "customer": 0.8, "inspect": 1.0}
+var _glare_goal := 0.35
+var _glare := 0.35
+var _floor_mat: ShaderMaterial
+
+
 func set_preset(p: String, target = null) -> void:
 	preset = p
+	_glare_goal = GLARE.get(p, 1.0)
 	match p:
 		"wide":
 			focus_car = {}
@@ -961,6 +973,12 @@ func _process(delta: float) -> void:
 	_cam_pos = _cam_pos.lerp(_cam_goal_pos, k)
 	_cam_tgt = _cam_tgt.lerp(_cam_goal_tgt, k)
 	_apply_cam()
+	if absf(_glare - _glare_goal) > 0.005:
+		_glare = lerpf(_glare, _glare_goal, k)
+		if _sun:
+			_sun.light_specular = _glare
+		if _floor_mat:
+			_floor_mat.set_shader_parameter("spec_k", _glare)
 	# software GL / weak GPUs: step quality down while most frames are slow
 	# (1: no MSAA, 2: half-resolution 3D, 3: no sun shadows)
 	if _quality < 3 and not prewarming:

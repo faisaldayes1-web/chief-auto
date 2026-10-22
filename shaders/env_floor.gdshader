@@ -16,6 +16,8 @@ uniform float env_strength = 1.0;
 // baked Cycles lighting on UV2 (tools: tests/_extract_bake.gd); 0.5 is neutral, so it is applied x2
 uniform sampler2D lightmap : source_color, filter_linear, hint_default_white;
 uniform float lightmap_k = 0.0;
+// per camera view (Showroom3D.GLARE): the sun's reflection in the polish, held back where the camera looks down it
+uniform float spec_k = 0.35;
 
 varying vec3 wp;
 void vertex() {
@@ -28,9 +30,10 @@ void fragment() {
 	ALBEDO *= mix(vec3(1.0), texture(lightmap, UV2).rgb * 2.0, lightmap_k);
 	float r = clamp(texture(rough_tex, uv).r * rough_mul, 0.02, 1.0);
 	ROUGHNESS = r;
+	SPECULAR = 0.5 * spec_k;
 	NORMAL_MAP = texture(normal_tex, uv).rgb;
 	NORMAL_MAP_DEPTH = normal_depth;
 	float f = env_fresnel(NORMAL, VIEW, 0.04);
 	vec3 env = env_sample(env_map, NORMAL, VIEW, INV_VIEW_MATRIX, r);
-	EMISSION = env * f * (1.0 - r) * env_strength;
+	EMISSION = env * f * (1.0 - r) * env_strength * mix(0.6, 1.0, spec_k);
 }
