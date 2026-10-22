@@ -30,6 +30,7 @@ var _max_dist := 9.0
 var _vp: SubViewport
 var _cam: Camera3D
 var _pivot: Node3D
+const LIFT_TOP := 0.232   # top of the garage lift runways (see _lift)
 var _model: Node3D
 var _meshes := {}       # part name -> MeshInstance3D
 var _paint_mats := {}   # part name -> ShaderMaterial
@@ -232,6 +233,8 @@ void fragment() {
 			cm.top_radius = 0.045
 			cm.bottom_radius = 0.055
 			cm.height = 0.26
+			cm.radial_segments = 10   # bottles a hand-width wide: 64 sides was wasted geometry
+			cm.rings = 1
 			b.mesh = cm
 			var bm := StandardMaterial3D.new()
 			bm.albedo_color = [Color(0.95, 0.75, 0.1), Color(0.1, 0.35, 0.8), Color(0.9, 0.9, 0.9), Color(0.15, 0.6, 0.25)][j]
@@ -248,6 +251,8 @@ void fragment() {
 			var tm := TorusMesh.new()
 			tm.inner_radius = 0.2
 			tm.outer_radius = 0.34
+			tm.rings = 24
+			tm.ring_segments = 8
 			t.mesh = tm
 			t.scale = Vector3(1, 1.25, 1)
 			t.material_override = rubber
@@ -268,6 +273,36 @@ void fragment() {
 		l.light_energy = 0.9
 		l.light_color = Color(0.96, 0.97, 1.0)
 		_workshop.add_child(l)
+	_lift(red, dark, chrome)
+	if _pivot:
+		_pivot.position.y = LIFT_TOP
+	# one mesh per material: the dressing above was ~180 draw calls on its own
+	MeshMerge.merge(_workshop)
+
+
+## Pick A's red lift, as a low-rise drive-on scissor lift: two red runways under the wheels with ramps and
+## chrome tread plates, the scissor arms folded underneath and a yellow safety edge. It stays below the sills,
+## so it never hides the car from the orbiting inspection camera (two-post columns did).
+func _lift(red: Material, dark: Material, chrome: Material) -> void:
+	var yellow := StandardMaterial3D.new()
+	yellow.albedo_color = Color(0.95, 0.72, 0.08)
+	yellow.roughness = 0.5
+	for side in [-1.0, 1.0]:
+		var z: float = side * 0.78
+		_wbox(_workshop, Vector3(4.6, 0.12, 0.56), Vector3(0.0, 0.16, z), red)          # runway
+		_wbox(_workshop, Vector3(4.4, 0.012, 0.42), Vector3(0.0, 0.226, z), chrome)    # tread plate
+		_wbox(_workshop, Vector3(4.6, 0.03, 0.04), Vector3(0.0, 0.2, z + side * 0.28), yellow)
+		for end in [-1.0, 1.0]:
+			var ramp := _wbox(_workshop, Vector3(0.7, 0.05, 0.52), Vector3(end * 2.62, 0.09, z), red)
+			ramp.rotation.z = end * deg_to_rad(-11.0)
+		# folded scissor arms and the base frame under the runway
+		for k in 3:
+			var arm := _wbox(_workshop, Vector3(1.4, 0.05, 0.08), Vector3(-1.4 + k * 1.4, 0.06, z), dark)
+			arm.rotation.z = deg_to_rad(4.0 if k % 2 == 0 else -4.0)
+		_wbox(_workshop, Vector3(4.2, 0.03, 0.5), Vector3(0.0, 0.015, z), dark)
+	# hydraulic power unit at the far side (the default camera looks from +z), red with a chrome cap
+	_wbox(_workshop, Vector3(0.4, 0.9, 0.4), Vector3(-2.9, 0.45, -2.3), red)
+	_wbox(_workshop, Vector3(0.3, 0.06, 0.3), Vector3(-2.9, 0.93, -2.3), chrome)
 
 
 func _wbox(parent: Node, size: Vector3, pos: Vector3, m: Material) -> MeshInstance3D:
@@ -323,7 +358,7 @@ func set_car(c: Dictionary) -> void:
 	_target_dist = dist
 	_target_yaw = yaw
 	_base_dist = dist
-	_pivot.position.y = 0.0
+	_pivot.position.y = LIFT_TOP if _workshop != null else 0.0   # parked on the lift runways in the garage
 	refresh()
 
 

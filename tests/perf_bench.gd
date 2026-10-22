@@ -80,6 +80,19 @@ func _process(_d: float) -> void:
 				cur.static_mem_mb = Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0
 				cur.vram_mb = Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0
 				cur.texture_mem_mb = Performance.get_monitor(Performance.RENDER_TEXTURE_MEM_USED) / 1048576.0
+				var vps := _viewports(get_tree().root)
+				var gpu := RenderingServer.viewport_get_measured_render_time_gpu(get_viewport().get_viewport_rid())
+				var cpu := RenderingServer.viewport_get_measured_render_time_cpu(get_viewport().get_viewport_rid())
+				var live := []
+				for v in vps:
+					var sv := v as SubViewport
+					if sv.render_target_update_mode != SubViewport.UPDATE_DISABLED:
+						gpu += RenderingServer.viewport_get_measured_render_time_gpu(sv.get_viewport_rid())
+						cpu += RenderingServer.viewport_get_measured_render_time_cpu(sv.get_viewport_rid())
+						live.append("%s:%dx%d:%d" % [sv.name, sv.size.x, sv.size.y, sv.render_target_update_mode])
+				cur.render_gpu_ms = gpu
+				cur.render_cpu_ms = cpu
+				cur.live_subviewports = live
 				cur.nodes = Performance.get_monitor(Performance.OBJECT_NODE_COUNT)
 				cur.objects = Performance.get_monitor(Performance.OBJECT_COUNT)
 				cur.orphans = Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)
@@ -102,8 +115,18 @@ func _switch() -> void:
 	var name: String = SCREENS[si]
 	var a := Time.get_ticks_usec()
 	m.show_screen(name)
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), true)
+	_viewports(get_tree().root)
 	cur = {"screen": name, "switch_call_ms": (Time.get_ticks_usec() - a) / 1000.0}
 	phase = "settle"
+
+func _viewports(n: Node, out: Array = []) -> Array:
+	if n is SubViewport:
+		RenderingServer.viewport_set_measure_render_time((n as SubViewport).get_viewport_rid(), true)
+		out.append(n)
+	for c in n.get_children():
+		_viewports(c, out)
+	return out
 
 func _sum(a: PackedFloat64Array) -> float:
 	var t := 0.0

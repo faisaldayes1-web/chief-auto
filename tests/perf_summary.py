@@ -1,5 +1,5 @@
 import json,glob,statistics as st,sys
-def load(w): return [json.load(open(f)) for f in sorted(glob.glob(f''+sys.argv[1]+'/{w}-[0-9].json'))]
+def load(w): return [json.load(open(f)) for f in sorted(glob.glob(sys.argv[1]+f'/{w}-[0-9].json'))]
 B,P=load('base'),load('perf')
 print('runs',len(B),len(P))
 def med(runs,i,k): return st.median(r['screens'][i][k] for r in runs)

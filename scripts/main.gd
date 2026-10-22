@@ -461,7 +461,8 @@ var _warmed_3d := false
 
 ## First visits stalled on decoding their art (60-110 ms a screen). While the title is up, the backgrounds, icons
 ## and portraits load on worker threads into the caches (world_tex, UI.tex), so the first visit finds them ready.
-var _prefetching := {}   # path -> "world" | "ui"
+var _prefetching := {}   # path -> "world" | "ui" | "scene:<key>" | "dv:<name>" | "prop:<id>" | "hold"
+static var _held: Array = []
 
 
 func _prefetch() -> void:
@@ -471,6 +472,23 @@ func _prefetch() -> void:
 	for key in ["lot", "office", "showroom", "dealdesk"]:
 		_prefetch_one("res://assets/world/bg_%s%s.jpg" % [key, sfx], "world")
 	_prefetch_one("res://assets/world/bg_apartment%d.jpg" % Game.apartment, "world")
+	# the PC desk and the garage draw their render through SceneArt's own cache (first visits stalled ~45 ms each)
+	for view in ["desk", "garage", "showroom"]:
+		_prefetch_one("res://assets/world/bg_%s%s.jpg" % [view, sfx], "scene:" + view + sfx)
+	# and the desk's own renders: the furniture you own and the collectibles in their slots
+	for dv in ["shelfunit", "keyboard", "desk_" + str(Game.equipped.get("desk", "folding")),
+			"monitor_" + str(Game.equipped.get("monitor", "crt")), "chair_" + str(Game.equipped.get("chair", "plastic"))]:
+		_prefetch_one("res://assets/deskview/%s.png" % dv, "dv:" + dv)
+	for slot in Game.DESK_SLOTS:
+		var id: String = Game.desk_slots.get(slot, "")
+		if id != "":
+			_prefetch_one("res://assets/props/%s.png" % id, "prop:" + id)
+	# 3D models: the cars you own (the garage view) and the showroom's customers (first garage and showroom
+	# visits spent 60-80 ms loading them). Held for the session so the loader cache keeps them.
+	for c in Game.cars:
+		_prefetch_one(Car3DView.model_path(CarArt.slug(c.get("model", ""))), "hold")
+	for f in _res_files("res://assets/people3d", ".glb"):
+		_prefetch_one("res://assets/people3d/" + f, "hold")
 	for dir in ["res://assets/icons", "res://assets/web"]:
 		for f in _res_files(dir, ".svg"):
 			_prefetch_one(dir + "/" + f, "ui")
@@ -479,7 +497,9 @@ func _prefetch() -> void:
 
 
 func _prefetch_one(path: String, kind: String) -> void:
-	if not ResourceLoader.exists(path) or UI._tex_cache.has(path) or _world_cache.has(path):
+	if not ResourceLoader.exists(path) or UI._tex_cache.has(path) or (_world_cache.has(path) and kind == "world"):
+		return
+	if _prefetching.has(path):
 		return
 	if ResourceLoader.load_threaded_request(path, "", false) == OK:
 		_prefetching[path] = kind
@@ -504,9 +524,17 @@ func _poll_prefetch() -> void:
 		_prefetching.erase(path)
 		if st != ResourceLoader.THREAD_LOAD_LOADED:
 			continue
-		var t: Texture2D = ResourceLoader.load_threaded_get(path)
+		var t = ResourceLoader.load_threaded_get(path)
 		if kind == "ui":
 			UI._tex_cache[path] = t
+		elif kind.begins_with("scene:"):
+			SceneArt._texs[kind.trim_prefix("scene:")] = t
+		elif kind == "hold":
+			_held.append(t)
+		elif kind.begins_with("dv:"):
+			SceneArt._dv[kind.trim_prefix("dv:")] = t
+		elif kind.begins_with("prop:"):
+			SceneArt._props[kind.trim_prefix("prop:")] = t
 		elif not _world_cache.has(path):
 			_world_cache[path] = t
 			_world_order.push_front(path)   # oldest first: a prefetched background is the first to go

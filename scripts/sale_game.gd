@@ -282,8 +282,8 @@ func _build() -> void:
 	add_child(back)
 	var shade := TextureRect.new()
 	var grad := Gradient.new()
-	grad.set_color(0, Color(0.015, 0.025, 0.05, 0.12))
-	grad.set_color(1, Color(0.015, 0.025, 0.05, 0.5))
+	grad.set_color(0, Color(0.015, 0.025, 0.05, 0.06))
+	grad.set_color(1, Color(0.015, 0.025, 0.05, 0.32))
 	var gt := GradientTexture2D.new()
 	gt.gradient = grad
 	gt.fill_from = Vector2(0, 0)

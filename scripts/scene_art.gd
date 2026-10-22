@@ -11,7 +11,7 @@ var monitor_rect := Rect2()   # where the PC screen sits (desk mode), set in _co
 var podiums: Array = []       # floor spots for display cars (lobby mode), Vector2 ground points
 var podium_targets: Array = [] # sprite frame centres for those cars (lobby mode)
 var car_w := 0.0               # display car sprite frame width in pixels (lobby mode), 0 = let the caller choose
-var _spots := {}
+static var _spots := {}
 var desk_view := false        # desk mode: pull back from the PC to show the whole desk and its collectible slots
 var desk_top := 0.0           # y of the desk's back edge (desk mode), set in _compute()
 
@@ -126,10 +126,11 @@ func _draw() -> void:
 
 # ---------- shared pieces ----------
 
-var _texs := {}
+static var _texs := {}
 
 
-## This tier's render for a view, loaded once per stage.
+## This tier's render for a view. The cache is shared by every stage: each screen builds a new SceneArt, and
+## re-decoding the lossy WebP background (40-50 ms per visit to the PC or the garage) was the biggest stall left.
 func _tex(view: String) -> Texture2D:
 	var key: String = view + Game.world_suffix()
 	if not _texs.has(key):
@@ -411,8 +412,8 @@ func shelf_unit_rect() -> Rect2:
 	return Rect2(x1 - ww, y, ww, hh)
 
 
-var _dv := {}
-var _dv_meta = null
+static var _dv := {}
+static var _dv_meta = null
 
 
 ## A desk-view furniture render (assets/deskview/<name>.png from tools/deskview3d.py), or null.
@@ -439,7 +440,7 @@ func shelf_rect() -> Rect2:
 	return Rect2(sx, y, size.x - sx - size.x * 0.01, 8)
 
 
-var _props := {}
+static var _props := {}
 ## Renders are all framed to the same size; small things are drawn smaller on the desk.
 const PROP_SCALE := {"mug": 0.6, "magazines": 0.7, "cradle": 0.75, "hula": 0.7, "bobble_marco": 0.8, "bobble_jeff": 0.8,
 	"bobble_surfer": 0.8, "bobble_lifeguard": 0.8, "first_dollar": 0.75, "modelcar": 0.95, "aquarium": 1.15, "lamp": 1.1}
