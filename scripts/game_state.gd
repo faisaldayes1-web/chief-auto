@@ -1167,6 +1167,33 @@ func sale_value(car: Dictionary) -> int:
 	return int(round(v / 50.0) * 50)
 
 
+## Marco's flip check for an auction listing, from what the listing shows (hidden faults stay hidden):
+## bring every visible part up to FLIP_TARGET with the best mechanic you have, then sell with room to haggle.
+## {fixed: resale once fixed, repairs: est. repair bill, max_bid: highest price that still leaves a margin, mech}
+const FLIP_TARGET := 80
+const FLIP_MARGIN := 0.9   # resale x the tier's buyer budget x this, less repairs: break-even with a decent pitch (tests/_flip_probe.gd)
+
+func flip_estimate(car: Dictionary) -> Dictionary:
+	var mech: Dictionary = MECHANICS[0]
+	for m in MECHANICS:
+		if level >= m.level:
+			mech = m
+	var per_job := repair_cost(car, mech)
+	var gain: float = (mech.min + mech.max) / 2.0
+	var jobs := 0
+	var fixed_car := car.duplicate(true)
+	for p in PARTS:
+		var v: int = car.parts[p]
+		if v < FLIP_TARGET:
+			jobs += int(ceil((FLIP_TARGET - v) / gain))
+			fixed_car.parts[p] = FLIP_TARGET
+	fixed_car.hidden = {}
+	var fixed := sale_value(fixed_car)
+	var repairs := jobs * per_job
+	var max_bid: int = max(0, int(floor((fixed * dealership_info().budget * FLIP_MARGIN - repairs) / 100.0)) * 100)
+	return {"fixed": fixed, "repairs": repairs, "max_bid": max_bid, "mech": mech.name}
+
+
 func hidden_total(car: Dictionary) -> int:
 	var t := 0
 	for p in car.hidden:
