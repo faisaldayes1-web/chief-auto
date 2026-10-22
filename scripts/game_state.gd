@@ -540,7 +540,7 @@ func days_until_bills() -> int:
 
 
 func day_phase() -> String:
-	if clock < 11 * 60: return "Morning"
+	if clock < 12 * 60: return "Morning"
 	if clock < 16.5 * 60: return "Afternoon"
 	if clock < 18.5 * 60: return "Golden hour"
 	if clock < 20 * 60: return "Dusk"

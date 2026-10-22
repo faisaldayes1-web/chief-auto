@@ -644,6 +644,9 @@ func _update_coach() -> void:
 	coach.size = Vector2(380, 0)
 	coach.reset_size()
 	coach.position.y = size.y - 96 - coach.size.y
+	if current == "garage":
+		# bottom-left holds the repair panel and car picker; the right side under the stats card is free
+		coach.position.x = size.x - 14 - coach.size.x
 	for b in nav.get_children():
 		if b is Button and b.get_meta("screen", "") == step[2]:
 			b.modulate = Color(1.4, 1.25, 0.7)
