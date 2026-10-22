@@ -390,6 +390,7 @@ func set_car(c: Dictionary) -> void:
 	_model = scene.instantiate()
 	_pivot.add_child(_model)
 	_collect(_model)
+	_add_plates()
 	# Read every clickable mesh's triangles now, before the car is drawn. get_faces() reads the vertex
 	# buffers back from the GPU; done later (on the first hover) each read stalls behind a rendered frame.
 	if pickable:
@@ -427,6 +428,110 @@ static func build_model(c: Dictionary) -> Node3D:
 		v._pivot.remove_child(m)
 	v.free()
 	return m
+
+
+## Dealer plates. Every car model has the same named parts (part_front_bumper, part_rear_bumper, part_hood,
+## part_trunk, wheels, lights, core...) and runs along x, so a plate goes on the outer face of each bumper,
+## centred across the car at the bumper's mid height: a white plate with a chrome frame and the dealership's
+## red "CHIEF AUTO" lettering (Chief Auto's dealer plates until the buyer registers the car).
+func _add_plates() -> void:
+	if not _meshes.has("front_bumper") or not _meshes.has("rear_bumper"):
+		return
+	var fb := _model_aabb_of(_meshes["front_bumper"])
+	var rb := _model_aabb_of(_meshes["rear_bumper"])
+	var front_sign := signf(fb.get_center().x - rb.get_center().x)
+	if front_sign == 0.0:
+		return
+	for pair in [[fb, front_sign], [rb, -front_sign]]:
+		var ab: AABB = pair[0]
+		var sg: float = pair[1]
+		var y := ab.position.y + ab.size.y * 0.5
+		var x := _bumper_face_x(_meshes["front_bumper" if pair[0] == fb else "rear_bumper"], y, sg)
+		if is_nan(x):
+			x = (ab.end.x if sg > 0 else ab.position.x) - sg * 0.035
+		var at := Vector3(x + sg * 0.004, y, ab.get_center().z)
+		var plate := Node3D.new()
+		plate.name = "dealer_plate"
+		plate.position = at
+		plate.rotation.y = PI / 2 if sg > 0 else -PI / 2     # plate faces out along +x / -x
+		_model.add_child(plate)
+		var frame := MeshInstance3D.new()
+		var fbm := BoxMesh.new()
+		fbm.size = Vector3(0.34, 0.18, 0.012)
+		frame.mesh = fbm
+		frame.material_override = _plate_mats()[0]
+		plate.add_child(frame)
+		var face := MeshInstance3D.new()
+		var fm := BoxMesh.new()
+		fm.size = Vector3(0.31, 0.15, 0.014)
+		face.mesh = fm
+		face.material_override = _plate_mats()[1]
+		plate.add_child(face)
+		var t := Label3D.new()
+		t.text = "CHIEF AUTO"
+		t.font = UI.head_font()
+		t.font_size = 64
+		t.pixel_size = 0.0011
+		t.modulate = Color(0.75, 0.08, 0.06)
+		t.outline_size = 0
+		t.position = Vector3(0, 0.012, 0.0085)
+		t.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		plate.add_child(t)
+		var d := Label3D.new()
+		d.text = "DEALER · TEWPORT BEACH"
+		d.font_size = 24
+		d.pixel_size = 0.0008
+		d.modulate = Color(0.12, 0.2, 0.45)
+		d.outline_size = 0
+		d.position = Vector3(0, -0.045, 0.0085)
+		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		plate.add_child(d)
+
+
+static var _plate_m: Array = []
+
+
+static func _plate_mats() -> Array:
+	if _plate_m.is_empty():
+		var chrome := StandardMaterial3D.new()
+		chrome.albedo_color = Color(0.8, 0.8, 0.82)
+		chrome.metallic = 1.0
+		chrome.roughness = 0.25
+		var white := StandardMaterial3D.new()
+		white.albedo_color = Color(0.93, 0.93, 0.9)
+		white.roughness = 0.45
+		_plate_m = [chrome, white]
+	return _plate_m
+
+
+## The bumper's outer surface at the plate's spot: the outermost vertex along x within the plate's footprint
+## (centre 0.36 m across, +-0.1 m in height). Bumpers bulge and their lips stick out further than the face the
+## plate sits on, so the AABB alone buried the plate. NAN when the mesh has no vertices there.
+func _bumper_face_x(mi: MeshInstance3D, y: float, sg: float) -> float:
+	var xf := Transform3D.IDENTITY
+	var n: Node = mi
+	while n != null and n != _model:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	var best := NAN
+	for si in mi.mesh.get_surface_count():
+		var verts: PackedVector3Array = xf * (mi.mesh.surface_get_arrays(si)[Mesh.ARRAY_VERTEX] as PackedVector3Array)
+		for v in verts:
+			if absf(v.z) < 0.18 and absf(v.y - y) < 0.1:
+				if is_nan(best) or v.x * sg > best * sg:
+					best = v.x
+	return best
+
+
+func _model_aabb_of(mi: MeshInstance3D) -> AABB:
+	var xf := Transform3D.IDENTITY
+	var n: Node = mi
+	while n != null and n != _model:
+		if n is Node3D:
+			xf = (n as Node3D).transform * xf
+		n = n.get_parent()
+	return xf * mi.get_aabb()
 
 
 ## The PC build ships a high-detail set (about 3x the triangles, 1k textures) in assets/cars3d_hd, left out of the
