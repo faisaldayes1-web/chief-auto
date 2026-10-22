@@ -25,6 +25,13 @@ window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=0
 
+[editor]
+
+; Godot 4.3's threaded importer segfaulted intermittently on headless imports of this project (4 of ~30 runs on
+; desktop1, 2026-10-21/22, always while several textures re-imported in parallel). Serial import is slower but
+; deterministic. tools/godot_import.py also retries a crashed import.
+import/use_multiple_threads=false
+
 [input_devices]
 
 pointing/emulate_touch_from_mouse=true

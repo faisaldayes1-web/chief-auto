@@ -776,8 +776,8 @@ func _process(delta: float) -> void:
 		_frames_seen += 1
 		if delta > 0.08:
 			_slow_frames += 1
-		if _frames_seen >= 20:
-			if _slow_frames >= 15:
+		if _frames_seen >= 90:   # a sustained slowdown, not the hitch of arriving on the screen
+			if _slow_frames >= 72:
 				_vp.msaa_3d = Viewport.MSAA_DISABLED
 			_frames_seen = 0
 			_slow_frames = 0
