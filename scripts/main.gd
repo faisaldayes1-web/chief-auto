@@ -662,12 +662,30 @@ func _title_warmup() -> void:
 		art.set_car(c)
 		await get_tree().process_frame
 	art.free()
+	# the lot's parked cars: its stall data and each owned car's nose-in sprite pair from this lot's camera
+	# (~50 ms on the first lot visit otherwise)
+	if current != "title" or not is_inside_tree():
+		return
+	var lot := _lot_stalls()
+	var stalls: Array = lot.get("stalls", [])
+	for i in min(Game.cars.size(), stalls.size()):
+		if current != "title" or not is_inside_tree():
+			return
+		var la := CarArt.new()
+		la.quarter = true
+		var lsp := _lot_sprite(lot, stalls[i], CarArt.slug(Game.cars[i].get("model", "")))
+		if not lsp.is_empty():
+			la.lot_key = lsp.key
+		la.set_car(Game.cars[i])
+		la.free()
+		await get_tree().process_frame
 
 
 func _exit_tree() -> void:
 	for v in [garage_view, lobby_3d]:
 		if v and is_instance_valid(v) and not v.is_inside_tree():
 			v.free()
+	Car3DView._plate_material = null   # static material: release its shader before the renderer shuts down
 
 
 # =====================================================================

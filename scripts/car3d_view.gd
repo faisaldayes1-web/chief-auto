@@ -432,7 +432,7 @@ static func build_model(c: Dictionary) -> Node3D:
 
 ## Dealer plates. Every car model has the same named parts (part_front_bumper, part_rear_bumper, part_hood,
 ## part_trunk, wheels, lights, core...) and runs along x, so a plate goes on the outer face of each bumper,
-## centred across the car at the bumper's mid height: a white plate with a chrome frame and the dealership's
+## centred across the car at the bumper's mid height: one quad with the baked plate texture and the dealership's
 ## red "CHIEF AUTO" lettering (Chief Auto's dealer plates until the buyer registers the car).
 func _add_plates() -> void:
 	if not _meshes.has("front_bumper") or not _meshes.has("rear_bumper"):
@@ -455,53 +455,28 @@ func _add_plates() -> void:
 		plate.position = at
 		plate.rotation.y = PI / 2 if sg > 0 else -PI / 2     # plate faces out along +x / -x
 		_model.add_child(plate)
-		var frame := MeshInstance3D.new()
-		var fbm := BoxMesh.new()
-		fbm.size = Vector3(0.34, 0.18, 0.012)
-		frame.mesh = fbm
-		frame.material_override = _plate_mats()[0]
-		plate.add_child(frame)
-		var face := MeshInstance3D.new()
-		var fm := BoxMesh.new()
-		fm.size = Vector3(0.31, 0.15, 0.014)
-		face.mesh = fm
-		face.material_override = _plate_mats()[1]
-		plate.add_child(face)
-		var t := Label3D.new()
-		t.text = "CHIEF AUTO"
-		t.font = UI.head_font()
-		t.font_size = 64
-		t.pixel_size = 0.0011
-		t.modulate = Color(0.75, 0.08, 0.06)
-		t.outline_size = 0
-		t.position = Vector3(0, 0.012, 0.0085)
-		t.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		plate.add_child(t)
-		var d := Label3D.new()
-		d.text = "DEALER · TEWPORT BEACH"
-		d.font_size = 24
-		d.pixel_size = 0.0008
-		d.modulate = Color(0.12, 0.2, 0.45)
-		d.outline_size = 0
-		d.position = Vector3(0, -0.045, 0.0085)
-		d.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		plate.add_child(d)
+		# one textured quad (assets/cars3d/dealer_plate.png, baked by tools/bake_dealer_plate.tscn): 1 draw call
+		var q := MeshInstance3D.new()
+		var qm := QuadMesh.new()
+		qm.size = Vector2(0.34, 0.17)
+		q.mesh = qm
+		q.material_override = _plate_mat()
+		q.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		plate.add_child(q)
 
 
-static var _plate_m: Array = []
+const PLATE_TEX := "res://assets/cars3d/dealer_plate.png"
+static var _plate_material: StandardMaterial3D
 
 
-static func _plate_mats() -> Array:
-	if _plate_m.is_empty():
-		var chrome := StandardMaterial3D.new()
-		chrome.albedo_color = Color(0.8, 0.8, 0.82)
-		chrome.metallic = 1.0
-		chrome.roughness = 0.25
-		var white := StandardMaterial3D.new()
-		white.albedo_color = Color(0.93, 0.93, 0.9)
-		white.roughness = 0.45
-		_plate_m = [chrome, white]
-	return _plate_m
+static func _plate_mat() -> StandardMaterial3D:
+	if _plate_material == null:
+		_plate_material = StandardMaterial3D.new()
+		_plate_material.albedo_texture = load(PLATE_TEX) if ResourceLoader.exists(PLATE_TEX) else null
+		_plate_material.roughness = 0.4
+		_plate_material.metallic_specular = 0.6
+		_plate_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
+	return _plate_material
 
 
 ## The bumper's outer surface at the plate's spot: the outermost vertex along x within the plate's footprint
