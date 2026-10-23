@@ -182,10 +182,33 @@ void fragment() {
 	float grate = step(d, 0.12) * (0.55 + 0.45 * step(0.5, fract(wp.x * 9.0)));
 	col = mix(col, vec3(0.12, 0.12, 0.13), step(d, 0.12) * 0.85);
 	col = mix(col, vec3(0.42, 0.43, 0.45), grate * 0.4);
+	// pick A's worn shop floor, stamped in the shader (no extra draw calls): oil stains with a darker rim and a
+	// glossy wet centre, tyre-rubber streaks along the runways, hairline cracks, and yellow safety paint for the
+	// bay outline, worn through where cars roll over it
+	float oil = 0.0;
+	float wet = 0.0;
+	for (int i = 0; i < 7; i++) {
+		vec2 c = vec2(h(vec2(float(i), 3.1)) * 9.0 - 4.5, h(vec2(float(i), 7.7)) * 7.0 - 3.5);
+		float r = 0.35 + h(vec2(float(i), 1.3)) * 0.75;
+		float dd = length((wp.xz - c) * vec2(1.0, 1.0 + 0.4 * h(vec2(float(i), 5.0)))) + (vn(wp.xz * 4.0 + float(i)) - 0.5) * 0.35;
+		float blob = 1.0 - smoothstep(r * 0.55, r, dd);
+		oil = max(oil, blob * (0.55 + 0.45 * smoothstep(r * 0.4, r * 0.85, dd)));
+		wet = max(wet, 1.0 - smoothstep(0.0, r * 0.45, dd));
+	}
+	col = mix(col, vec3(0.05, 0.045, 0.04), oil * 0.75);
+	float rubber = smoothstep(0.62, 0.9, vn(wp.xz * vec2(0.35, 6.0) + 3.0)) * step(abs(abs(wp.z) - 0.78), 0.3);
+	col *= 1.0 - rubber * 0.22;
+	float crack = smoothstep(0.985, 1.0, 1.0 - abs(vn(wp.xz * 1.7 + 11.0) - 0.5) * 2.0) * step(0.5, vn(wp.xz * 0.6));
+	col *= 1.0 - crack * 0.45;
+	// bay outline: a 0.1 m yellow line on a 7 x 4.4 m rectangle around the lift
+	vec2 bq = abs(wp.xz) - vec2(3.5, 2.2);
+	float line = step(max(bq.x, bq.y), 0.0) * step(-0.1, max(bq.x, bq.y));
+	float worn = smoothstep(0.35, 0.7, vn(wp.xz * 6.0 + 2.0));
+	col = mix(col, vec3(0.86, 0.66, 0.08), line * worn * 0.9);
 	vec2 q = abs(wp.xz) / (car_size * 0.5 + vec2(0.35));
 	float contact = 1.0 - smoothstep(0.55, 1.15, length(pow(q, vec2(3.0))));
 	ALBEDO = col * (1.0 - contact * 0.55);
-	ROUGHNESS = mix(0.5, 0.8, n);
+	ROUGHNESS = mix(mix(0.5, 0.8, n), 0.12, wet * 0.85);
 	METALLIC = step(d, 0.12) * 0.6;
 	SPECULAR = 0.15;
 	ALPHA = 1.0 - smoothstep(8.0, 12.0, length(wp.xz));

@@ -111,6 +111,18 @@ func _build_env() -> void:
 	_env.tonemap_mode = Environment.TONE_MAPPER_ACES
 	_env.tonemap_exposure = 1.0
 	_env.tonemap_white = 6.0
+	# pick B's golden warmth: a warm per-channel grade (mids and highlights toward honey, shadows kept clean) and
+	# a little more saturation, after tonemapping, so every surface in the hall shares it
+	_env.adjustment_enabled = true
+	_env.adjustment_saturation = 1.12
+	_env.adjustment_contrast = 1.04
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
+	g.colors = PackedColorArray([Color(0.0, 0.0, 0.0), Color(0.56, 0.49, 0.4), Color(1.0, 0.95, 0.84)])
+	var lut := GradientTexture1D.new()
+	lut.gradient = g
+	lut.width = 256
+	_env.adjustment_color_correction = lut
 	_env.glow_enabled = false
 	if RenderQuality.is_forward_plus() and ResourceLoader.exists(SKY_HDR):
 		# desktop: the beach HDRI (the same place as the view through the glass) lights and reflects in the hall
@@ -149,7 +161,7 @@ func _build_env() -> void:
 	var fill := DirectionalLight3D.new()
 	fill.rotation_degrees = Vector3(-60, -30, 0)
 	fill.light_energy = 0.3
-	fill.light_color = Color(0.85, 0.9, 1.0)
+	fill.light_color = Color(1.0, 0.9, 0.78)   # warm bounce, not a cool sky fill (pick B)
 	_vp.add_child(fill)
 	# warm downlights over the display floor and the lounge (no shadows: cheap on the web)
 	for p in [Vector3(-4.0, 4.2, -2.5), Vector3(2.0, 4.2, -3.0), Vector3(7.0, 4.2, -1.5), Vector3(7.5, 4.0, 4.5)]:
@@ -576,7 +588,7 @@ func set_time(night: float, sunset: float) -> void:
 	_sun.light_energy = lerp(1.85, 0.0, night)
 	if _rays_mat:
 		_rays_mat.set_shader_parameter("strength", 0.18 * (1.0 - night))   # strong enough that the mullion shafts read on the floor
-	_sun.light_color = Color(1.0, 0.8, 0.58).lerp(Color(1.0, 0.64, 0.38), sunset)
+	_sun.light_color = Color(1.0, 0.74, 0.48).lerp(Color(1.0, 0.64, 0.38), sunset)
 	_env.ambient_light_energy = lerp(0.46, 0.42, night)
 
 
