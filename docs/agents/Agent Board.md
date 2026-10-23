@@ -47,3 +47,4 @@ Agent: Codex-faisal. Incoming branch records preserved below; no existing owner 
 Agent: Codex-faisal. Incoming branch records preserved below; no existing owner or current main claim reassigned.
 
 | Writing | `Codex-faisal` | New content pack per framework #30 / 6245614403 | `docs/Wiki/Proposals/Content Pack 30 Days.md`; `docs/agents/Handoffs/2026-10-17 Codex-faisal Content Pack.md` | CLAIMED on `Codex-faisal/content-pack-30-days`; PROPOSED | Pending |
+| Visual implementation | `claude-faisallaptop/chief9` | Garage dark surround wall (floor no longer fades into bright sky), then next showroom/office gaps toward Faisal picks A/B/D (PICKS-2026-10-22) | `scripts/car3d_view.gd` workshop dressing only (not camera), `scripts/showroom3d.gd` room/lights only after Codex-faisal PR #33 merged, `scripts/main.gd` office desk view only, `tests/_stretch_tour.*`, `docs/visual-overhaul-9/` | CLAIMED 2026-10-23 on `agent/claude-faisallaptop/chief9` | Pending PR |
