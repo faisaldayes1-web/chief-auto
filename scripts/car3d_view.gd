@@ -63,6 +63,7 @@ func _init() -> void:
 	_vp.physics_object_picking = false
 	add_child(_vp)
 	var env := Environment.new()
+	_env3 = env
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	var sky := Sky.new()
 	var sm := ProceduralSkyMaterial.new()
@@ -87,6 +88,7 @@ func _init() -> void:
 	we.environment = env
 	_vp.add_child(we)
 	var sun := DirectionalLight3D.new()
+	_sun3 = sun
 	sun.rotation_degrees = Vector3(-55, -35, 0)
 	sun.light_energy = 1.05
 	sun.light_color = Color(1.0, 0.95, 0.88)
@@ -94,6 +96,7 @@ func _init() -> void:
 	sun.directional_shadow_max_distance = 25.0
 	_vp.add_child(sun)
 	var fill := DirectionalLight3D.new()
+	_fill3 = fill
 	fill.rotation_degrees = Vector3(-20, 140, 0)
 	fill.light_energy = 0.45
 	fill.light_color = Color(0.75, 0.85, 1.0)
@@ -139,6 +142,9 @@ void fragment() {
 
 
 var _workshop: Node3D
+var _env3: Environment
+var _sun3: DirectionalLight3D
+var _fill3: DirectionalLight3D
 var _ws_floor_mat: ShaderMaterial
 
 
@@ -293,15 +299,41 @@ void fragment() {
 		var l := OmniLight3D.new()
 		l.position = Vector3(0, 3.2, z)
 		l.omni_range = 7.0
-		l.light_energy = 0.9
+		l.light_energy = 0.75
 		l.light_color = Color(0.96, 0.97, 1.0)
 		_workshop.add_child(l)
 	_lift(red, dark, chrome)
+	_garage_mood()
 	_roll_up_door(dark, chrome)
 	if _pivot:
 		_pivot.position.y = LIFT_TOP
 	# one mesh per material: the dressing above was ~180 draw calls on its own
 	MeshMerge.merge(_workshop)
+
+
+## Pick A's mood: a dim shop lit mainly by low warm sunlight through the open roll-up door (its wall shadows the
+## rest of the bay), cool LED bars overhead, and the bright auto-shop HDRI kept only for reflections in the paint,
+## glass and chrome, turned down so it no longer floods the room. Garage only (the showroom's cars have their own
+## lighting).
+func _garage_mood() -> void:
+	if _env3:
+		_env3.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		_env3.ambient_light_color = Color(0.36, 0.34, 0.33)
+		_env3.ambient_light_energy = 0.42
+		_env3.background_energy_multiplier = 0.55   # dims the HDRI's reflections with the room
+		_env3.tonemap_exposure = 0.95
+	if _sun3:
+		# the sun comes in through the door: from DOOR_ANGLE toward the bay centre, 24 degrees up
+		var a := deg_to_rad(DOOR_ANGLE)
+		var from := Vector3(sin(a), 0, -cos(a))
+		var dir := (-from * cos(deg_to_rad(24.0)) + Vector3(0, -sin(deg_to_rad(24.0)), 0)).normalized()
+		_sun3.basis = Basis.looking_at(dir, Vector3.UP)
+		_sun3.light_energy = 2.4
+		_sun3.light_color = Color(1.0, 0.76, 0.48)
+		_sun3.directional_shadow_max_distance = 30.0
+	if _fill3:
+		_fill3.light_energy = 0.16
+		_fill3.light_color = Color(0.7, 0.8, 1.0)
 
 
 ## Pick A's open roll-up door: a block wall segment on the far side of the default camera angle, with a 5 m door
