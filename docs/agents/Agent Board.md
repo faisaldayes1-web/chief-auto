@@ -47,3 +47,4 @@ Agent: Codex-faisal. Incoming branch records preserved below; no existing owner 
 Agent: Codex-faisal. Incoming branch records preserved below; no existing owner or current main claim reassigned.
 
 | Writing | `Codex-faisal` | New content pack per framework #30 / 6245614403 | `docs/Wiki/Proposals/Content Pack 30 Days.md`; `docs/agents/Handoffs/2026-10-17 Codex-faisal Content Pack.md` | CLAIMED on `Codex-faisal/content-pack-30-days`; PROPOSED | Pending |
+| UI polish | `claude-faisal3/chief-cards` | Faisal 2026-10-23 Chief Auto direction: upgrade every visual card (car and info cards, UI polish) + VFX (hover glow/lift, stamps, money pops, level-up, button feedback) | scripts/ui.gd card helpers, card builders in scripts/main.gd, new shaders/ui_*.gdshader, own screenshot harness + docs/playtests/2026-10-24-c3-cards/ | CLAIMED 2026-10-24 | Branch claude-faisal3/chief-cards; does not touch showroom3d.gd NPCs, Marco screen/dialogue or sale_game.gd |
