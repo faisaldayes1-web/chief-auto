@@ -47,3 +47,5 @@ Agent: Codex-faisal. Incoming branch records preserved below; no existing owner 
 Agent: Codex-faisal. Incoming branch records preserved below; no existing owner or current main claim reassigned.
 
 | Writing | `Codex-faisal` | New content pack per framework #30 / 6245614403 | `docs/Wiki/Proposals/Content Pack 30 Days.md`; `docs/agents/Handoffs/2026-10-17 Codex-faisal Content Pack.md` | CLAIMED on `Codex-faisal/content-pack-30-days`; PROPOSED | Pending |
+
+| Code + review | `claude-faisal3/chief-gaps` | Finish gap list (PROPOSED) and two S save/session fixes: save on window close, clean Save & Quit to Title | NEW `docs/agents/Proposals/2026-10-24 Finish Gap List.md`, NEW `tests/session_exit_test.gd`, `scripts/game_state.gd` (quit-save only), `scripts/main.gd` (`_quit_to_title` + one line in `show_screen`), own handoff and this row | CLAIMED 2026-10-24; branch `claude-faisal3/chief-gaps`; draft PR | Faisal 2026-10-23 "list what's missing and build it" |
